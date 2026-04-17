@@ -1,75 +1,151 @@
 # BEG Estates / EstateFlow — Product Requirements Document
 
-**Date:** 2026-04-17
-**Status:** Initial scaffold complete (v0.1)
+**Last updated:** 2026-04-17 (iteration 2)
+**Status:** Iteration 2 — real project schema + HD seed (v0.2)
+
+## Iterations
+- **v0.1 (2026-04-17)** — initial scaffold, 3-zone layout, generic demo project "Яна"
+- **v0.2 (2026-04-17)** — real project seed "BEG Estates / Хаджи Димитър", normalized status model, admin-only buyer layer
 
 ## Original problem statement
 Modern web SaaS/CRM for selling new-construction real estate in Bulgaria.
-Three zones: public site (project showcase + sales), client portal (buyer self-service), admin backoffice (sales/accounting/project mgmt).
-Supports: residential blocks, apartments, garages, parking spaces, storage, houses.
-Key differentiator: "Капаро 0" (zero-deposit reservation) flow with auto-expiration.
+Three zones: public site (project showcase), client portal (buyer self-service), admin backoffice.
+Supports: apartments, garages, parking, storage, shops, houses.
+Differentiator: "Капаро 0" (zero-deposit reservation) flow.
 
 ## User personas
-- **super_admin / admin** — full access, user management, audit
-- **sales** — manage projects, properties, reservations, clients
-- **accounting** — payments and installments (future)
-- **project_manager** — construction progress, updates (future)
-- **client** — view own properties, reservations, payments, documents
-- **broker** — external partner access (future)
+- super_admin / admin — full access
+- sales — projects, properties, reservations, clients
+- accounting — payments & installments (future)
+- project_manager — construction progress, updates (future)
+- client — own properties, reservations, payments, documents
+- broker — external partner access (future)
 
 ## Architecture
-- **Backend:** FastAPI + MongoDB (motor). Modular routers. bcrypt passwords, JWT (httpOnly cookies + Bearer fallback), TOTP 2FA (pyotp) for staff, email OTP (dev-returned) for clients.
-- **Frontend:** React 19 + Tailwind + shadcn/ui + sonner toasts. Three layouts: public / client portal / admin. Cormorant Garamond (headings) + Manrope (body, Cyrillic).
-- **Data:** 16 collections incl. users, projects, buildings, properties, reservations, payment_plans, payment_installments, payments, documents, inquiries, audit_logs, project_updates, login_history, otp_codes, login_attempts.
+- **Backend:** FastAPI + MongoDB (motor), JWT httpOnly cookies, bcrypt, TOTP 2FA (pyotp), email OTP (dev_otp for scaffold), role-based guards
+- **Frontend:** React 19 + Tailwind + shadcn/ui + sonner. Three layouts (public/client/admin). Cormorant Garamond + Manrope (Cyrillic-safe)
+- **Collections (v0.2):** users, projects, buildings, properties, reservations, payment_plans, payment_installments, payments, documents, inquiries, audit_logs, status_history, project_updates, login_history, otp_codes, login_attempts, **buyers** (admin-only), **system_meta** (seed version)
 
-## Core flows implemented
-1. **Public browsing** — home → projects → project detail (floor selector, availability grid) → property detail.
-2. **Inquiry form** (public) → saved + audit-logged.
-3. **Staff login** — email + password + optional TOTP 2FA; brute-force lockout (5 fail / 15 min).
-4. **Client login** — email → OTP request (dev_otp returned in scaffold) → verify.
-5. **Zero-deposit reservation** — client on free property → status → резервиран_капаро_0, 7-day expiry, 2-per-client limit, auto-release on expire.
-6. **Admin dashboard** — KPIs (free/reserved/sold/active zero-deposit/expiring soon/collected funds), recent reservations and inquiries.
-7. **Admin CRUD** — properties (status change with audit), clients list, reservations list with release action, inquiries, audit log.
-8. **Client portal** — my reservations with countdown, payment plan & installments, documents, progress.
+## Status model (v0.2 — english keys, BG labels)
+| key | label | semantics |
+|---|---|---|
+| available | Свободен | can be reserved |
+| reserved_zero_deposit | Резервиран · Капаро 0 | zero-deposit hold (7 days) |
+| reserved_paid_deposit | Резервиран · Капаро | paid deposit / predialiminary |
+| sold | Продаден | owner assigned, contract signed |
+| compensation | Обезщетение | compensation allocation (admin-only workflow) |
+| unavailable | Недостъпен | temporarily not offered |
+| hidden | Скрит | admin-only — never shown on public pages |
 
-## What's been implemented (2026-04-17)
-- Full auth with role-based guards (STAFF_ROLES vs client)
-- Complete public site: Home (hero/editorial), Projects listing, Project detail (floors + availability grid + map via OpenStreetMap), Property detail with zero-deposit reservation button
-- Client portal layout + Dashboard, Reservations, Payments, Documents, Updates pages
-- Admin panel layout + Dashboard, Projects, Properties (with inline status change), Reservations (with release), Clients, Inquiries, Audit log
-- Seed data: Project "Жилищна сграда Яна", 20 apts + 8 garages + 10 parking, 1 sold, 1 active zero-deposit on A3-2 for client Иван Петров, 3-installment payment plan
-- All backend endpoints tested: 28/28 passing (testing_agent_v3 iteration_1)
-- CORS configured for preview + localhost
+Zero-deposit reservation is allowed ONLY on `available` properties.
+
+## Property schema (v0.2)
+Core: `id, project_id, building_id, floor, code, property_type, rooms, area_pure, area_common, area_total, ideal_parts_area, raw_area, exposure, description, gallery, plan_url, status, linked_unit_ids, created_at`
+
+**Pricing (all editable by admin):**
+- `base_price` — seeded baseline (from PDF)
+- `list_price` — what's shown publicly
+- `negotiated_price` — admin-only, per-deal
+- `reservation_price` — amount paid on reservation
+- `final_contract_price` — signed contract price
+
+**Admin-only (stripped on public endpoints):** `buyer_id, admin_notes, negotiated_price, source_ref, final_contract_price`
+
+## Privacy rules
+- Public API endpoints strip admin-only fields via `_public_property()` filter
+- Properties with `status=hidden` are omitted from public list endpoints and return 404 on direct fetch
+- Buyer names/contacts live in `buyers` collection, accessible only via `GET /api/buyers` (staff-only)
+- Admin property detail includes buyer object; public detail excludes it
+
+## Route map
+### Public
+`/` · `/projects` · `/projects/:id` · `/properties/:id` · `/contact` · `/login/staff` · `/login/client`
+
+### Client portal (protected)
+`/portal` (dashboard) · `/portal/reservations` · `/portal/payments` · `/portal/documents` · `/portal/updates`
+
+### Admin (protected)
+`/admin` · `/admin/projects` · `/admin/properties` · `/admin/reservations` · `/admin/clients` · `/admin/inquiries` · `/admin/audit`
+
+## API endpoints
+Auth: `/api/auth/staff/login`, `/api/auth/client/request-otp`, `/api/auth/client/verify-otp`, `/api/auth/2fa/setup`, `/api/auth/2fa/verify`, `/api/auth/me`, `/api/auth/logout`
+Catalog: `/api/projects`, `/api/projects/{id}`, `/api/projects/{id}/properties`, `/api/properties/{id}`, `/api/property-statuses`, `POST /api/projects` (staff), `POST /api/properties` (staff), `PATCH /api/properties/{id}/status` (staff)
+Buyers: `/api/buyers` (staff only)
+Reservations: `/api/reservations`, `POST /api/reservations`, `POST /api/reservations/{id}/release`
+Dashboards: `/api/dashboard/admin` (staff), `/api/dashboard/client` (client)
+Clients / inquiries / audit: `/api/clients`, `/api/inquiries`, `/api/audit-logs`
+
+## Seed (v0.2)
+- **Project 1 (primary):** "BEG Estates / Хаджи Димитър" · Подуяне, София · УПИ XVI-432,433, кв.36 · in_construction · 35% · 4 nearby amenities (Kaufland, Park Gerena, 95 SU, transport)
+  - 18 apartments (101-104, 201-204, 301-303, 401-402, 501-503, 601-602)
+  - 1 shop (Магазин)
+  - 6 parking (ПМ-07/08/12/13/14/15)
+  - 1 garage (Г-1)
+  - 3 storage (Склад 1/2/3)
+  - Sample assignments: 301 sold → М. Георгиева; 102 paid deposit → Н. Костов; 401 compensation; 501 hidden; 202 zero-deposit → Ivan (client) + 3-installment payment plan
+- **Project 2 (planned):** "Жилищна сграда Яна" · Манастирски ливади · status=planned, no inventory
+
+Seed is gated by `system_meta.seed.version` tag so future schema changes force clean re-seed.
+
+## Import-ready design
+- `source_ref` field on every property links back to the source PDF row ("ПЛОЩООБРАЗУВАНЕ row: ап. 202")
+- `_new_unit()` helper in seed.py centralizes construction — swapping placeholder values for real area/price values is a one-line change per row
+- Project carries `source_files` list listing original PDFs
+- Nearby amenities are structured data (icon + label + walk_time), easily extended from location screenshots
+- Gallery / cover_image use URL strings — can be swapped to object-storage URLs when renders uploaded
+
+## What's been implemented
+### v0.1 (2026-04-17)
+- Full 3-zone scaffold (public / client / admin), all routes & layouts
+- JWT staff auth + TOTP 2FA scaffolding, email-OTP client login (dev_otp)
+- Zero-deposit reservation flow with auto-expire
+- Initial seed for Яна project (20 apts + 8 garages + 10 parking)
+- **28/28 backend tests passing**
+
+### v0.2 (2026-04-17)
+- Normalized PropertyStatus enum (english keys, BG labels) + status_history tracking
+- Extended pricing fields (base/list/negotiated/reservation/final)
+- Admin-only `buyers` collection + assignment linking to properties
+- Privacy filter on all public property endpoints
+- Seed version gate → fresh HD seed + Яна demoted to planned
+- New PropertyType: `shop`, `yard_parking`
+- Public project page: gallery, nearby amenities (structured icons), construction-progress timeline
+- Admin properties table: new columns (base/list price, buyer, admin notes, inline status select)
+- **28/28 backend tests passing (iteration 2)**
 
 ## Prioritized backlog
-### P0 (next logical step)
-- Admin CRUD for creating/editing projects and properties from UI (currently only listings + status)
-- Payment plan creation UI for staff + mark installment paid
-- Proper email provider (Resend/SendGrid) for OTP and reservation-expiry reminders
-- Automatic scheduler for zero-deposit expiration emails (currently on-demand expire only)
-- TOTP 2FA setup UI for staff (backend endpoints exist: /auth/2fa/setup + /auth/2fa/verify)
+### P0 — next iteration once real PDFs are attached
+- **Real inventory import** from "ПЛОЩООБРАЗУВАНЕ - нанесени КУПУВАЧИ.pdf" — replace placeholder area/price values; map file-based buyer assignments to admin records
+- **Real renders** from uploaded Enscape gallery → replace unsplash placeholders
+- **Real location screenshots** (Kaufland, Park Gerena, school, transport) → replace icon-only amenities with cards carrying photos
+- Architectural plan embed / link from "000 - NP165-SD-AR.pdf"
+
+### P0 — functional
+- Admin UI to create/edit projects, properties, buyers (currently read/status-change only)
+- Payment plan CRUD + mark installment paid
+- TOTP 2FA setup UI for staff
+- Real email provider (Resend/SendGrid) for OTP + expiry reminders
+- Background scheduler for zero-deposit auto-release notifications
 
 ### P1
 - Pricing engine: coefficient by floor/exposure, per-sqm pricing, discounts, promotions
 - Contract/document upload (Object storage) + client signing flow
-- Change requests & change offers flow
-- Construction progress update publishing (admin posts with images)
-- Broker role UI and commission tracking
+- Change-requests & change-offers flow
+- Broker role UI + commission tracking
 
 ### P2
 - Multi-language (EN) interface
-- Advanced reports: sales funnel, collection forecasts
+- Sales funnel reports, collection forecasts
 - Client in-portal messaging with sales
 - Trusted devices / login history UI
-- Role-specific audit log filtering
 
-## Credentials (dev)
+## Credentials (dev) — see `/app/memory/test_credentials.md`
 - admin@begestates.bg / Admin123!
 - sales@begestates.bg / Sales123!
 - Client OTP: ivan.petrov@example.com (dev_otp returned in response)
 
-## Known limitations of the scaffold
-- OTP is returned in the API response (`dev_otp`) instead of being emailed — MOCKED (intentional, per user request)
-- TOTP 2FA is optional on first staff login (bootstrap); system prompts to enable
-- No scheduled job for reservation expiry yet — expiration is checked lazily on reads of `/reservations` and `/dashboard/admin`
-- Payment plan logic is simplified (no discounts/coefficients)
+## Known limitations
+- OTP email sending is **MOCKED** (dev_otp in response)
+- No scheduled job for reservation expiry (lazy check on reads)
+- Pricing logic simplified (no discounts/coefficients yet)
+- Real project files (PDFs, renders, location photos) **NOT YET UPLOADED** — current seed uses realistic placeholder inventory matching the described naming/structure, ready to be swapped to real values in a single pass once files are available
