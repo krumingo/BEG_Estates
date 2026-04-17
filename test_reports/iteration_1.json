@@ -1,0 +1,75 @@
+{
+  "summary": "Backend API testing completed for BEG Estates / EstateFlow scaffold. All 28 tests passed covering public APIs, staff auth, client OTP auth, reservations, dashboards, audit logs, and role enforcement.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "/api/auth/staff/login",
+        "issue": "Brute force lockout may not trigger consistently behind load balancers due to IP:email key splitting across pods",
+        "priority": "LOW"
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_beg_estates_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Bcrypt hash format is correct ($2b$) - verified",
+    "HttpOnly cookies are properly set with Secure and SameSite=none flags",
+    "CORS is configured with allow_credentials=True",
+    "OTP is returned in response body as dev_otp (MOCKED - intentional for scaffold)",
+    "Zero-deposit limit (2 per client) is working correctly",
+    "Auto-expiration of stale reservations is implemented in _expire_stale()"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_beg_estates_api.py"
+  ],
+  "success_rate": {
+    "backend": "100% (28/28 tests passed)",
+    "frontend": "N/A - backend only testing requested"
+  },
+  "test_credentials": {
+    "admin": "admin@begestates.bg / Admin123!",
+    "sales": "sales@begestates.bg / Sales123!",
+    "client": "ivan.petrov@example.com (OTP via /api/auth/client/request-otp)"
+  },
+  "seed_data_creation": "Seed data verified: Project 'Жилищна сграда Яна' with 38 properties (20 apartments, 8 garages, 10 parking), A1-1 sold, A3-2 reserved with zero-deposit",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All backend APIs are working correctly. Test file at /app/backend/tests/test_beg_estates_api.py covers all major flows. OTP email is MOCKED - returns dev_otp in response. Brute force lockout uses IP:email key which may split across load balancer pods.",
+  "mocked_apis": {
+    "email_otp": "OTP is returned in API response as dev_otp instead of being emailed - intentional for scaffold/testing"
+  },
+  "verified_features": [
+    "Public API: GET /api/projects returns projects with stats",
+    "Public API: GET /api/projects/{id} returns project + buildings",
+    "Public API: GET /api/projects/{id}/properties returns properties list",
+    "Public API: GET /api/properties/{id} returns property + project + linked",
+    "Public API: POST /api/inquiries accepts public inquiry (no auth)",
+    "Staff auth: POST /api/auth/staff/login with credentials sets cookies and returns user",
+    "Staff auth: GET /api/auth/me returns authenticated staff user",
+    "Staff brute-force: mechanism exists (IP:email key based)",
+    "Client auth: POST /api/auth/client/request-otp returns dev_otp",
+    "Client auth: POST /api/auth/client/verify-otp with correct code returns user + sets cookies",
+    "Client auth: POST /api/auth/client/verify-otp with wrong code returns 401",
+    "Admin dashboard: GET /api/dashboard/admin returns KPI and recent data (staff only)",
+    "Client dashboard: GET /api/dashboard/client returns reservations/installments/documents (client only)",
+    "Zero-deposit reservation: creates reservation, property status becomes резервиран_капаро_0",
+    "Zero-deposit limit: >2 active zero_deposit reservations returns 409",
+    "Cannot reserve non-free property: returns 409",
+    "Staff reservation release: POST /api/reservations/{id}/release changes property back to свободен",
+    "Audit log: GET /api/audit-logs returns records (staff only)",
+    "Clients list: GET /api/clients returns list with reservation_count (staff only)",
+    "Property status change: PATCH /api/properties/{id}/status (staff) updates status",
+    "Role enforcement: client accessing /api/dashboard/admin → 403",
+    "Role enforcement: unauthenticated → 401 on protected endpoints",
+    "Seed data: project 'Жилищна сграда Яна' exists with ~38 properties and zero-deposit reservation on A3-2"
+  ]
+}
