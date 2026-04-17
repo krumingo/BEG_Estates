@@ -1,0 +1,134 @@
+{
+  "project_name": "BEG Estates / EstateFlow",
+  "theme": "Hybrid (Dark/Moody Public Site, Clean Light Admin/Portal)",
+  "archetype": "Archetype 4 (Swiss & High-Contrast) + Luxury Accents (Archetype 5)",
+  "typography": {
+    "fonts": [
+      {
+        "family": "Cormorant Garamond",
+        "type": "heading",
+        "usage": "Public site hero headings, major section titles. Evokes luxury and trust.",
+        "weights": ["400", "500", "600"]
+      },
+      {
+        "family": "Manrope",
+        "type": "body_and_ui",
+        "usage": "All dashboard UI, client portal text, body paragraphs, and buttons. Offers excellent Cyrillic support, high legibility.",
+        "weights": ["400", "500", "600", "700"]
+      }
+    ],
+    "scales": {
+      "h1": "text-4xl sm:text-5xl lg:text-6xl tracking-tighter leading-none font-medium",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl tracking-tight leading-tight",
+      "h3": "text-xl sm:text-2xl tracking-tight",
+      "h4": "text-lg sm:text-xl font-medium",
+      "body": "text-base leading-relaxed",
+      "ui_small": "text-sm font-medium tracking-wide",
+      "overline": "text-xs uppercase tracking-[0.2em] font-bold text-slate-500"
+    }
+  },
+  "colors": {
+    "brand": {
+      "primary_dark": "#0A0A0A",
+      "primary_light": "#FFFFFF",
+      "accent_gold": "#D4AF37",
+      "accent_stone": "#F5F5F4",
+      "border": "#E5E5E5"
+    },
+    "property_status_badges": {
+      "свободен": {
+        "bg": "bg-emerald-50",
+        "text": "text-emerald-700",
+        "border": "border-emerald-200",
+        "icon": "Circle (Green)"
+      },
+      "резервиран_капаро_0": {
+        "bg": "bg-amber-50",
+        "text": "text-amber-700",
+        "border": "border-amber-200",
+        "icon": "Timer/Clock (Amber)"
+      },
+      "резервиран_с_капаро": {
+        "bg": "bg-orange-50",
+        "text": "text-orange-700",
+        "border": "border-orange-200",
+        "icon": "Lock (Orange)"
+      },
+      "предварителен_договор": {
+        "bg": "bg-blue-50",
+        "text": "text-blue-700",
+        "border": "border-blue-200",
+        "icon": "FileText (Blue)"
+      },
+      "продаден": {
+        "bg": "bg-slate-50",
+        "text": "text-slate-500",
+        "border": "border-slate-200",
+        "icon": "CheckCircle (Slate)"
+      }
+    }
+  },
+  "layout_and_spacing": {
+    "public_site": {
+      "grid": "Bento Grid ('Tetris' mode), grid-cols-1 md:grid-cols-12, wide gaps (gap-8 to gap-12)",
+      "spacing": "Generous (p-12, p-16, py-24). Allow the architectural images to breathe."
+    },
+    "admin_and_portal": {
+      "grid": "Control Room Grid, grid-cols-1 md:grid-cols-4, tight gaps (gap-4 or gap-6)",
+      "spacing": "Dense but clear (p-4, p-6). Every pixel utilized for data density."
+    }
+  },
+  "surface_strategies": {
+    "headers": "Crystal Glassmorphism (bg-white/70 or bg-black/60, backdrop-blur-xl, 1px delicate inner stroke). Navigation links MUST be visible on desktop.",
+    "public_cards": "The 'Tracing Beam' look for featured projects. High-conversion focus.",
+    "dashboard_widgets": "Crisp Neumorphism mix: Flat backgrounds (bg-white), sharp 1px border (border-slate-200), subtle shadow (shadow-sm). Do NOT overuse Shadcn Cards if going dense."
+  },
+  "component_instructions": {
+    "forms_and_inputs": "ALWAYS use Shadcn Input, Select, Form components. NEVER use native <input>. Customize radii (max 8px) and borders to feel premium.",
+    "buttons": "Explicit hover states required (e.g., hover:bg-slate-800 hover:text-white). No generic default blue.",
+    "tables_and_data": "Use Shadcn tables for Admin and Client portal. Ensure responsive scrolling. Left-align data, right-align numbers/currency.",
+    "testing": "All interactive and key informational elements MUST include a `data-testid` attribute (kebab-case, role-based, e.g., 'submit-reservation-button')."
+  },
+  "media": {
+    "image_urls": [
+      {
+        "url": "https://images.unsplash.com/photo-1758193431355-54df41421657?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzOTB8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBsdXh1cnklMjBhcGFydG1lbnQlMjBidWlsZGluZyUyMGV4dGVyaW9yfGVufDB8fHx8MTc3NjQ1MTU0OHww&ixlib=rb-4.1.0&q=85",
+        "category": "hero_background",
+        "description": "Modern building exterior. Use for the public site hero section with a max bg-black/40 overlay to maintain visibility."
+      },
+      {
+        "url": "https://images.pexels.com/photos/16110999/pexels-photo-16110999.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "category": "project_listing",
+        "description": "Contemporary architecture glass balconies. Use for the projects list or featured project card."
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1758448511320-05d7d28f4298?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Njl8MHwxfHNlYXJjaHwzfHxtb2Rlcm4lMjBsdXh1cnklMjBhcGFydG1lbnQlMjBpbnRlcmlvciUyMGxpdmluZyUyMHJvb218ZW58MHx8fHwxNzc2NDUxNTQ4fDA&ixlib=rb-4.1.0&q=85",
+        "category": "gallery_interior",
+        "description": "Modern living room. Use in the property detail gallery component."
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1757439402190-99b73ac8e807?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Njl8MHwxfHNlYXJjaHw0fHxtb2Rlcm4lMjBsdXh1cnklMjBhcGFydG1lbnQlMjBpbnRlcmlvciUyMGxpdmluZyUyMHJvb218ZW58MHx8fHwxNzc2NDUxNTQ4fDA&ixlib=rb-4.1.0&q=85",
+        "category": "gallery_interior",
+        "description": "Modern living room and kitchen setup. Use in the property detail gallery component."
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1767884163190-f8ca72b2e48f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTF8MHwxfHNlYXJjaHwxfHxhZXJpYWwlMjBkcm9uZSUyMGx1eHVyeSUyMHJlc2lkZW50aWFsJTIwY29tcGxleHxlbnwwfHx8fDE3NzY0NTE1NDh8MA&ixlib=rb-4.1.0&q=85",
+        "category": "location_map_context",
+        "description": "Aerial view of residential complex. Use for the location/map context section."
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1613496701765-97267d26e3df?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2MzR8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjByZWFsJTIwZXN0YXRlJTIwYnJva2VyJTIwcG9ydHJhaXR8ZW58MHx8fHwxNzc2NDUxNTM2fDA&ixlib=rb-4.1.0&q=85",
+        "category": "broker_portrait",
+        "description": "Professional broker portrait. Use in the client portal contact widget."
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Strictly follow the property status badge coloring and terminology (свободен, резервиран капаро 0, резервиран с капаро, предварителен договор, продаден).",
+    "Zero-deposit reservation flow is critical. Build a distinct modal/drawer for this with a countdown timer and clear UX.",
+    "Implement the UI in Bulgarian (Cyrillic) by default.",
+    "Ensure `data-testid` is added to all interactive elements, e.g., `data-testid='login-submit-button'`, `data-testid='property-card-123'`.",
+    "Use Phosphor Icons or Lucide React for consistent, premium iconography.",
+    "The Public Site should feel like a luxury editorial piece (dark/moody sections, large typography, elegant spacing), while the Admin and Client Portal should prioritize clarity, data density, and trust (light theme, strict grids, high contrast)."
+  ]
+}
