@@ -68,7 +68,7 @@ export default function Home() {
                             </h2>
                         </div>
                         <div className="lg:col-span-5 text-slate-600 leading-relaxed">
-                            {featured.description}
+                            {featured.short_description || featured.description}
                         </div>
                     </div>
 
@@ -86,12 +86,12 @@ export default function Home() {
                                     <div className="flex items-center gap-2 mt-1 text-lg"><MapPin className="h-4 w-4" /> {featured.city}</div>
                                 </div>
                                 <div>
-                                    <div className="overline text-white/60">Имоти</div>
+                                    <div className="overline text-white/60">Обекти</div>
                                     <div className="mt-1 text-lg">{featured.stats?.total || 0}</div>
                                 </div>
                                 <div>
                                     <div className="overline text-white/60">Свободни</div>
-                                    <div className="mt-1 text-lg">{featured.stats?.free || 0}</div>
+                                    <div className="mt-1 text-lg">{featured.stats?.available || 0}</div>
                                 </div>
                                 <div>
                                     <div className="overline text-white/60">Прогрес</div>
@@ -162,7 +162,7 @@ export default function Home() {
                                 <div className="text-right">
                                     <div className="overline">Свободни</div>
                                     <div className="text-lg font-medium text-slate-900">
-                                        {p.stats?.free || 0} / {p.stats?.total || 0}
+                                        {p.stats?.available || 0} / {p.stats?.total || 0}
                                     </div>
                                 </div>
                             </div>

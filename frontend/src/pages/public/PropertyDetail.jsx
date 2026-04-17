@@ -17,7 +17,7 @@ export default function PropertyDetail() {
     const navigate = useNavigate();
 
     const load = () => api.get(`/properties/${id}`).then((r) => setData(r.data)).catch(() => {});
-    useEffect(() => { load(); }, [id]);
+    useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [id]);
 
     const reserveZero = async () => {
         if (!user) {
@@ -84,17 +84,19 @@ export default function PropertyDetail() {
                             {p.floor != null && <Spec label="Етаж" value={p.floor > 0 ? p.floor : "паркинг"} />}
                             {p.exposure && <Spec label="Изложение" value={p.exposure} />}
                             {p.price_per_sqm != null && <Spec label="Цена / м²" value={currency(p.price_per_sqm)} />}
-                            {p.price_total != null && <Spec label="Крайна цена" value={currency(p.price_total)} highlight />}
+                            {(p.list_price ?? p.base_price) != null && (
+                                <Spec label="Цена" value={currency(p.list_price ?? p.base_price)} highlight />
+                            )}
                         </div>
 
-                        {p.status === "свободен" && (
+                        {p.status === "available" && (
                             <div className="rounded-xl border hairline p-6 bg-amber-50/60">
                                 <div className="flex items-center gap-2 mb-2">
                                     <Clock className="h-4 w-4 text-amber-700" />
                                     <div className="overline text-amber-700">Капаро 0</div>
                                 </div>
                                 <div className="font-serif text-2xl text-slate-900 mb-1">
-                                    Запази имота без плащане
+                                    Запази обекта без плащане
                                 </div>
                                 <p className="text-sm text-slate-600 mb-4">
                                     Резервацията е безплатна и валидна 7 дни. Без задължения, само спокойствие да решите.
@@ -111,9 +113,9 @@ export default function PropertyDetail() {
                             </div>
                         )}
 
-                        {p.status !== "свободен" && (
+                        {p.status !== "available" && (
                             <div className="rounded-xl border hairline p-5 bg-stone-50 text-sm text-slate-600">
-                                Този имот вече не е свободен. Разгледайте други налични имоти.
+                                Този обект вече не е свободен. Разгледайте другите налични обекти в проекта.
                             </div>
                         )}
                     </div>

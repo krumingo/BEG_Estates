@@ -26,12 +26,13 @@ export default function AdminDashboard() {
 
     const kpis = [
         { label: "Общо проекти", value: k.total_projects, icon: Building2 },
-        { label: "Общо имоти", value: k.total_properties, icon: Home },
+        { label: "Общо обекти", value: k.total_properties, icon: Home },
         { label: "Свободни", value: k.free, icon: Home, accent: "text-emerald-600" },
         { label: "Капаро 0", value: k.reserved_zero, icon: Clock, accent: "text-amber-600" },
         { label: "С капаро", value: k.reserved_deposit, icon: Clock, accent: "text-orange-600" },
-        { label: "Предв. договор", value: k.preliminary, icon: Building2, accent: "text-blue-600" },
         { label: "Продадени", value: k.sold, icon: Home, accent: "text-slate-500" },
+        { label: "Обезщетение", value: k.compensation, icon: Building2, accent: "text-violet-600" },
+        { label: "Скрити (admin)", value: k.hidden, icon: Building2, accent: "text-stone-500" },
         { label: "Активни капаро 0", value: k.active_zero_deposit, icon: AlertCircle, accent: "text-amber-600" },
         { label: "Изтичат до 48ч", value: k.expiring_soon, icon: Clock, accent: "text-red-600" },
         { label: "Клиенти", value: k.total_clients, icon: Users },

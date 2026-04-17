@@ -24,16 +24,18 @@ async def admin_dashboard(user=Depends(require_staff())):
     for r in stale:
         await db.reservations.update_one({"id": r["id"]}, {"$set": {"status": "expired"}})
         await db.properties.update_one(
-            {"id": r["property_id"], "status": {"$in": ["резервиран_капаро_0", "резервиран_с_капаро"]}},
-            {"$set": {"status": "свободен"}},
+            {"id": r["property_id"], "status": {"$in": ["reserved_zero_deposit", "reserved_paid_deposit"]}},
+            {"$set": {"status": "available"}},
         )
 
     total_props = await db.properties.count_documents({})
-    free = await db.properties.count_documents({"status": "свободен"})
-    reserved_zero = await db.properties.count_documents({"status": "резервиран_капаро_0"})
-    reserved_dep = await db.properties.count_documents({"status": "резервиран_с_капаро"})
-    preliminary = await db.properties.count_documents({"status": "предварителен_договор"})
-    sold = await db.properties.count_documents({"status": "продаден"})
+    free = await db.properties.count_documents({"status": "available"})
+    reserved_zero = await db.properties.count_documents({"status": "reserved_zero_deposit"})
+    reserved_dep = await db.properties.count_documents({"status": "reserved_paid_deposit"})
+    preliminary = await db.properties.count_documents({"status": "reserved_paid_deposit"})
+    sold = await db.properties.count_documents({"status": "sold"})
+    compensation = await db.properties.count_documents({"status": "compensation"})
+    hidden = await db.properties.count_documents({"status": "hidden"})
     active_zero = await db.reservations.count_documents({"status": "active", "reservation_type": "zero_deposit"})
 
     # expiring soon (next 48h)
@@ -64,6 +66,8 @@ async def admin_dashboard(user=Depends(require_staff())):
             "reserved_deposit": reserved_dep,
             "preliminary": preliminary,
             "sold": sold,
+            "compensation": compensation,
+            "hidden": hidden,
             "active_zero_deposit": active_zero,
             "expiring_soon": expiring_soon,
             "total_clients": total_clients,

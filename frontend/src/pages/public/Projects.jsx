@@ -41,7 +41,7 @@ export default function Projects() {
                                 <div className="text-right">
                                     <div className="overline">Свободни</div>
                                     <div className="text-2xl font-medium text-slate-900">
-                                        {p.stats?.free || 0}
+                                        {p.stats?.available || 0}
                                     </div>
                                     <div className="text-xs text-slate-400">от {p.stats?.total || 0}</div>
                                 </div>

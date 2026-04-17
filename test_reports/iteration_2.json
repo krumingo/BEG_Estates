@@ -1,0 +1,70 @@
+{
+  "summary": "Backend API testing completed for BEG Estates Iteration 2. All 28 tests passed covering HD project seed, English status keys, privacy (admin-only fields stripped), buyers collection, status_history, zero-deposit limits, and role enforcement.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_beg_estates_v2.py",
+    "/app/test_reports/pytest/pytest_results_v2.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Privacy implementation correct: public endpoints strip buyer_id, admin_notes, negotiated_price, source_ref, final_contract_price",
+    "Hidden status (501) correctly excluded from public property lists and returns 404 on direct access",
+    "Staff can see all 29 properties including hidden, with full admin fields and buyer details",
+    "English status keys working: available, reserved_zero_deposit, reserved_paid_deposit, sold, compensation, unavailable, hidden",
+    "Zero-deposit limit (2 per client) enforced correctly with Bulgarian error message",
+    "Release reservation correctly sets property back to 'available' (English key)",
+    "Buyers collection (3 seeded) accessible only to staff, returns 401 for unauthenticated",
+    "OTP is returned in response body as dev_otp (MOCKED - intentional for scaffold)"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_beg_estates_v2.py"
+  ],
+  "success_rate": {
+    "backend": "100% (28/28 tests passed)",
+    "frontend": "N/A - backend only testing requested"
+  },
+  "test_credentials": {
+    "admin": "admin@begestates.bg / Admin123!",
+    "sales": "sales@begestates.bg / Sales123!",
+    "client": "ivan.petrov@example.com (OTP via /api/auth/client/request-otp)"
+  },
+  "seed_data_creation": "HD project 'BEG Estates / Хаджи Димитър' seeded with slug=hadzhi-dimitar, is_primary=true, 29 total units (18 apts, 1 shop, 6 parking, 1 garage, 3 storage). Яна exists with status=planned, is_primary=false. 3 buyers seeded. Apt 202 has active zero-deposit by Ivan. Apt 102 reserved_paid_deposit (Николай Костов). Apt 301 sold. Apt 401 compensation. Apt 501 hidden.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All backend APIs working correctly with new English status keys. Test file at /app/backend/tests/test_beg_estates_v2.py covers all major flows. OTP email is MOCKED - returns dev_otp in response. Public endpoints correctly strip admin-only fields and hide hidden status properties.",
+  "mocked_apis": {
+    "email_otp": "OTP is returned in API response as dev_otp instead of being emailed - intentional for scaffold/testing"
+  },
+  "verified_features": [
+    "Seed migration: HD project created with slug=hadzhi-dimitar, is_primary=true, 29 total inventory units",
+    "Seed migration: Яна exists with status=planned, is_primary=false",
+    "Public: GET /api/projects returns 2 projects, HD first (is_primary=true)",
+    "Public: HD stats include total=28, available, sold=1, reserved=2, compensation=1",
+    "Public: GET /api/projects/{hd_id}/properties returns 28 items (excludes hidden 501)",
+    "Public: Properties have no buyer_id/admin_notes/negotiated_price/source_ref/final_contract_price",
+    "Public: GET /api/properties/{hidden_id} returns 404",
+    "Public: GET /api/projects/{hd_id} returns nearby_amenities array of 4 items",
+    "Staff: GET /api/projects/{hd_id}/properties returns 29 properties including hidden 501",
+    "Staff: GET /api/properties/{apt_102_id} returns admin fields and buyer details (Николай Костов)",
+    "Staff: GET /api/buyers returns 3 seeded buyers",
+    "Staff: GET /api/property-statuses returns 7 entries (english->Bulgarian)",
+    "Status change: PATCH /api/properties/{id}/status updates property, invalid status returns 400",
+    "Zero-deposit: reserving sold/compensation/hidden property returns 409",
+    "Zero-deposit: Ivan has seeded active zero on apt 202",
+    "Zero-deposit: limit=2 enforced, third returns 409 with 'лимит' message",
+    "Release: POST /api/reservations/{id}/release flips property back to 'available'",
+    "Admin dashboard: GET /api/dashboard/admin returns kpi with all required keys",
+    "Client dashboard: GET /api/dashboard/client returns reservations (1+), installments (3), documents",
+    "Role enforcement: client accessing /api/dashboard/admin → 403",
+    "Role enforcement: client accessing /api/buyers → 403",
+    "Role enforcement: unauthenticated accessing /api/buyers → 401"
+  ]
+}
