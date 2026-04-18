@@ -64,6 +64,10 @@ async def create_reservation(payload: ReservationCreate, user: dict = Depends(ge
     db = get_db()
     await _expire_stale(db)
 
+    # allowed types in this package: zero_deposit or deposit (preliminary NOT allowed here)
+    if payload.reservation_type not in ("zero_deposit", "deposit"):
+        raise HTTPException(status_code=400, detail="Невалиден тип резервация")
+
     if user["role"] in STAFF_ROLES:
         client_id = payload.client_id
         if not client_id:
@@ -83,6 +87,18 @@ async def create_reservation(payload: ReservationCreate, user: dict = Depends(ge
             detail="Имотът не е свободен за резервация",
         )
 
+    # amount rules per type
+    if payload.reservation_type == "zero_deposit":
+        amount = 0
+    else:  # deposit
+        if payload.amount is None or payload.amount <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="При тип „Капаро" сумата трябва да е > 0",
+            )
+        amount = payload.amount
+
+    # zero-deposit per-client limit (client self-service path)
     if payload.reservation_type == "zero_deposit":
         limit = int(os.environ.get("ZERO_DEPOSIT_LIMIT_PER_CLIENT", "2"))
         active = await db.reservations.count_documents(
@@ -106,7 +122,7 @@ async def create_reservation(payload: ReservationCreate, user: dict = Depends(ge
         "client_id": client_id,
         "reservation_type": payload.reservation_type,
         "status": "active",
-        "amount": 0 if payload.reservation_type == "zero_deposit" else None,
+        "amount": amount,
         "notes": payload.notes or "",
         "created_at": now.isoformat(),
         "expires_at": (now + timedelta(days=days)).isoformat(),
@@ -122,7 +138,7 @@ async def create_reservation(payload: ReservationCreate, user: dict = Depends(ge
     )
     await log_action(
         user["id"], "reservation_create", "reservation", reservation["id"],
-        {"type": payload.reservation_type},
+        {"type": payload.reservation_type, "client_id": client_id, "amount": amount},
     )
     reservation.pop("_id", None)
     return reservation

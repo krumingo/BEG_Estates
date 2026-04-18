@@ -236,9 +236,19 @@ class PropertyUpdate(BaseModel):
 # ---------- Reservations ----------
 class ReservationCreate(BaseModel):
     property_id: str
-    client_id: Optional[str] = None  # admin can pass; client uses self
+    client_id: Optional[str] = None  # admin passes; client uses self
     reservation_type: str = "zero_deposit"
+    amount: Optional[float] = None
     notes: Optional[str] = ""
+
+    @field_validator("amount")
+    @classmethod
+    def _amount_non_negative(cls, v):
+        if v is None:
+            return v
+        if v < 0:
+            raise ValueError("amount трябва да е >= 0")
+        return v
 
 
 class ReservationExtendRequest(BaseModel):
