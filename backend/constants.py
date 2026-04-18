@@ -124,4 +124,4 @@ PUBLIC_PROPERTY_FIELDS = {
 }
 
 # Schema version tag — bump to force reseed
-SEED_VERSION = "hd-v1"
+SEED_VERSION = "hd-v2-source-driven-r1"
