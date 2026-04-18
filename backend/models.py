@@ -112,19 +112,62 @@ class ProjectUpdate(BaseModel):
 class PropertyCreate(BaseModel):
     project_id: str
     building_id: Optional[str] = None
-    floor: int = 0
     code: str
     property_type: str
+    floor: Optional[int] = 0
     rooms: Optional[int] = None
+    exposure: Optional[str] = None
     area_pure: Optional[float] = None
     area_common: Optional[float] = None
     area_total: Optional[float] = None
-    exposure: Optional[str] = None
+    ideal_parts_area: Optional[float] = None
+    raw_area: Optional[float] = None
     price_per_sqm: Optional[float] = None
-    price_total: Optional[float] = None
+    base_price: Optional[float] = None
+    list_price: Optional[float] = None
     description: Optional[str] = ""
     plan_url: Optional[str] = None
     gallery: List[str] = Field(default_factory=list)
+    status: Optional[str] = None  # default AVAILABLE when None
+    buyer_id: Optional[str] = None
+    admin_notes: Optional[str] = ""
+
+    @field_validator(
+        "area_pure", "area_common", "area_total", "ideal_parts_area", "raw_area",
+        "price_per_sqm", "base_price", "list_price",
+    )
+    @classmethod
+    def _non_negative(cls, v):
+        if v is None:
+            return v
+        if v < 0:
+            raise ValueError("Стойността трябва да е >= 0")
+        return v
+
+    @field_validator("rooms")
+    @classmethod
+    def _rooms_non_negative(cls, v):
+        if v is None:
+            return v
+        if v < 0:
+            raise ValueError("Броят стаи трябва да е >= 0")
+        return v
+
+    @field_validator("code")
+    @classmethod
+    def _code_clean(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("code не може да е празен")
+        return v
+
+    @field_validator("project_id")
+    @classmethod
+    def _project_id_non_empty(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("project_id е задължителен")
+        return v
 
 
 class PropertyStatusUpdate(BaseModel):

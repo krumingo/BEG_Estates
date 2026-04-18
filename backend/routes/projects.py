@@ -222,21 +222,93 @@ async def update_project(project_id: str, payload: ProjectUpdate, user=Depends(r
 @router.post("/properties")
 async def create_property(payload: PropertyCreate, user=Depends(require_staff())):
     db = get_db()
-    doc = payload.model_dump()
-    doc["id"] = str(uuid.uuid4())
-    doc["status"] = PropertyStatus.AVAILABLE.value
-    doc["base_price"] = doc.get("price_total")
-    doc["list_price"] = doc.get("price_total")
-    doc["negotiated_price"] = None
-    doc["reservation_price"] = None
-    doc["final_contract_price"] = None
-    doc["buyer_id"] = None
-    doc["admin_notes"] = ""
-    doc["source_ref"] = None
-    doc["linked_unit_ids"] = []
-    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+
+    # 1. project must exist
+    project = await db.projects.find_one({"id": payload.project_id}, {"_id": 0, "id": 1})
+    if not project:
+        raise HTTPException(status_code=400, detail="Проектът не е намерен")
+
+    # 2. building, if provided, must belong to the project
+    if payload.building_id:
+        building = await db.buildings.find_one(
+            {"id": payload.building_id}, {"_id": 0, "project_id": 1}
+        )
+        if not building:
+            raise HTTPException(status_code=400, detail="Сградата не е намерена")
+        if building.get("project_id") != payload.project_id:
+            raise HTTPException(
+                status_code=400, detail="Сградата принадлежи на друг проект"
+            )
+
+    # 3. property_type enum
+    if payload.property_type not in {t.value for t in PropertyType}:
+        raise HTTPException(status_code=400, detail="Невалиден тип имот")
+
+    # 4. status enum (default AVAILABLE if not passed)
+    status = payload.status or PropertyStatus.AVAILABLE.value
+    if status not in {s.value for s in PropertyStatus}:
+        raise HTTPException(status_code=400, detail="Невалиден статус")
+
+    # 5. buyer_id, if provided, must exist and belong to same project
+    buyer_id = payload.buyer_id or None
+    if buyer_id:
+        buyer = await db.buyers.find_one({"id": buyer_id}, {"_id": 0, "project_id": 1})
+        if not buyer:
+            raise HTTPException(status_code=400, detail="Купувачът не е намерен")
+        if buyer.get("project_id") and buyer["project_id"] != payload.project_id:
+            raise HTTPException(
+                status_code=400, detail="Купувачът принадлежи на друг проект"
+            )
+
+    # 6. duplicate code within project
+    dup = await db.properties.find_one(
+        {"project_id": payload.project_id, "code": payload.code},
+        {"_id": 0, "id": 1},
+    )
+    if dup:
+        raise HTTPException(
+            status_code=400, detail=f"Обект с код '{payload.code}' вече съществува в този проект"
+        )
+
+    base_price = payload.base_price
+    list_price = payload.list_price if payload.list_price is not None else base_price
+
+    doc = {
+        "id": str(uuid.uuid4()),
+        "project_id": payload.project_id,
+        "building_id": payload.building_id,
+        "code": payload.code,
+        "property_type": payload.property_type,
+        "floor": payload.floor if payload.floor is not None else 0,
+        "rooms": payload.rooms,
+        "exposure": payload.exposure,
+        "area_pure": payload.area_pure,
+        "area_common": payload.area_common,
+        "area_total": payload.area_total,
+        "ideal_parts_area": payload.ideal_parts_area,
+        "raw_area": payload.raw_area,
+        "price_per_sqm": payload.price_per_sqm,
+        "base_price": base_price,
+        "list_price": list_price,
+        "negotiated_price": None,
+        "reservation_price": None,
+        "final_contract_price": None,
+        "description": payload.description or "",
+        "plan_url": payload.plan_url,
+        "gallery": payload.gallery or [],
+        "status": status,
+        "buyer_id": buyer_id,
+        "admin_notes": payload.admin_notes or "",
+        # manual-created properties have no source reference
+        "source_ref": None,
+        "linked_unit_ids": [],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
     await db.properties.insert_one(doc)
-    await log_action(user["id"], "property_create", "property", doc["id"], {"code": doc["code"]})
+    await log_action(
+        user["id"], "property_create", "property", doc["id"],
+        {"code": doc["code"], "project_id": doc["project_id"]},
+    )
     doc.pop("_id", None)
     return doc
 

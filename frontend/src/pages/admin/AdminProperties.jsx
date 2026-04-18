@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Pencil } from "lucide-react";
+import { Pencil, Plus } from "lucide-react";
 import { api, currency, formatApiError } from "../../lib/api";
 import { StatusBadge } from "../../components/common/StatusBadge";
 import {
@@ -53,10 +53,22 @@ function toForm(p) {
         status: p.status || "available",
         buyer_id: p.buyer_id || "__none__",
         admin_notes: p.admin_notes || "",
+        project_id: p.project_id || "",
+        building_id: p.building_id || "__none__",
     };
 }
 
-function toPayload(form) {
+const EMPTY_PROP_FORM = {
+    code: "", property_type: "apartment", floor: 0, rooms: "", exposure: "",
+    area_pure: "", area_common: "", area_total: "", ideal_parts_area: "", raw_area: "",
+    price_per_sqm: "", base_price: "", list_price: "",
+    negotiated_price: "", reservation_price: "", final_contract_price: "",
+    description: "", plan_url: "", gallery: "",
+    status: "available", buyer_id: "__none__", admin_notes: "",
+    project_id: "", building_id: "__none__",
+};
+
+function toPayload(form, { includeProject = false } = {}) {
     const num = (v) => (v === "" || v == null ? null : Number(v));
     const out = {
         code: form.code.trim(),
@@ -70,6 +82,11 @@ function toPayload(form) {
         admin_notes: form.admin_notes,
     };
     for (const f of NUMERIC_FIELDS) out[f] = num(form[f]);
+    if (includeProject) {
+        out.project_id = form.project_id;
+        out.building_id =
+            form.building_id && form.building_id !== "__none__" ? form.building_id : null;
+    }
     return out;
 }
 
@@ -83,9 +100,11 @@ export default function AdminProperties() {
     const [props, setProps] = useState([]);
 
     const [dialogOpen, setDialogOpen] = useState(false);
-    const [editing, setEditing] = useState(null); // property being edited
+    const [mode, setMode] = useState("edit"); // "edit" | "create"
+    const [editing, setEditing] = useState(null);
     const [form, setForm] = useState(null);
     const [saving, setSaving] = useState(false);
+    const [buildings, setBuildings] = useState([]);
 
     useEffect(() => {
         api.get("/projects").then((r) => {
@@ -101,6 +120,15 @@ export default function AdminProperties() {
         api.get(`/projects/${pid}/properties`).then((r) => setProps(r.data));
     };
     useEffect(() => { load(projectId); }, [projectId]);
+
+    // buildings for the form's currently selected project
+    const formProjectId = form?.project_id || projectId;
+    useEffect(() => {
+        if (!formProjectId) { setBuildings([]); return; }
+        api.get(`/projects/${formProjectId}`)
+            .then((r) => setBuildings(r.data.buildings || []))
+            .catch(() => setBuildings([]));
+    }, [formProjectId]);
 
     const floors = useMemo(() => {
         const set = new Set(props.map((p) => p.floor));
@@ -132,23 +160,51 @@ export default function AdminProperties() {
     };
 
     const openEdit = (p) => {
+        setMode("edit");
         setEditing(p);
         setForm(toForm(p));
         setDialogOpen(true);
     };
 
+    const openCreate = () => {
+        setMode("create");
+        setEditing(null);
+        setForm({ ...EMPTY_PROP_FORM, project_id: projectId || "" });
+        setDialogOpen(true);
+    };
+
     const set = (k) => (e) => {
         const v = e && e.target ? e.target.value : e;
-        setForm((f) => ({ ...f, [k]: v }));
+        setForm((f) => {
+            const next = { ...f, [k]: v };
+            if (k === "project_id" && mode === "create") {
+                next.building_id = "__none__";
+                next.buyer_id = "__none__";
+            }
+            return next;
+        });
     };
 
     const submit = async () => {
         setSaving(true);
         try {
-            await api.patch(`/properties/${editing.id}`, toPayload(form));
-            toast.success(`Обектът ${form.code} е обновен`);
+            if (mode === "edit") {
+                await api.patch(`/properties/${editing.id}`, toPayload(form));
+                toast.success(`Обектът ${form.code} е обновен`);
+            } else {
+                if (!form.project_id) {
+                    toast.error("Моля, изберете проект");
+                    setSaving(false);
+                    return;
+                }
+                const created = await api.post("/properties", toPayload(form, { includeProject: true }));
+                toast.success(`Обектът ${created.data.code} е създаден`);
+                if (created.data.project_id !== projectId) {
+                    setProjectId(created.data.project_id);
+                }
+            }
             setDialogOpen(false);
-            load(projectId);
+            load(mode === "create" ? form.project_id : projectId);
         } catch (e) {
             toast.error(formatApiError(e.response?.data?.detail));
         } finally {
@@ -158,12 +214,21 @@ export default function AdminProperties() {
 
     return (
         <div className="space-y-8">
-            <div>
-                <div className="overline mb-2">Инвентар</div>
-                <h1 className="font-serif text-4xl text-slate-900">Каталог на обектите</h1>
-                <p className="text-sm text-slate-500 mt-2">
-                    Купувачите и ownership данните са видими само в админ панела — никога публично.
-                </p>
+            <div className="flex items-start justify-between gap-4">
+                <div>
+                    <div className="overline mb-2">Инвентар</div>
+                    <h1 className="font-serif text-4xl text-slate-900">Каталог на обектите</h1>
+                    <p className="text-sm text-slate-500 mt-2">
+                        Купувачите и ownership данните са видими само в админ панела — никога публично.
+                    </p>
+                </div>
+                <Button
+                    onClick={openCreate}
+                    data-testid="admin-new-property-btn"
+                    className="bg-slate-900 hover:bg-slate-800 text-white"
+                >
+                    <Plus className="h-4 w-4 mr-2" /> Нов обект
+                </Button>
             </div>
 
             <div className="flex flex-wrap gap-3 items-center">
@@ -289,15 +354,45 @@ export default function AdminProperties() {
                 <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto" data-testid="property-edit-dialog">
                     <DialogHeader>
                         <DialogTitle className="font-serif text-2xl">
-                            Редакция · {editing?.code}
+                            {mode === "create" ? "Нов обект" : `Редакция · ${editing?.code}`}
                         </DialogTitle>
                         <DialogDescription>
-                            Промените се записват веднага. Source ref, project и building не могат да се променят в този екран.
+                            {mode === "create"
+                                ? "Попълнете основните полета. source_ref остава празен за ръчно създадени обекти."
+                                : "Промените се записват веднага. Source ref, project и building не могат да се променят в този екран."}
                         </DialogDescription>
                     </DialogHeader>
 
                     {form && (
                         <div className="space-y-4 py-2">
+                            {mode === "create" && (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-lg border hairline bg-stone-50 p-3">
+                                    <div>
+                                        <Label>Проект <span className="text-red-600">*</span></Label>
+                                        <Select value={form.project_id} onValueChange={set("project_id")}>
+                                            <SelectTrigger data-testid="pf-project"><SelectValue placeholder="Изберете проект" /></SelectTrigger>
+                                            <SelectContent>
+                                                {projects.map((p) => (
+                                                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div>
+                                        <Label>Сграда (optional)</Label>
+                                        <Select value={form.building_id} onValueChange={set("building_id")}>
+                                            <SelectTrigger data-testid="pf-building"><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="__none__">— без сграда —</SelectItem>
+                                                {buildings.map((b) => (
+                                                    <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <div>
                                     <Label>Код</Label>
@@ -400,7 +495,7 @@ export default function AdminProperties() {
                             Отказ
                         </Button>
                         <Button onClick={submit} disabled={saving} data-testid="pf-save" className="bg-slate-900 hover:bg-slate-800 text-white">
-                            {saving ? "Запазване…" : "Запази"}
+                            {saving ? "Запазване…" : mode === "create" ? "Създай" : "Запази"}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
