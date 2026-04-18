@@ -12,10 +12,11 @@ from constants import (
     PUBLIC_PROPERTY_FIELDS,
     STAFF_ROLES,
     PropertyStatus,
+    PropertyType,
     ProjectStatus,
 )
 from db import get_db
-from models import ProjectCreate, ProjectUpdate, PropertyCreate, PropertyStatusUpdate
+from models import ProjectCreate, ProjectUpdate, PropertyCreate, PropertyStatusUpdate, PropertyUpdate
 from routes.audit import log_action
 
 router = APIRouter(tags=["projects"])
@@ -268,6 +269,64 @@ async def update_property_status(
         {"from": existing.get("status"), "to": payload.status},
     )
     return {"ok": True}
+
+
+@router.patch("/properties/{property_id}")
+async def update_property(
+    property_id: str, payload: PropertyUpdate, user=Depends(require_staff())
+):
+    db = get_db()
+    existing = await db.properties.find_one({"id": property_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Имотът не е намерен")
+
+    changes = payload.model_dump(exclude_unset=True)
+
+    if "status" in changes and changes["status"] not in {s.value for s in PropertyStatus}:
+        raise HTTPException(status_code=400, detail="Невалиден статус")
+
+    if "property_type" in changes and changes["property_type"] not in {t.value for t in PropertyType}:
+        raise HTTPException(status_code=400, detail="Невалиден тип имот")
+
+    # buyer_id validation — allow null to detach; if provided, must exist & same project
+    if "buyer_id" in changes:
+        bid = changes["buyer_id"]
+        if bid:
+            buyer = await db.buyers.find_one({"id": bid}, {"_id": 0, "project_id": 1})
+            if not buyer:
+                raise HTTPException(status_code=400, detail="Купувачът не е намерен")
+            if buyer.get("project_id") and buyer["project_id"] != existing.get("project_id"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Купувачът принадлежи на друг проект",
+                )
+
+    old_status = existing.get("status")
+    new_status = changes.get("status")
+
+    if changes:
+        await db.properties.update_one({"id": property_id}, {"$set": changes})
+
+    # record status change consistently with status-only endpoint
+    if new_status and new_status != old_status:
+        await db.status_history.insert_one(
+            {
+                "id": str(uuid.uuid4()),
+                "property_id": property_id,
+                "from_status": old_status,
+                "to_status": new_status,
+                "actor_id": user["id"],
+                "at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+
+    await log_action(
+        user["id"], "property_edit", "property", property_id,
+        {"fields": list(changes.keys())},
+    )
+
+    updated = await db.properties.find_one({"id": property_id}, {"_id": 0})
+    return updated
 
 
 # ---------- Admin helpers ----------

@@ -131,6 +131,65 @@ class PropertyStatusUpdate(BaseModel):
     status: str
 
 
+class PropertyUpdate(BaseModel):
+    """Partial property edit — всички полета са optional.
+    Никога не позволява редакция на project_id/building_id/source_ref/linked_unit_ids."""
+    code: Optional[str] = None
+    property_type: Optional[str] = None
+    floor: Optional[int] = None
+    rooms: Optional[int] = None
+    exposure: Optional[str] = None
+    area_pure: Optional[float] = None
+    area_common: Optional[float] = None
+    area_total: Optional[float] = None
+    ideal_parts_area: Optional[float] = None
+    raw_area: Optional[float] = None
+    price_per_sqm: Optional[float] = None
+    base_price: Optional[float] = None
+    list_price: Optional[float] = None
+    negotiated_price: Optional[float] = None
+    reservation_price: Optional[float] = None
+    final_contract_price: Optional[float] = None
+    description: Optional[str] = None
+    plan_url: Optional[str] = None
+    gallery: Optional[List[str]] = None
+    status: Optional[str] = None
+    buyer_id: Optional[str] = None
+    admin_notes: Optional[str] = None
+
+    @field_validator(
+        "area_pure", "area_common", "area_total", "ideal_parts_area", "raw_area",
+        "price_per_sqm", "base_price", "list_price", "negotiated_price",
+        "reservation_price", "final_contract_price",
+    )
+    @classmethod
+    def _non_negative(cls, v):
+        if v is None:
+            return v
+        if v < 0:
+            raise ValueError("Стойността трябва да е >= 0")
+        return v
+
+    @field_validator("rooms")
+    @classmethod
+    def _rooms_non_negative(cls, v):
+        if v is None:
+            return v
+        if v < 0:
+            raise ValueError("Броят стаи трябва да е >= 0")
+        return v
+
+    @field_validator("code")
+    @classmethod
+    def _code_clean(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError("code не може да е празен")
+        return v
+
+
 # ---------- Reservations ----------
 class ReservationCreate(BaseModel):
     property_id: str
