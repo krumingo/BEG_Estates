@@ -1,6 +1,6 @@
 """Pydantic schemas for request/response models."""
 from typing import Optional, List
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 # ---------- Auth ----------
@@ -40,6 +40,7 @@ class ProjectCreate(BaseModel):
     slug: str
     city: str
     address: str
+    short_description: Optional[str] = ""
     description: Optional[str] = ""
     status: str = ProjectStatus.UNDER_CONSTRUCTION.value
     completion_date: Optional[str] = None
@@ -48,6 +49,63 @@ class ProjectCreate(BaseModel):
     lat: Optional[float] = None
     lng: Optional[float] = None
     progress_percent: int = 0
+    is_primary: bool = False
+
+    @field_validator("slug")
+    @classmethod
+    def _slug_clean(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("slug не може да е празен")
+        if " " in v or "/" in v:
+            raise ValueError("slug трябва да е без интервали и наклонени черти")
+        return v
+
+    @field_validator("progress_percent")
+    @classmethod
+    def _progress_range(cls, v: int) -> int:
+        if v < 0 or v > 100:
+            raise ValueError("progress_percent трябва да е между 0 и 100")
+        return v
+
+
+class ProjectUpdate(BaseModel):
+    """Partial update — всички полета са optional."""
+    name: Optional[str] = None
+    slug: Optional[str] = None
+    city: Optional[str] = None
+    address: Optional[str] = None
+    short_description: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+    completion_date: Optional[str] = None
+    cover_image: Optional[str] = None
+    gallery: Optional[List[str]] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    progress_percent: Optional[int] = None
+    is_primary: Optional[bool] = None
+
+    @field_validator("slug")
+    @classmethod
+    def _slug_clean(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError("slug не може да е празен")
+        if " " in v or "/" in v:
+            raise ValueError("slug трябва да е без интервали и наклонени черти")
+        return v
+
+    @field_validator("progress_percent")
+    @classmethod
+    def _progress_range(cls, v):
+        if v is None:
+            return v
+        if v < 0 or v > 100:
+            raise ValueError("progress_percent трябва да е между 0 и 100")
+        return v
 
 
 # ---------- Properties ----------
