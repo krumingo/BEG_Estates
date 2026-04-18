@@ -31,6 +31,9 @@ class UserPublic(BaseModel):
     two_factor_enabled: bool = False
 
 
+from constants import ProjectStatus
+
+
 # ---------- Projects ----------
 class ProjectCreate(BaseModel):
     name: str
@@ -38,7 +41,7 @@ class ProjectCreate(BaseModel):
     city: str
     address: str
     description: Optional[str] = ""
-    status: str = "в_строеж"
+    status: str = ProjectStatus.UNDER_CONSTRUCTION.value
     completion_date: Optional[str] = None
     cover_image: Optional[str] = None
     gallery: List[str] = Field(default_factory=list)

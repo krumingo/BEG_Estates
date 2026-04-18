@@ -43,8 +43,20 @@ PROPERTY_STATUS_LABELS = {
     PropertyStatus.HIDDEN.value: "Скрит",
 }
 
-# Public-visible statuses (everything except hidden)
-PUBLIC_VISIBLE_STATUSES = [s.value for s in PropertyStatus if s != PropertyStatus.HIDDEN]
+# Public-visible statuses — ONLY these may ever reach a public caller.
+# `compensation`, `unavailable`, and `hidden` are internal-only.
+PUBLIC_VISIBLE_STATUSES = frozenset({
+    PropertyStatus.AVAILABLE.value,
+    PropertyStatus.RESERVED_ZERO_DEPOSIT.value,
+    PropertyStatus.RESERVED_PAID_DEPOSIT.value,
+    PropertyStatus.SOLD.value,
+})
+
+INTERNAL_STATUSES = frozenset({
+    PropertyStatus.COMPENSATION.value,
+    PropertyStatus.UNAVAILABLE.value,
+    PropertyStatus.HIDDEN.value,
+})
 
 # Statuses that allow zero-deposit reservation
 RESERVABLE_STATUSES = {PropertyStatus.AVAILABLE.value}

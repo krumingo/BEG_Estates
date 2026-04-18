@@ -8,9 +8,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from auth.dependencies import require_staff, get_current_user
 from constants import (
     PUBLIC_VISIBLE_STATUSES,
+    INTERNAL_STATUSES,
     PUBLIC_PROPERTY_FIELDS,
     STAFF_ROLES,
     PropertyStatus,
+    ProjectStatus,
 )
 from db import get_db
 from models import ProjectCreate, PropertyCreate, PropertyStatusUpdate
@@ -59,7 +61,7 @@ async def list_projects(request: Request, status: Optional[str] = None):
     for p in items:
         filt = {"project_id": p["id"]}
         if not is_staff:
-            filt["status"] = {"$in": PUBLIC_VISIBLE_STATUSES}
+            filt["status"] = {"$in": list(PUBLIC_VISIBLE_STATUSES)}
         props = await db.properties.find(filt, {"_id": 0, "status": 1}).to_list(2000)
         p["stats"] = _project_stats(props)
     return items
@@ -94,17 +96,20 @@ async def project_properties(
         q["property_type"] = property_type
     if floor is not None:
         q["floor"] = floor
-    if status:
-        q["status"] = status
 
     is_staff = await _is_staff(request)
-    if not is_staff:
-        # hide "hidden" from public
-        q["status"] = (
-            {"$in": PUBLIC_VISIBLE_STATUSES}
-            if status is None
-            else status
-        )
+    if is_staff:
+        # Staff may filter by any status (including internal)
+        if status:
+            q["status"] = status
+    else:
+        # Public caller: status query CANNOT reach internal statuses.
+        # If an allowed public status is supplied, honour it; otherwise
+        # force the full public-safe set.
+        if status and status in PUBLIC_VISIBLE_STATUSES:
+            q["status"] = status
+        else:
+            q["status"] = {"$in": list(PUBLIC_VISIBLE_STATUSES)}
 
     props = (
         await db.properties.find(q, {"_id": 0})
@@ -124,7 +129,7 @@ async def get_property(property_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Имотът не е намерен")
 
     is_staff = await _is_staff(request)
-    if not is_staff and prop.get("status") == PropertyStatus.HIDDEN.value:
+    if not is_staff and prop.get("status") in INTERNAL_STATUSES:
         raise HTTPException(status_code=404, detail="Имотът не е намерен")
 
     project = await db.projects.find_one({"id": prop["project_id"]}, {"_id": 0})
@@ -152,6 +157,9 @@ async def get_property(property_id: str, request: Request):
 @router.post("/projects")
 async def create_project(payload: ProjectCreate, user=Depends(require_staff())):
     db = get_db()
+    valid_statuses = {s.value for s in ProjectStatus}
+    if payload.status not in valid_statuses:
+        raise HTTPException(status_code=400, detail="Невалиден статус на проект")
     doc = payload.model_dump()
     doc["id"] = str(uuid.uuid4())
     doc["created_at"] = datetime.now(timezone.utc).isoformat()
@@ -221,7 +229,11 @@ async def list_buyers(_=Depends(require_staff())):
 
 
 @router.get("/property-statuses")
-async def list_statuses():
-    """Public helper — returns english keys + Bulgarian labels."""
+async def list_statuses(request: Request):
+    """Helper — public callers see only public-safe statuses; staff see all."""
     from constants import PROPERTY_STATUS_LABELS
-    return [{"value": k, "label": v} for k, v in PROPERTY_STATUS_LABELS.items()]
+    is_staff = await _is_staff(request)
+    items = [{"value": k, "label": v} for k, v in PROPERTY_STATUS_LABELS.items()]
+    if not is_staff:
+        items = [x for x in items if x["value"] in PUBLIC_VISIBLE_STATUSES]
+    return items
