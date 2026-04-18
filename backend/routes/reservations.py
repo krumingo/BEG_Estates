@@ -94,7 +94,7 @@ async def create_reservation(payload: ReservationCreate, user: dict = Depends(ge
         if payload.amount is None or payload.amount <= 0:
             raise HTTPException(
                 status_code=400,
-                detail="При тип „Капаро" сумата трябва да е > 0",
+                detail='Сумата за капаро трябва да е > 0',
             )
         amount = payload.amount
 

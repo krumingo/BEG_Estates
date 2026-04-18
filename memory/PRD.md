@@ -1,11 +1,12 @@
 # BEG Estates / EstateFlow — Product Requirements Document
 
-**Last updated:** 2026-04-17 (iteration 2)
-**Status:** Iteration 2 — real project schema + HD seed (v0.2)
+**Last updated:** 2026-04-18 (iteration 3)
+**Status:** Iteration 3 — admin CRUD polish + reserve-from-property (v0.3)
 
 ## Iterations
 - **v0.1 (2026-04-17)** — initial scaffold, 3-zone layout, generic demo project "Яна"
 - **v0.2 (2026-04-17)** — real project seed "BEG Estates / Хаджи Димитър", normalized status model, admin-only buyer layer
+- **v0.3 (2026-04-18)** — admin projects/properties CRUD, reservation extend & convert-to-deposit, admin reserve-from-property dialog
 
 ## Original problem statement
 Modern web SaaS/CRM for selling new-construction real estate in Bulgaria.
@@ -112,6 +113,14 @@ Seed is gated by `system_meta.seed.version` tag so future schema changes force c
 - Public project page: gallery, nearby amenities (structured icons), construction-progress timeline
 - Admin properties table: new columns (base/list price, buyer, admin notes, inline status select)
 - **28/28 backend tests passing (iteration 2)**
+
+### v0.3 (2026-04-18)
+- JSON source-driven seed (`backend/data/hadzhi_dimitar_units.json`) — source of truth for HD inventory
+- Admin Projects CRUD (create/edit via dialog, partial PATCH)
+- Admin Properties CRUD (create/edit via dialog, partial PATCH, strict `code` uniqueness per project)
+- Admin Reservation actions: extend expiry (+7d) & convert zero-deposit → deposit
+- **Admin Reserve-from-Property dialog** — new button "Резервирай" on each available row (`/admin/properties`) opens a compact dialog for client + type (zero_deposit/deposit) + amount; `POST /api/reservations` hardened with validation (client must be role=client, property must be available, amount>0 for deposit, audit log entry)
+- Fixed SyntaxError in `routes/reservations.py` (invalid embedded Bulgarian quotes in error detail string)
 
 ## Prioritized backlog
 ### P0 — next iteration once real PDFs are attached

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Pencil, Plus } from "lucide-react";
+import { Pencil, Plus, CalendarPlus } from "lucide-react";
 import { api, currency, formatApiError } from "../../lib/api";
 import { StatusBadge } from "../../components/common/StatusBadge";
 import {
@@ -106,6 +106,18 @@ export default function AdminProperties() {
     const [saving, setSaving] = useState(false);
     const [buildings, setBuildings] = useState([]);
 
+    // Reserve-from-property dialog state
+    const [reserveOpen, setReserveOpen] = useState(false);
+    const [reserveTarget, setReserveTarget] = useState(null);
+    const [clients, setClients] = useState([]);
+    const [reserveForm, setReserveForm] = useState({
+        client_id: "",
+        reservation_type: "zero_deposit",
+        amount: "",
+        notes: "",
+    });
+    const [reserving, setReserving] = useState(false);
+
     useEffect(() => {
         api.get("/projects").then((r) => {
             setProjects(r.data);
@@ -113,6 +125,7 @@ export default function AdminProperties() {
             if (primary) setProjectId(primary.id);
         });
         api.get("/buyers").then((r) => setBuyers(r.data)).catch(() => {});
+        api.get("/clients").then((r) => setClients(r.data)).catch(() => {});
     }, []);
 
     const load = (pid) => {
@@ -209,6 +222,52 @@ export default function AdminProperties() {
             toast.error(formatApiError(e.response?.data?.detail));
         } finally {
             setSaving(false);
+        }
+    };
+
+    const openReserve = (p) => {
+        setReserveTarget(p);
+        setReserveForm({ client_id: "", reservation_type: "zero_deposit", amount: "", notes: "" });
+        setReserveOpen(true);
+    };
+
+    const setR = (k) => (e) => {
+        const v = e && e.target ? e.target.value : e;
+        setReserveForm((f) => ({ ...f, [k]: v }));
+    };
+
+    const submitReserve = async () => {
+        if (!reserveTarget) return;
+        if (!reserveForm.client_id) {
+            toast.error("Моля, изберете клиент");
+            return;
+        }
+        if (reserveForm.reservation_type === "deposit") {
+            const amt = Number(reserveForm.amount);
+            if (!amt || amt <= 0) {
+                toast.error("Сумата за капаро трябва да е > 0");
+                return;
+            }
+        }
+        setReserving(true);
+        try {
+            const payload = {
+                property_id: reserveTarget.id,
+                client_id: reserveForm.client_id,
+                reservation_type: reserveForm.reservation_type,
+                notes: reserveForm.notes || "",
+            };
+            if (reserveForm.reservation_type === "deposit") {
+                payload.amount = Number(reserveForm.amount);
+            }
+            await api.post("/reservations", payload);
+            toast.success(`Обектът ${reserveTarget.code} е резервиран`);
+            setReserveOpen(false);
+            load(projectId);
+        } catch (e) {
+            toast.error(formatApiError(e.response?.data?.detail));
+        } finally {
+            setReserving(false);
         }
     };
 
@@ -331,14 +390,26 @@ export default function AdminProperties() {
                                         </Select>
                                     </td>
                                     <td className="p-3 text-right">
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={() => openEdit(p)}
-                                            data-testid={`admin-edit-property-${p.code}`}
-                                        >
-                                            <Pencil className="h-3.5 w-3.5 mr-1.5" /> Редакция
-                                        </Button>
+                                        <div className="flex justify-end gap-2">
+                                            {p.status === "available" && (
+                                                <Button
+                                                    size="sm"
+                                                    onClick={() => openReserve(p)}
+                                                    data-testid={`admin-reserve-property-${p.code}`}
+                                                    className="bg-slate-900 hover:bg-slate-800 text-white"
+                                                >
+                                                    <CalendarPlus className="h-3.5 w-3.5 mr-1.5" /> Резервирай
+                                                </Button>
+                                            )}
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() => openEdit(p)}
+                                                data-testid={`admin-edit-property-${p.code}`}
+                                            >
+                                                <Pencil className="h-3.5 w-3.5 mr-1.5" /> Редакция
+                                            </Button>
+                                        </div>
                                     </td>
                                 </tr>
                             );
@@ -496,6 +567,83 @@ export default function AdminProperties() {
                         </Button>
                         <Button onClick={submit} disabled={saving} data-testid="pf-save" className="bg-slate-900 hover:bg-slate-800 text-white">
                             {saving ? "Запазване…" : mode === "create" ? "Създай" : "Запази"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={reserveOpen} onOpenChange={setReserveOpen}>
+                <DialogContent className="max-w-lg" data-testid="property-reserve-dialog">
+                    <DialogHeader>
+                        <DialogTitle className="font-serif text-2xl">
+                            Резервация · {reserveTarget?.code}
+                        </DialogTitle>
+                        <DialogDescription>
+                            Резервирайте обекта за клиент. При „Капаро 0“ се задава 7-дневен срок без сума.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-2">
+                        <div>
+                            <Label>Клиент <span className="text-red-600">*</span></Label>
+                            <Select value={reserveForm.client_id} onValueChange={setR("client_id")}>
+                                <SelectTrigger data-testid="reserve-client"><SelectValue placeholder="Изберете клиент" /></SelectTrigger>
+                                <SelectContent>
+                                    {clients.map((c) => (
+                                        <SelectItem key={c.id} value={c.id}>
+                                            {c.name || c.email} · {c.email}
+                                        </SelectItem>
+                                    ))}
+                                    {clients.length === 0 && (
+                                        <div className="p-3 text-sm text-slate-500">Няма регистрирани клиенти</div>
+                                    )}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <Label>Тип резервация</Label>
+                                <Select value={reserveForm.reservation_type} onValueChange={setR("reservation_type")}>
+                                    <SelectTrigger data-testid="reserve-type"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="zero_deposit">Капаро 0</SelectItem>
+                                        <SelectItem value="deposit">Капаро</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div>
+                                <Label>
+                                    Сума (лв.)
+                                    {reserveForm.reservation_type === "deposit" && (
+                                        <span className="text-red-600"> *</span>
+                                    )}
+                                </Label>
+                                <Input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    disabled={reserveForm.reservation_type === "zero_deposit"}
+                                    value={reserveForm.amount}
+                                    onChange={setR("amount")}
+                                    placeholder={reserveForm.reservation_type === "zero_deposit" ? "0 (не се изисква)" : "напр. 2000"}
+                                    data-testid="reserve-amount"
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <Label>Бележки</Label>
+                            <Textarea rows={3} value={reserveForm.notes} onChange={setR("notes")} data-testid="reserve-notes" />
+                        </div>
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setReserveOpen(false)} disabled={reserving} data-testid="reserve-cancel">
+                            Отказ
+                        </Button>
+                        <Button onClick={submitReserve} disabled={reserving} data-testid="reserve-save" className="bg-slate-900 hover:bg-slate-800 text-white">
+                            {reserving ? "Записване…" : "Резервирай"}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
