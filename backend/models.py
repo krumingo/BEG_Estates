@@ -241,6 +241,29 @@ class ReservationCreate(BaseModel):
     notes: Optional[str] = ""
 
 
+class ReservationExtendRequest(BaseModel):
+    days: int
+
+    @field_validator("days")
+    @classmethod
+    def _days_positive(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("days трябва да е > 0")
+        return v
+
+
+class ReservationConvertDepositRequest(BaseModel):
+    amount: float
+    notes: Optional[str] = None
+
+    @field_validator("amount")
+    @classmethod
+    def _amount_positive(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("amount трябва да е > 0")
+        return v
+
+
 # ---------- Inquiries ----------
 class InquiryCreate(BaseModel):
     name: str

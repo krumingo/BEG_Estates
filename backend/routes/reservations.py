@@ -13,7 +13,7 @@ from constants import (
     RESERVATION_TYPE_TO_STATUS,
 )
 from db import get_db
-from models import ReservationCreate
+from models import ReservationCreate, ReservationExtendRequest, ReservationConvertDepositRequest
 from routes.audit import log_action
 
 router = APIRouter(prefix="/reservations", tags=["reservations"])
@@ -145,3 +145,76 @@ async def release_reservation(reservation_id: str, user: dict = Depends(require_
     )
     await log_action(user["id"], "reservation_release", "reservation", reservation_id, {})
     return {"ok": True}
+
+
+@router.post("/{reservation_id}/extend")
+async def extend_reservation(
+    reservation_id: str,
+    payload: ReservationExtendRequest,
+    user: dict = Depends(require_staff()),
+):
+    db = get_db()
+    r = await db.reservations.find_one({"id": reservation_id}, {"_id": 0})
+    if not r:
+        raise HTTPException(status_code=404, detail="Резервацията не е намерена")
+    if r["status"] != "active":
+        raise HTTPException(status_code=400, detail="Резервацията не е активна")
+
+    old_expiry = datetime.fromisoformat(r["expires_at"])
+    new_expiry = old_expiry + timedelta(days=payload.days)
+    await db.reservations.update_one(
+        {"id": reservation_id},
+        {"$set": {
+            "expires_at": new_expiry.isoformat(),
+            "last_extended_at": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+    await log_action(
+        user["id"], "reservation_extend", "reservation", reservation_id,
+        {"days": payload.days, "from": r["expires_at"], "to": new_expiry.isoformat()},
+    )
+    updated = await db.reservations.find_one({"id": reservation_id}, {"_id": 0})
+    return updated
+
+
+@router.post("/{reservation_id}/convert-to-deposit")
+async def convert_to_deposit(
+    reservation_id: str,
+    payload: ReservationConvertDepositRequest,
+    user: dict = Depends(require_staff()),
+):
+    db = get_db()
+    r = await db.reservations.find_one({"id": reservation_id}, {"_id": 0})
+    if not r:
+        raise HTTPException(status_code=404, detail="Резервацията не е намерена")
+    if r["status"] != "active":
+        raise HTTPException(status_code=400, detail="Резервацията не е активна")
+    if r.get("reservation_type") != "zero_deposit":
+        raise HTTPException(
+            status_code=400,
+            detail="Само zero-deposit резервации могат да се преобразуват",
+        )
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    updates = {
+        "reservation_type": "deposit",
+        "amount": payload.amount,
+        "converted_at": now_iso,
+        "updated_at": now_iso,
+    }
+    if payload.notes:
+        updates["notes"] = (
+            (r.get("notes") or "") + ("\n" if r.get("notes") else "") + payload.notes
+        )
+
+    await db.reservations.update_one({"id": reservation_id}, {"$set": updates})
+    await db.properties.update_one(
+        {"id": r["property_id"]},
+        {"$set": {"status": PropertyStatus.RESERVED_PAID_DEPOSIT.value}},
+    )
+    await log_action(
+        user["id"], "reservation_convert_to_deposit", "reservation", reservation_id,
+        {"amount": payload.amount},
+    )
+    updated = await db.reservations.find_one({"id": reservation_id}, {"_id": 0})
+    return updated

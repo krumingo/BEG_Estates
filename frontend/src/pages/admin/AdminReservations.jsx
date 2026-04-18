@@ -1,23 +1,86 @@
 import React, { useEffect, useState } from "react";
-import { api, formatDate, daysRemaining } from "../../lib/api";
+import { api, formatApiError, formatDate, daysRemaining } from "../../lib/api";
 import { StatusBadge } from "../../components/common/StatusBadge";
 import { RESERVATION_STATUS_LABELS, RESERVATION_TYPE_LABELS } from "../../lib/constants";
 import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
+import { Textarea } from "../../components/ui/textarea";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter,
+} from "../../components/ui/dialog";
 import { toast } from "sonner";
 
 export default function AdminReservations() {
     const [items, setItems] = useState([]);
+    const [busyId, setBusyId] = useState(null);
+
+    const [convertDialog, setConvertDialog] = useState(false);
+    const [convertTarget, setConvertTarget] = useState(null);
+    const [convertAmount, setConvertAmount] = useState("");
+    const [convertNotes, setConvertNotes] = useState("");
+    const [saving, setSaving] = useState(false);
 
     const load = () => api.get("/reservations").then((r) => setItems(r.data)).catch(() => {});
     useEffect(() => { load(); }, []);
 
     const release = async (id) => {
+        setBusyId(id);
         try {
             await api.post(`/reservations/${id}/release`);
             toast.success("Резервацията е освободена");
             load();
         } catch (e) {
-            toast.error("Грешка");
+            toast.error(formatApiError(e.response?.data?.detail));
+        } finally {
+            setBusyId(null);
+        }
+    };
+
+    const extend = async (id) => {
+        setBusyId(id);
+        try {
+            await api.post(`/reservations/${id}/extend`, { days: 7 });
+            toast.success("Резервацията е удължена с 7 дни");
+            load();
+        } catch (e) {
+            toast.error(formatApiError(e.response?.data?.detail));
+        } finally {
+            setBusyId(null);
+        }
+    };
+
+    const openConvert = (r) => {
+        setConvertTarget(r);
+        setConvertAmount("");
+        setConvertNotes("");
+        setConvertDialog(true);
+    };
+
+    const submitConvert = async () => {
+        const amount = Number(convertAmount);
+        if (!amount || amount <= 0) {
+            toast.error("Въведете валидна сума > 0");
+            return;
+        }
+        setSaving(true);
+        try {
+            await api.post(`/reservations/${convertTarget.id}/convert-to-deposit`, {
+                amount,
+                notes: convertNotes || null,
+            });
+            toast.success("Маркирано като капаро");
+            setConvertDialog(false);
+            load();
+        } catch (e) {
+            toast.error(formatApiError(e.response?.data?.detail));
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -28,7 +91,7 @@ export default function AdminReservations() {
                 <h1 className="font-serif text-4xl text-slate-900">Активни и предишни</h1>
             </div>
 
-            <div className="rounded-xl border hairline bg-white overflow-hidden">
+            <div className="rounded-xl border hairline bg-white overflow-x-auto">
                 <table className="w-full text-sm">
                     <thead className="bg-stone-50 text-slate-600">
                         <tr>
@@ -44,8 +107,11 @@ export default function AdminReservations() {
                     <tbody>
                         {items.map((r) => {
                             const remaining = daysRemaining(r.expires_at);
+                            const isActive = r.status === "active";
+                            const isZero = r.reservation_type === "zero_deposit";
+                            const busy = busyId === r.id;
                             return (
-                                <tr key={r.id} className="border-t hairline" data-testid={`admin-reservation-${r.id}`}>
+                                <tr key={r.id} className="border-t hairline align-middle" data-testid={`admin-reservation-${r.id}`}>
                                     <td className="p-3 font-mono font-medium">{r.property?.code}</td>
                                     <td className="p-3 text-slate-600">
                                         <div>{r.client?.name}</div>
@@ -54,13 +120,46 @@ export default function AdminReservations() {
                                     <td className="p-3"><span className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs bg-amber-50 text-amber-700 border-amber-200">{RESERVATION_TYPE_LABELS[r.reservation_type]}</span></td>
                                     <td className="p-3"><StatusBadge status={r.property?.status} /></td>
                                     <td className="p-3 text-slate-600">{RESERVATION_STATUS_LABELS[r.status]}</td>
-                                    <td className="p-3 text-slate-600">{formatDate(r.expires_at)}{remaining != null && r.status === "active" ? ` · ${remaining}д.` : ""}</td>
+                                    <td className="p-3 text-slate-600 whitespace-nowrap">
+                                        {formatDate(r.expires_at)}
+                                        {remaining != null && isActive ? ` · ${remaining}д.` : ""}
+                                    </td>
                                     <td className="p-3 text-right">
-                                        {r.status === "active" && (
-                                            <Button size="sm" variant="outline" onClick={() => release(r.id)} data-testid={`release-reservation-${r.id}`}>
-                                                Освободи
-                                            </Button>
-                                        )}
+                                        <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                                            {isActive && (
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => extend(r.id)}
+                                                    disabled={busy}
+                                                    data-testid={`extend-reservation-${r.id}`}
+                                                >
+                                                    +7 дни
+                                                </Button>
+                                            )}
+                                            {isActive && isZero && (
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => openConvert(r)}
+                                                    disabled={busy}
+                                                    data-testid={`convert-reservation-${r.id}`}
+                                                >
+                                                    Маркирай капаро
+                                                </Button>
+                                            )}
+                                            {isActive && (
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => release(r.id)}
+                                                    disabled={busy}
+                                                    data-testid={`release-reservation-${r.id}`}
+                                                >
+                                                    Освободи
+                                                </Button>
+                                            )}
+                                        </div>
                                     </td>
                                 </tr>
                             );
@@ -71,6 +170,50 @@ export default function AdminReservations() {
                     </tbody>
                 </table>
             </div>
+
+            <Dialog open={convertDialog} onOpenChange={setConvertDialog}>
+                <DialogContent className="max-w-md" data-testid="convert-deposit-dialog">
+                    <DialogHeader>
+                        <DialogTitle className="font-serif text-2xl">Маркирай капаро</DialogTitle>
+                        <DialogDescription>
+                            Zero-deposit резервация {convertTarget?.property?.code} за {convertTarget?.client?.name} ще стане капаро.
+                            Имотът ще придобие статус „Резервиран · Капаро".
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3 py-2">
+                        <div>
+                            <Label htmlFor="cv-amount">Сума на капарото (EUR) *</Label>
+                            <Input
+                                id="cv-amount"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={convertAmount}
+                                onChange={(e) => setConvertAmount(e.target.value)}
+                                data-testid="cv-amount"
+                            />
+                        </div>
+                        <div>
+                            <Label htmlFor="cv-notes">Бележки (optional)</Label>
+                            <Textarea
+                                id="cv-notes"
+                                rows={3}
+                                value={convertNotes}
+                                onChange={(e) => setConvertNotes(e.target.value)}
+                                data-testid="cv-notes"
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setConvertDialog(false)} disabled={saving} data-testid="cv-cancel">
+                            Отказ
+                        </Button>
+                        <Button onClick={submitConvert} disabled={saving} data-testid="cv-save" className="bg-slate-900 hover:bg-slate-800 text-white">
+                            {saving ? "Запазване…" : "Потвърди"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
