@@ -1,12 +1,13 @@
 # BEG Estates / EstateFlow — Product Requirements Document
 
-**Last updated:** 2026-04-18 (iteration 3)
-**Status:** Iteration 3 — admin CRUD polish + reserve-from-property (v0.3)
+**Last updated:** 2026-04-20 (iteration 4)
+**Status:** Iteration 4 — per-property finance panel (v0.4)
 
 ## Iterations
 - **v0.1 (2026-04-17)** — initial scaffold, 3-zone layout, generic demo project "Яна"
 - **v0.2 (2026-04-17)** — real project seed "BEG Estates / Хаджи Димитър", normalized status model, admin-only buyer layer
 - **v0.3 (2026-04-18)** — admin projects/properties CRUD, reservation extend & convert-to-deposit, admin reserve-from-property dialog
+- **v0.4 (2026-04-20)** — per-property finance/deal panel (plan + installments + payments + summary), source of truth = `payment_plans` / `payment_installments` / `payments` keyed by `property_id`
 
 ## Original problem statement
 Modern web SaaS/CRM for selling new-construction real estate in Bulgaria.
@@ -121,6 +122,15 @@ Seed is gated by `system_meta.seed.version` tag so future schema changes force c
 - Admin Reservation actions: extend expiry (+7d) & convert zero-deposit → deposit
 - **Admin Reserve-from-Property dialog** — new button "Резервирай" on each available row (`/admin/properties`) opens a compact dialog for client + type (zero_deposit/deposit) + amount; `POST /api/reservations` hardened with validation (client must be role=client, property must be available, amount>0 for deposit, audit log entry)
 - Fixed SyntaxError in `routes/reservations.py` (invalid embedded Bulgarian quotes in error detail string)
+
+### v0.4 (2026-04-20)
+- **Per-property finance/deal panel**. New tab "Сделка / Плащания" inside the admin property-edit dialog.
+- Backend endpoints (`routes/projects.py`):
+  - `GET /api/properties/{id}/finance-summary` — aggregates plan + installments + payments for one property; computes `paid_total`, `unpaid_total`, `remaining_total` (falls back to `final_contract_price - paid_total` only when no installments exist), `next_due_installment`, `next_1/2/3_due_sum`, `next_due_alert` (≤7d), `avg_price_rzp = final_contract_price / raw_area` **only when `raw_area > 0`** (never uses `area_total` as fallback)
+  - `PUT /api/properties/{id}/finance-plan` — clean-replace of `payment_plans` + `payment_installments` for this property; also patches `properties.final_contract_price`, `properties.reservation_price` and optional `buyer_id`; audit `property_finance_plan_update`
+  - `POST /api/properties/{id}/payments` — inserts payment record keyed by `property_id` + greedy mark-as-paid of oldest unpaid installments it fully covers (no partials in this package); audit `property_payment_recorded`
+- New Pydantic models: `PropertyFinancePlanUpdate`, `PropertyInstallmentInput`, `PropertyPaymentCreate`
+- Frontend `AdminProperties.jsx`: extracted `PropertyFormBody` + added `FinanceSection` with summary cards, upcoming 1/2/3 block, editable installments table, payment form + history
 
 ## Prioritized backlog
 ### P0 — next iteration once real PDFs are attached

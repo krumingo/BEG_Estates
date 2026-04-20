@@ -16,7 +16,15 @@ from constants import (
     ProjectStatus,
 )
 from db import get_db
-from models import ProjectCreate, ProjectUpdate, PropertyCreate, PropertyStatusUpdate, PropertyUpdate
+from models import (
+    ProjectCreate,
+    ProjectUpdate,
+    PropertyCreate,
+    PropertyStatusUpdate,
+    PropertyUpdate,
+    PropertyFinancePlanUpdate,
+    PropertyPaymentCreate,
+)
 from routes.audit import log_action
 
 router = APIRouter(tags=["projects"])
@@ -417,3 +425,276 @@ async def list_statuses(request: Request):
     if not is_staff:
         items = [x for x in items if x["value"] in PUBLIC_VISIBLE_STATUSES]
     return items
+
+
+# ---------- Property finance (deal view) ----------
+_INSTALLMENT_PAID = "платено"
+_INSTALLMENT_PENDING = "предстоящо"
+
+
+def _parse_iso_date(value):
+    """Best-effort parse of an ISO-ish string into a date; returns None on failure."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).date()
+    except Exception:
+        return None
+
+
+@router.get("/properties/{property_id}/finance-summary")
+async def property_finance_summary(property_id: str, user=Depends(require_staff())):
+    db = get_db()
+    prop = await db.properties.find_one({"id": property_id}, {"_id": 0})
+    if not prop:
+        raise HTTPException(status_code=404, detail="Имотът не е намерен")
+
+    plan = await db.payment_plans.find_one({"property_id": property_id}, {"_id": 0})
+    installments = (
+        await db.payment_installments.find({"property_id": property_id}, {"_id": 0})
+        .sort([("due_date", 1), ("number", 1)])
+        .to_list(500)
+    )
+    payments = (
+        await db.payments.find({"property_id": property_id}, {"_id": 0})
+        .sort("paid_at", 1)
+        .to_list(500)
+    )
+    buyer = None
+    if prop.get("buyer_id"):
+        buyer = await db.buyers.find_one({"id": prop["buyer_id"]}, {"_id": 0})
+
+    final_price = float(prop.get("final_contract_price") or 0)
+    deposit_amount = float(prop.get("reservation_price") or 0)
+    paid_total = sum(float(p.get("amount") or 0) for p in payments)
+
+    unpaid = sorted(
+        [i for i in installments if i.get("status") != _INSTALLMENT_PAID],
+        key=lambda x: (x.get("due_date") or "", x.get("number") or 0),
+    )
+    unpaid_total = sum(float(i.get("amount") or 0) for i in unpaid)
+
+    if installments:
+        remaining_total = unpaid_total
+    else:
+        remaining_total = max(final_price - paid_total, 0.0)
+
+    def _sum_next(n):
+        return sum(float(i.get("amount") or 0) for i in unpaid[:n])
+
+    today = datetime.now(timezone.utc).date()
+    next_due = unpaid[0] if unpaid else None
+    next_due_alert = False
+    if next_due is not None:
+        d = _parse_iso_date(next_due.get("due_date"))
+        if d is not None and (d - today).days <= 7:
+            next_due_alert = True
+
+    raw_area = prop.get("raw_area")
+    try:
+        raw_area_f = float(raw_area) if raw_area is not None else 0.0
+    except Exception:
+        raw_area_f = 0.0
+    if raw_area_f > 0 and final_price > 0:
+        avg_price_rzp = round(final_price / raw_area_f, 2)
+    else:
+        avg_price_rzp = None
+
+    return {
+        "property_id": property_id,
+        "property_code": prop.get("code"),
+        "buyer_id": prop.get("buyer_id"),
+        "buyer_name": (buyer or {}).get("name"),
+        "final_contract_price": final_price,
+        "deposit_amount": deposit_amount,
+        "payment_scheme_name": (plan or {}).get("scheme_name") or "",
+        "installments": [
+            {
+                "id": i.get("id"),
+                "number": i.get("number"),
+                "label": i.get("label"),
+                "due_date": i.get("due_date"),
+                "amount": float(i.get("amount") or 0),
+                "status": i.get("status") or _INSTALLMENT_PENDING,
+            }
+            for i in sorted(installments, key=lambda x: x.get("number") or 0)
+        ],
+        "payments": [
+            {
+                "id": p.get("id"),
+                "paid_at": p.get("paid_at"),
+                "amount": float(p.get("amount") or 0),
+                "note": p.get("note") or "",
+            }
+            for p in payments
+        ],
+        "paid_total": paid_total,
+        "unpaid_total": unpaid_total,
+        "remaining_total": remaining_total,
+        "next_due_installment": (
+            {
+                "id": next_due.get("id"),
+                "number": next_due.get("number"),
+                "label": next_due.get("label"),
+                "due_date": next_due.get("due_date"),
+                "amount": float(next_due.get("amount") or 0),
+                "status": next_due.get("status") or _INSTALLMENT_PENDING,
+            }
+            if next_due
+            else None
+        ),
+        "next_1_due_sum": _sum_next(1),
+        "next_2_due_sum": _sum_next(2),
+        "next_3_due_sum": _sum_next(3),
+        "next_due_alert": next_due_alert,
+        "avg_price_rzp": avg_price_rzp,
+    }
+
+
+@router.put("/properties/{property_id}/finance-plan")
+async def update_property_finance_plan(
+    property_id: str,
+    payload: PropertyFinancePlanUpdate,
+    user=Depends(require_staff()),
+):
+    db = get_db()
+    prop = await db.properties.find_one({"id": property_id}, {"_id": 0})
+    if not prop:
+        raise HTTPException(status_code=404, detail="Имотът не е намерен")
+
+    # buyer_id validation — optional, but if supplied must exist & same project
+    new_buyer_id = payload.buyer_id
+    if new_buyer_id:
+        buyer = await db.buyers.find_one({"id": new_buyer_id}, {"_id": 0, "project_id": 1})
+        if not buyer:
+            raise HTTPException(status_code=400, detail="Купувачът не е намерен")
+        if buyer.get("project_id") and buyer["project_id"] != prop.get("project_id"):
+            raise HTTPException(
+                status_code=400, detail="Купувачът принадлежи на друг проект"
+            )
+
+    # 1. Patch property financial fields (+ optional buyer reassignment)
+    prop_changes: dict = {
+        "final_contract_price": float(payload.final_contract_price or 0),
+        "reservation_price": float(payload.deposit_amount or 0),
+    }
+    if new_buyer_id is not None:
+        prop_changes["buyer_id"] = new_buyer_id or None
+    await db.properties.update_one({"id": property_id}, {"$set": prop_changes})
+
+    # 2. Clean-replace plan + installments for this property
+    plan_id = str(uuid.uuid4())
+    now_iso = datetime.now(timezone.utc).isoformat()
+    total_amount = sum(float(i.amount or 0) for i in payload.installments)
+
+    await db.payment_plans.delete_many({"property_id": property_id})
+    await db.payment_installments.delete_many({"property_id": property_id})
+
+    await db.payment_plans.insert_one(
+        {
+            "id": plan_id,
+            "property_id": property_id,
+            "buyer_id": new_buyer_id if new_buyer_id else prop.get("buyer_id"),
+            "client_id": None,
+            "scheme_name": payload.payment_scheme_name or "",
+            "total_amount": total_amount,
+            "currency": "EUR",
+            "created_at": now_iso,
+        }
+    )
+
+    for idx, inst in enumerate(sorted(payload.installments, key=lambda x: x.number), start=1):
+        status_value = inst.status if inst.status else _INSTALLMENT_PENDING
+        await db.payment_installments.insert_one(
+            {
+                "id": str(uuid.uuid4()),
+                "plan_id": plan_id,
+                "property_id": property_id,
+                "buyer_id": new_buyer_id if new_buyer_id else prop.get("buyer_id"),
+                "client_id": None,
+                "number": int(inst.number),
+                "label": inst.label or "",
+                "amount": float(inst.amount or 0),
+                "currency": "EUR",
+                "due_date": inst.due_date,
+                "status": status_value,
+                "created_at": now_iso,
+            }
+        )
+
+    await log_action(
+        user["id"],
+        "property_finance_plan_update",
+        "property",
+        property_id,
+        {
+            "final_contract_price": prop_changes["final_contract_price"],
+            "deposit_amount": prop_changes["reservation_price"],
+            "installments_count": len(payload.installments),
+        },
+    )
+    return await property_finance_summary(property_id, user)  # type: ignore[arg-type]
+
+
+@router.post("/properties/{property_id}/payments")
+async def record_property_payment(
+    property_id: str,
+    payload: PropertyPaymentCreate,
+    user=Depends(require_staff()),
+):
+    db = get_db()
+    prop = await db.properties.find_one({"id": property_id}, {"_id": 0, "id": 1, "buyer_id": 1})
+    if not prop:
+        raise HTTPException(status_code=404, detail="Имотът не е намерен")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    payment_doc = {
+        "id": str(uuid.uuid4()),
+        "property_id": property_id,
+        "buyer_id": prop.get("buyer_id"),
+        "client_id": None,
+        "amount": float(payload.amount),
+        "paid_at": payload.paid_at,
+        "note": payload.note or "",
+        "recorded_by": user["id"],
+        "created_at": now_iso,
+    }
+    await db.payments.insert_one(payment_doc)
+
+    # Greedy allocation: mark oldest unpaid installments as paid while the
+    # remaining payment amount fully covers each one (no partials in this package).
+    unpaid_cursor = (
+        db.payment_installments.find(
+            {"property_id": property_id, "status": {"$ne": _INSTALLMENT_PAID}},
+            {"_id": 0},
+        ).sort([("due_date", 1), ("number", 1)])
+    )
+    unpaid = await unpaid_cursor.to_list(500)
+    remaining = float(payload.amount)
+    marked: list[str] = []
+    for inst in unpaid:
+        amt = float(inst.get("amount") or 0)
+        if amt <= 0:
+            continue
+        if remaining + 0.001 >= amt:
+            await db.payment_installments.update_one(
+                {"id": inst["id"]},
+                {"$set": {"status": _INSTALLMENT_PAID, "paid_at": payload.paid_at}},
+            )
+            remaining -= amt
+            marked.append(inst["id"])
+        else:
+            break
+
+    await log_action(
+        user["id"],
+        "property_payment_recorded",
+        "property",
+        property_id,
+        {
+            "amount": payment_doc["amount"],
+            "paid_at": payment_doc["paid_at"],
+            "marked_installments": marked,
+        },
+    )
+    return await property_finance_summary(property_id, user)  # type: ignore[arg-type]

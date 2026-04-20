@@ -282,3 +282,68 @@ class InquiryCreate(BaseModel):
     message: str
     project_id: Optional[str] = None
     property_id: Optional[str] = None
+
+
+# ---------- Property finance (deal view) ----------
+class PropertyInstallmentInput(BaseModel):
+    number: int
+    label: Optional[str] = None
+    due_date: str  # ISO date/datetime string
+    amount: float = 0.0
+    status: Optional[str] = None  # "платено" / "предстоящо" (default)
+
+    @field_validator("amount")
+    @classmethod
+    def _amount_non_negative(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError("amount трябва да е >= 0")
+        return v
+
+    @field_validator("number")
+    @classmethod
+    def _number_positive(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("number трябва да е >= 1")
+        return v
+
+    @field_validator("due_date")
+    @classmethod
+    def _due_date_non_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("due_date е задължителен")
+        return v.strip()
+
+
+class PropertyFinancePlanUpdate(BaseModel):
+    buyer_id: Optional[str] = None
+    final_contract_price: float = 0.0
+    deposit_amount: float = 0.0
+    payment_scheme_name: Optional[str] = ""
+    installments: List[PropertyInstallmentInput] = Field(default_factory=list)
+
+    @field_validator("final_contract_price", "deposit_amount")
+    @classmethod
+    def _non_negative(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError("Стойността трябва да е >= 0")
+        return v
+
+
+class PropertyPaymentCreate(BaseModel):
+    amount: float
+    paid_at: str
+    note: Optional[str] = ""
+
+    @field_validator("amount")
+    @classmethod
+    def _amount_positive(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("amount трябва да е > 0")
+        return v
+
+    @field_validator("paid_at")
+    @classmethod
+    def _paid_at_non_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("paid_at е задължителен")
+        return v.strip()

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Pencil, Plus, CalendarPlus } from "lucide-react";
+import { Pencil, Plus, CalendarPlus, Trash2, AlertTriangle } from "lucide-react";
 import { api, currency, formatApiError } from "../../lib/api";
 import { StatusBadge } from "../../components/common/StatusBadge";
 import {
@@ -12,6 +12,7 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Textarea } from "../../components/ui/textarea";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "../../components/ui/tabs";
 import {
     Dialog,
     DialogContent,
@@ -436,128 +437,24 @@ export default function AdminProperties() {
 
                     {form && (
                         <div className="space-y-4 py-2">
-                            {mode === "create" && (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-lg border hairline bg-stone-50 p-3">
-                                    <div>
-                                        <Label>Проект <span className="text-red-600">*</span></Label>
-                                        <Select value={form.project_id} onValueChange={set("project_id")}>
-                                            <SelectTrigger data-testid="pf-project"><SelectValue placeholder="Изберете проект" /></SelectTrigger>
-                                            <SelectContent>
-                                                {projects.map((p) => (
-                                                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div>
-                                        <Label>Сграда (optional)</Label>
-                                        <Select value={form.building_id} onValueChange={set("building_id")}>
-                                            <SelectTrigger data-testid="pf-building"><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="__none__">— без сграда —</SelectItem>
-                                                {buildings.map((b) => (
-                                                    <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                </div>
+                            {mode === "edit" ? (
+                                <Tabs defaultValue="basics" className="w-full">
+                                    <TabsList className="grid grid-cols-2 w-full" data-testid="pf-tabs">
+                                        <TabsTrigger value="basics" data-testid="pf-tab-basics">Основни данни</TabsTrigger>
+                                        <TabsTrigger value="finance" data-testid="pf-tab-finance">Сделка / Плащания</TabsTrigger>
+                                    </TabsList>
+                                    <TabsContent value="basics" className="space-y-4 pt-4">
+                                        <PropertyFormBody form={form} setField={set} buyers={buyers} mode={mode} projects={projects} buildings={buildings} />
+                                    </TabsContent>
+                                    <TabsContent value="finance" className="pt-4">
+                                        {editing?.id && (
+                                            <FinanceSection propertyId={editing.id} buyers={buyers} />
+                                        )}
+                                    </TabsContent>
+                                </Tabs>
+                            ) : (
+                                <PropertyFormBody form={form} setField={set} buyers={buyers} mode={mode} projects={projects} buildings={buildings} />
                             )}
-
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                <div>
-                                    <Label>Код</Label>
-                                    <Input value={form.code} onChange={set("code")} data-testid="pf-code" />
-                                </div>
-                                <div>
-                                    <Label>Тип</Label>
-                                    <Select value={form.property_type} onValueChange={set("property_type")}>
-                                        <SelectTrigger data-testid="pf-type"><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            {Object.entries(PROPERTY_TYPE_LABELS).map(([k, v]) => (
-                                                <SelectItem key={k} value={k}>{v}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div>
-                                    <Label>Етаж</Label>
-                                    <Input type="number" value={form.floor} onChange={set("floor")} data-testid="pf-floor" />
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                <div>
-                                    <Label>Стаи</Label>
-                                    <Input type="number" min="0" value={form.rooms} onChange={set("rooms")} data-testid="pf-rooms" />
-                                </div>
-                                <div>
-                                    <Label>Изложение</Label>
-                                    <Input value={form.exposure} onChange={set("exposure")} data-testid="pf-exposure" />
-                                </div>
-                                <div>
-                                    <Label>Статус</Label>
-                                    <Select value={form.status} onValueChange={set("status")}>
-                                        <SelectTrigger data-testid="pf-status"><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            {Object.keys(PROPERTY_STATUS).map((s) => (
-                                                <SelectItem key={s} value={s}>{PROPERTY_STATUS[s].label}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                                <NumInput label="Чиста площ" value={form.area_pure} onChange={set("area_pure")} testId="pf-area-pure" />
-                                <NumInput label="Общи части" value={form.area_common} onChange={set("area_common")} testId="pf-area-common" />
-                                <NumInput label="Обща площ" value={form.area_total} onChange={set("area_total")} testId="pf-area-total" />
-                                <NumInput label="Идеални части" value={form.ideal_parts_area} onChange={set("ideal_parts_area")} testId="pf-ideal" />
-                                <NumInput label="Груба площ" value={form.raw_area} onChange={set("raw_area")} testId="pf-raw" />
-                            </div>
-
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                                <NumInput label="Цена / м²" value={form.price_per_sqm} onChange={set("price_per_sqm")} testId="pf-pps" />
-                                <NumInput label="Базова цена" value={form.base_price} onChange={set("base_price")} testId="pf-base" />
-                                <NumInput label="Листова цена" value={form.list_price} onChange={set("list_price")} testId="pf-list" />
-                                <NumInput label="Договорена" value={form.negotiated_price} onChange={set("negotiated_price")} testId="pf-neg" />
-                                <NumInput label="Резервационна" value={form.reservation_price} onChange={set("reservation_price")} testId="pf-res-price" />
-                                <NumInput label="Финална" value={form.final_contract_price} onChange={set("final_contract_price")} testId="pf-final" />
-                            </div>
-
-                            <div>
-                                <Label>Описание</Label>
-                                <Textarea rows={3} value={form.description} onChange={set("description")} data-testid="pf-description" />
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div>
-                                    <Label>Plan URL</Label>
-                                    <Input value={form.plan_url} onChange={set("plan_url")} placeholder="https://…" data-testid="pf-plan" />
-                                </div>
-                                <div>
-                                    <Label>Купувач (admin)</Label>
-                                    <Select value={form.buyer_id} onValueChange={set("buyer_id")}>
-                                        <SelectTrigger data-testid="pf-buyer"><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="__none__">— без купувач —</SelectItem>
-                                            {buyers.map((b) => (
-                                                <SelectItem key={b.id} value={b.id}>{b.name} · {b.relation}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
-
-                            <div>
-                                <Label>Галерия (по 1 URL на ред)</Label>
-                                <Textarea rows={3} value={form.gallery} onChange={set("gallery")} data-testid="pf-gallery" />
-                            </div>
-
-                            <div>
-                                <Label>Admin бележки (не се показват публично)</Label>
-                                <Textarea rows={2} value={form.admin_notes} onChange={set("admin_notes")} data-testid="pf-admin-notes" />
-                            </div>
                         </div>
                     )}
 
@@ -664,6 +561,579 @@ function NumInput({ label, value, onChange, testId }) {
                 onChange={onChange}
                 data-testid={testId}
             />
+        </div>
+    );
+}
+
+function PropertyFormBody({ form, setField, buyers, mode, projects, buildings }) {
+    return (
+        <>
+            {mode === "create" && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-lg border hairline bg-stone-50 p-3">
+                    <div>
+                        <Label>Проект <span className="text-red-600">*</span></Label>
+                        <Select value={form.project_id} onValueChange={setField("project_id")}>
+                            <SelectTrigger data-testid="pf-project"><SelectValue placeholder="Изберете проект" /></SelectTrigger>
+                            <SelectContent>
+                                {projects.map((p) => (
+                                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div>
+                        <Label>Сграда (optional)</Label>
+                        <Select value={form.building_id} onValueChange={setField("building_id")}>
+                            <SelectTrigger data-testid="pf-building"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="__none__">— без сграда —</SelectItem>
+                                {buildings.map((b) => (
+                                    <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                    <Label>Код</Label>
+                    <Input value={form.code} onChange={setField("code")} data-testid="pf-code" />
+                </div>
+                <div>
+                    <Label>Тип</Label>
+                    <Select value={form.property_type} onValueChange={setField("property_type")}>
+                        <SelectTrigger data-testid="pf-type"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                            {Object.entries(PROPERTY_TYPE_LABELS).map(([k, v]) => (
+                                <SelectItem key={k} value={k}>{v}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div>
+                    <Label>Етаж</Label>
+                    <Input type="number" value={form.floor} onChange={setField("floor")} data-testid="pf-floor" />
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                    <Label>Стаи</Label>
+                    <Input type="number" min="0" value={form.rooms} onChange={setField("rooms")} data-testid="pf-rooms" />
+                </div>
+                <div>
+                    <Label>Изложение</Label>
+                    <Input value={form.exposure} onChange={setField("exposure")} data-testid="pf-exposure" />
+                </div>
+                <div>
+                    <Label>Статус</Label>
+                    <Select value={form.status} onValueChange={setField("status")}>
+                        <SelectTrigger data-testid="pf-status"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                            {Object.keys(PROPERTY_STATUS).map((s) => (
+                                <SelectItem key={s} value={s}>{PROPERTY_STATUS[s].label}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                <NumInput label="Чиста площ" value={form.area_pure} onChange={setField("area_pure")} testId="pf-area-pure" />
+                <NumInput label="Общи части" value={form.area_common} onChange={setField("area_common")} testId="pf-area-common" />
+                <NumInput label="Обща площ" value={form.area_total} onChange={setField("area_total")} testId="pf-area-total" />
+                <NumInput label="Идеални части" value={form.ideal_parts_area} onChange={setField("ideal_parts_area")} testId="pf-ideal" />
+                <NumInput label="Груба площ" value={form.raw_area} onChange={setField("raw_area")} testId="pf-raw" />
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <NumInput label="Цена / м²" value={form.price_per_sqm} onChange={setField("price_per_sqm")} testId="pf-pps" />
+                <NumInput label="Базова цена" value={form.base_price} onChange={setField("base_price")} testId="pf-base" />
+                <NumInput label="Листова цена" value={form.list_price} onChange={setField("list_price")} testId="pf-list" />
+                <NumInput label="Договорена" value={form.negotiated_price} onChange={setField("negotiated_price")} testId="pf-neg" />
+                <NumInput label="Резервационна" value={form.reservation_price} onChange={setField("reservation_price")} testId="pf-res-price" />
+                <NumInput label="Финална" value={form.final_contract_price} onChange={setField("final_contract_price")} testId="pf-final" />
+            </div>
+
+            <div>
+                <Label>Описание</Label>
+                <Textarea rows={3} value={form.description} onChange={setField("description")} data-testid="pf-description" />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <Label>Plan URL</Label>
+                    <Input value={form.plan_url} onChange={setField("plan_url")} placeholder="https://…" data-testid="pf-plan" />
+                </div>
+                <div>
+                    <Label>Купувач (admin)</Label>
+                    <Select value={form.buyer_id} onValueChange={setField("buyer_id")}>
+                        <SelectTrigger data-testid="pf-buyer"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="__none__">— без купувач —</SelectItem>
+                            {buyers.map((b) => (
+                                <SelectItem key={b.id} value={b.id}>{b.name} · {b.relation}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+            </div>
+
+            <div>
+                <Label>Галерия (по 1 URL на ред)</Label>
+                <Textarea rows={3} value={form.gallery} onChange={setField("gallery")} data-testid="pf-gallery" />
+            </div>
+
+            <div>
+                <Label>Admin бележки (не се показват публично)</Label>
+                <Textarea rows={2} value={form.admin_notes} onChange={setField("admin_notes")} data-testid="pf-admin-notes" />
+            </div>
+        </>
+    );
+}
+
+const EMPTY_PLAN = {
+    buyer_id: "__none__",
+    final_contract_price: "",
+    deposit_amount: "",
+    payment_scheme_name: "",
+    installments: [],
+};
+const EMPTY_PAYMENT = { amount: "", paid_at: new Date().toISOString().slice(0, 10), note: "" };
+
+function formatBgDate(iso) {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString("bg-BG");
+}
+
+function FinanceSection({ propertyId, buyers }) {
+    const [summary, setSummary] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [plan, setPlan] = useState(EMPTY_PLAN);
+    const [savingPlan, setSavingPlan] = useState(false);
+    const [payment, setPayment] = useState(EMPTY_PAYMENT);
+    const [savingPayment, setSavingPayment] = useState(false);
+
+    const loadSummary = async () => {
+        setLoading(true);
+        try {
+            const { data } = await api.get(`/properties/${propertyId}/finance-summary`);
+            setSummary(data);
+            setPlan({
+                buyer_id: data.buyer_id || "__none__",
+                final_contract_price: data.final_contract_price || "",
+                deposit_amount: data.deposit_amount || "",
+                payment_scheme_name: data.payment_scheme_name || "",
+                installments: (data.installments || []).map((i) => ({
+                    number: i.number,
+                    label: i.label || "",
+                    due_date: (i.due_date || "").slice(0, 10),
+                    amount: i.amount ?? "",
+                    status: i.status || "предстоящо",
+                })),
+            });
+        } catch (e) {
+            toast.error(formatApiError(e.response?.data?.detail));
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (propertyId) loadSummary();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [propertyId]);
+
+    const updateInstallment = (idx, field, value) => {
+        setPlan((prev) => {
+            const next = { ...prev, installments: [...prev.installments] };
+            next.installments[idx] = { ...next.installments[idx], [field]: value };
+            return next;
+        });
+    };
+    const addInstallment = () => {
+        setPlan((prev) => ({
+            ...prev,
+            installments: [
+                ...prev.installments,
+                {
+                    number: prev.installments.length + 1,
+                    label: "",
+                    due_date: "",
+                    amount: "",
+                    status: "предстоящо",
+                },
+            ],
+        }));
+    };
+    const removeInstallment = (idx) => {
+        setPlan((prev) => ({
+            ...prev,
+            installments: prev.installments.filter((_, i) => i !== idx),
+        }));
+    };
+
+    const savePlan = async () => {
+        for (const inst of plan.installments) {
+            if (!inst.due_date) {
+                toast.error(`Вноска #${inst.number}: липсва дата`);
+                return;
+            }
+        }
+        setSavingPlan(true);
+        try {
+            const payload = {
+                buyer_id:
+                    plan.buyer_id && plan.buyer_id !== "__none__" ? plan.buyer_id : null,
+                final_contract_price: Number(plan.final_contract_price || 0),
+                deposit_amount: Number(plan.deposit_amount || 0),
+                payment_scheme_name: plan.payment_scheme_name || "",
+                installments: plan.installments.map((i, idx) => ({
+                    number: Number(i.number || idx + 1),
+                    label: i.label || null,
+                    due_date: i.due_date,
+                    amount: Number(i.amount || 0),
+                    status: i.status || "предстоящо",
+                })),
+            };
+            const { data } = await api.put(`/properties/${propertyId}/finance-plan`, payload);
+            setSummary(data);
+            toast.success("Схемата на плащане е запазена");
+        } catch (e) {
+            toast.error(formatApiError(e.response?.data?.detail));
+        } finally {
+            setSavingPlan(false);
+        }
+    };
+
+    const savePayment = async () => {
+        const amt = Number(payment.amount);
+        if (!amt || amt <= 0) {
+            toast.error("Сумата трябва да е > 0");
+            return;
+        }
+        if (!payment.paid_at) {
+            toast.error("Въведете дата на плащане");
+            return;
+        }
+        setSavingPayment(true);
+        try {
+            const { data } = await api.post(`/properties/${propertyId}/payments`, {
+                amount: amt,
+                paid_at: payment.paid_at,
+                note: payment.note || "",
+            });
+            setSummary(data);
+            setPayment(EMPTY_PAYMENT);
+            // also refresh plan view with updated installment statuses
+            setPlan((prev) => ({
+                ...prev,
+                installments: (data.installments || []).map((i) => ({
+                    number: i.number,
+                    label: i.label || "",
+                    due_date: (i.due_date || "").slice(0, 10),
+                    amount: i.amount ?? "",
+                    status: i.status || "предстоящо",
+                })),
+            }));
+            toast.success("Плащането е записано");
+        } catch (e) {
+            toast.error(formatApiError(e.response?.data?.detail));
+        } finally {
+            setSavingPayment(false);
+        }
+    };
+
+    if (loading && !summary) {
+        return <div className="text-sm text-slate-500 p-4" data-testid="finance-loading">Зареждане…</div>;
+    }
+    if (!summary) return null;
+
+    return (
+        <div className="space-y-6" data-testid="finance-section">
+            {summary.next_due_alert && summary.next_due_installment && (
+                <div
+                    className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
+                    data-testid="finance-alert"
+                >
+                    <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                    <div>
+                        <div className="font-medium">Следващо плащане наближава</div>
+                        <div className="text-xs">
+                            Вноска #{summary.next_due_installment.number}
+                            {summary.next_due_installment.label ? ` · ${summary.next_due_installment.label}` : ""} ·{" "}
+                            {formatBgDate(summary.next_due_installment.due_date)} · {currency(summary.next_due_installment.amount)}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3" data-testid="finance-cards">
+                <SummaryCard label="Крайна цена" value={currency(summary.final_contract_price)} testId="fs-final" />
+                <SummaryCard label="Капаро" value={currency(summary.deposit_amount)} testId="fs-deposit" />
+                <SummaryCard label="Платено" value={currency(summary.paid_total)} testId="fs-paid" />
+                <SummaryCard label="Остава" value={currency(summary.remaining_total)} testId="fs-remaining" accent />
+                <SummaryCard
+                    label="Следваща вноска"
+                    value={
+                        summary.next_due_installment
+                            ? `${currency(summary.next_due_installment.amount)} · ${formatBgDate(summary.next_due_installment.due_date)}`
+                            : "—"
+                    }
+                    testId="fs-next"
+                />
+                <SummaryCard
+                    label="Ср. цена РЗП"
+                    value={summary.avg_price_rzp != null ? `${currency(summary.avg_price_rzp)} / м²` : "—"}
+                    testId="fs-rzp"
+                />
+            </div>
+
+            <div className="rounded-lg border hairline bg-stone-50 p-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm" data-testid="finance-upcoming">
+                <div>
+                    <div className="text-xs uppercase text-slate-500 tracking-wide">Следваща 1</div>
+                    <div className="font-medium text-slate-900" data-testid="fs-next-1">{currency(summary.next_1_due_sum)}</div>
+                </div>
+                <div>
+                    <div className="text-xs uppercase text-slate-500 tracking-wide">Следващи 2</div>
+                    <div className="font-medium text-slate-900" data-testid="fs-next-2">{currency(summary.next_2_due_sum)}</div>
+                </div>
+                <div>
+                    <div className="text-xs uppercase text-slate-500 tracking-wide">Следващи 3</div>
+                    <div className="font-medium text-slate-900" data-testid="fs-next-3">{currency(summary.next_3_due_sum)}</div>
+                </div>
+            </div>
+
+            <div className="rounded-lg border hairline p-4 space-y-4" data-testid="finance-plan-form">
+                <div className="text-sm font-semibold text-slate-900">Схема и вноски</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <Label>Купувач</Label>
+                        <Select value={plan.buyer_id} onValueChange={(v) => setPlan((p) => ({ ...p, buyer_id: v }))}>
+                            <SelectTrigger data-testid="plan-buyer"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="__none__">— без купувач —</SelectItem>
+                                {buyers.map((b) => (
+                                    <SelectItem key={b.id} value={b.id}>{b.name} · {b.relation}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div>
+                        <Label>Име на схема</Label>
+                        <Input
+                            value={plan.payment_scheme_name}
+                            onChange={(e) => setPlan((p) => ({ ...p, payment_scheme_name: e.target.value }))}
+                            placeholder="напр. 3 вноски по етапи"
+                            data-testid="plan-scheme"
+                        />
+                    </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <Label>Крайна договорна цена (лв.)</Label>
+                        <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={plan.final_contract_price}
+                            onChange={(e) => setPlan((p) => ({ ...p, final_contract_price: e.target.value }))}
+                            data-testid="plan-final-price"
+                        />
+                    </div>
+                    <div>
+                        <Label>Капаро (лв.)</Label>
+                        <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={plan.deposit_amount}
+                            onChange={(e) => setPlan((p) => ({ ...p, deposit_amount: e.target.value }))}
+                            data-testid="plan-deposit"
+                        />
+                    </div>
+                </div>
+
+                <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                        <Label>Вноски</Label>
+                        <Button size="sm" variant="outline" onClick={addInstallment} data-testid="plan-add-installment">
+                            <Plus className="h-3.5 w-3.5 mr-1.5" /> Добави ред
+                        </Button>
+                    </div>
+                    {plan.installments.length === 0 && (
+                        <div className="text-xs text-slate-500">Няма въведени вноски. Добавете поне една.</div>
+                    )}
+                    {plan.installments.map((inst, idx) => (
+                        <div
+                            key={idx}
+                            className="grid grid-cols-12 gap-2 items-end"
+                            data-testid={`plan-inst-row-${idx}`}
+                        >
+                            <div className="col-span-1">
+                                <Label className="text-xs">#</Label>
+                                <Input
+                                    type="number"
+                                    min="1"
+                                    value={inst.number}
+                                    onChange={(e) => updateInstallment(idx, "number", e.target.value)}
+                                    data-testid={`plan-inst-number-${idx}`}
+                                />
+                            </div>
+                            <div className="col-span-3">
+                                <Label className="text-xs">Етап</Label>
+                                <Input
+                                    value={inst.label}
+                                    onChange={(e) => updateInstallment(idx, "label", e.target.value)}
+                                    placeholder="напр. Покрив"
+                                    data-testid={`plan-inst-label-${idx}`}
+                                />
+                            </div>
+                            <div className="col-span-3">
+                                <Label className="text-xs">Дата</Label>
+                                <Input
+                                    type="date"
+                                    value={inst.due_date}
+                                    onChange={(e) => updateInstallment(idx, "due_date", e.target.value)}
+                                    data-testid={`plan-inst-due-${idx}`}
+                                />
+                            </div>
+                            <div className="col-span-2">
+                                <Label className="text-xs">Сума</Label>
+                                <Input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={inst.amount}
+                                    onChange={(e) => updateInstallment(idx, "amount", e.target.value)}
+                                    data-testid={`plan-inst-amount-${idx}`}
+                                />
+                            </div>
+                            <div className="col-span-2">
+                                <Label className="text-xs">Статус</Label>
+                                <Select
+                                    value={inst.status}
+                                    onValueChange={(v) => updateInstallment(idx, "status", v)}
+                                >
+                                    <SelectTrigger data-testid={`plan-inst-status-${idx}`}><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="предстоящо">Предстоящо</SelectItem>
+                                        <SelectItem value="платено">Платено</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="col-span-1 flex justify-end">
+                                <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => removeInstallment(idx)}
+                                    data-testid={`plan-inst-remove-${idx}`}
+                                    title="Премахни ред"
+                                >
+                                    <Trash2 className="h-4 w-4 text-slate-500" />
+                                </Button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                <div className="flex justify-end">
+                    <Button
+                        onClick={savePlan}
+                        disabled={savingPlan}
+                        data-testid="plan-save"
+                        className="bg-slate-900 hover:bg-slate-800 text-white"
+                    >
+                        {savingPlan ? "Запазване…" : "Запази схема"}
+                    </Button>
+                </div>
+            </div>
+
+            <div className="rounded-lg border hairline p-4 space-y-4" data-testid="finance-payment-form">
+                <div className="text-sm font-semibold text-slate-900">Запис на плащане</div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                        <Label>Сума (лв.) <span className="text-red-600">*</span></Label>
+                        <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={payment.amount}
+                            onChange={(e) => setPayment((p) => ({ ...p, amount: e.target.value }))}
+                            data-testid="pay-amount"
+                        />
+                    </div>
+                    <div>
+                        <Label>Дата <span className="text-red-600">*</span></Label>
+                        <Input
+                            type="date"
+                            value={payment.paid_at}
+                            onChange={(e) => setPayment((p) => ({ ...p, paid_at: e.target.value }))}
+                            data-testid="pay-date"
+                        />
+                    </div>
+                    <div>
+                        <Label>Бележка</Label>
+                        <Input
+                            value={payment.note}
+                            onChange={(e) => setPayment((p) => ({ ...p, note: e.target.value }))}
+                            placeholder="напр. банков превод"
+                            data-testid="pay-note"
+                        />
+                    </div>
+                </div>
+                <div className="flex justify-end">
+                    <Button
+                        onClick={savePayment}
+                        disabled={savingPayment}
+                        data-testid="pay-save"
+                        className="bg-slate-900 hover:bg-slate-800 text-white"
+                    >
+                        {savingPayment ? "Записване…" : "Запиши плащане"}
+                    </Button>
+                </div>
+
+                {summary.payments.length > 0 && (
+                    <div className="rounded-md border hairline bg-stone-50 overflow-hidden" data-testid="pay-history">
+                        <table className="w-full text-xs">
+                            <thead className="text-slate-500">
+                                <tr>
+                                    <th className="text-left p-2 font-medium">Дата</th>
+                                    <th className="text-right p-2 font-medium">Сума</th>
+                                    <th className="text-left p-2 font-medium">Бележка</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {summary.payments.map((p) => (
+                                    <tr key={p.id} className="border-t hairline">
+                                        <td className="p-2">{formatBgDate(p.paid_at)}</td>
+                                        <td className="p-2 text-right font-medium">{currency(p.amount)}</td>
+                                        <td className="p-2 text-slate-600">{p.note || "—"}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function SummaryCard({ label, value, testId, accent = false }) {
+    return (
+        <div
+            className={`rounded-lg border hairline p-3 ${accent ? "bg-slate-900 text-white" : "bg-white"}`}
+            data-testid={testId}
+        >
+            <div className={`text-[10px] uppercase tracking-wider ${accent ? "text-white/70" : "text-slate-500"}`}>
+                {label}
+            </div>
+            <div className="text-sm font-semibold mt-1 leading-tight">{value}</div>
         </div>
     );
 }
