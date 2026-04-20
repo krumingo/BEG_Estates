@@ -338,6 +338,8 @@ export default function AdminProperties() {
                 <div className="ml-auto text-sm text-slate-500">{filtered.length} от {props.length}</div>
             </div>
 
+            <PortfolioMetricsBlock projectId={projectId} />
+
             <div className="rounded-xl border hairline bg-white overflow-x-auto">
                 <table className="w-full text-sm">
                     <thead className="bg-stone-50 text-slate-600">
@@ -717,11 +719,20 @@ function FinanceSection({ propertyId, buyers }) {
     const [savingPlan, setSavingPlan] = useState(false);
     const [payment, setPayment] = useState(EMPTY_PAYMENT);
     const [savingPayment, setSavingPayment] = useState(false);
+    const [forecastCost, setForecastCost] = useState("");
 
-    const loadSummary = async () => {
+    const loadSummary = async (forecastValue) => {
         setLoading(true);
         try {
-            const { data } = await api.get(`/properties/${propertyId}/finance-summary`);
+            const params = {};
+            const fc = forecastValue !== undefined ? forecastValue : forecastCost;
+            if (fc !== "" && fc !== null && !Number.isNaN(Number(fc))) {
+                params.forecast_cost_per_rzp = Number(fc);
+            }
+            const { data } = await api.get(
+                `/properties/${propertyId}/finance-summary`,
+                { params }
+            );
             setSummary(data);
             setPlan({
                 buyer_id: data.buyer_id || "__none__",
@@ -891,6 +902,77 @@ function FinanceSection({ propertyId, buyers }) {
                     value={summary.avg_price_rzp != null ? `${currency(summary.avg_price_rzp)} / м²` : "—"}
                     testId="fs-rzp"
                 />
+            </div>
+
+            {summary.is_compensation && (
+                <div
+                    className="rounded-lg border border-amber-300 bg-amber-50/60 p-3 text-xs text-amber-900"
+                    data-testid="fs-compensation-note"
+                >
+                    <strong>Обект по обезщетение:</strong> не носи приход, но участва в сценария „с включена
+                    квадратура на обезщетението“ и в прогнозния разход.
+                </div>
+            )}
+
+            <div className="rounded-lg border hairline p-4 space-y-3" data-testid="fs-rzp-block">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="text-sm font-semibold text-slate-900">Цена на РЗП &amp; марж</div>
+                    <div className="flex items-end gap-2">
+                        <div>
+                            <Label className="text-xs">Прогнозен разход / м² РЗП (лв.)</Label>
+                            <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={forecastCost}
+                                onChange={(e) => setForecastCost(e.target.value)}
+                                onBlur={() => loadSummary(forecastCost)}
+                                placeholder="напр. 1500"
+                                className="w-40"
+                                data-testid="fs-forecast-input"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3" data-testid="fs-rzp-cards">
+                    <SummaryCard
+                        label="Старт / м² РЗП"
+                        value={summary.avg_price_rzp_start != null ? `${currency(summary.avg_price_rzp_start)} / м²` : "—"}
+                        testId="fs-rzp-start"
+                    />
+                    <SummaryCard
+                        label="Крайна / м² РЗП"
+                        value={summary.avg_price_rzp_final != null ? `${currency(summary.avg_price_rzp_final)} / м²` : "—"}
+                        testId="fs-rzp-final"
+                    />
+                    <SummaryCard
+                        label="Прогн. разход / м²"
+                        value={summary.forecast_cost_per_rzp != null ? `${currency(summary.forecast_cost_per_rzp)} / м²` : "—"}
+                        testId="fs-forecast-per"
+                    />
+                    <SummaryCard
+                        label="Прогн. общ разход"
+                        value={summary.forecast_total_cost != null ? currency(summary.forecast_total_cost) : "—"}
+                        testId="fs-forecast-total"
+                    />
+                    <SummaryCard
+                        label="Прогн. марж"
+                        value={summary.forecast_margin_value != null ? currency(summary.forecast_margin_value) : "—"}
+                        testId="fs-margin-value"
+                        accent
+                    />
+                    <SummaryCard
+                        label="Марж %"
+                        value={summary.forecast_margin_percent != null ? `${summary.forecast_margin_percent.toFixed(2)}%` : "—"}
+                        testId="fs-margin-pct"
+                    />
+                </div>
+                {summary.raw_area == null && (
+                    <div className="text-xs text-slate-500" data-testid="fs-no-rzp">
+                        Няма зададена „груба площ“ (RZP) за този имот — метриките за РЗП не могат да бъдат изчислени.
+                    </div>
+                )}
             </div>
 
             <div className="rounded-lg border hairline bg-stone-50 p-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm" data-testid="finance-upcoming">
@@ -1134,6 +1216,159 @@ function SummaryCard({ label, value, testId, accent = false }) {
                 {label}
             </div>
             <div className="text-sm font-semibold mt-1 leading-tight">{value}</div>
+        </div>
+    );
+}
+
+function fmtPerSqm(value) {
+    if (value == null) return "—";
+    return `${currency(value)} / м²`;
+}
+
+function PortfolioMetricsBlock({ projectId }) {
+    const [metrics, setMetrics] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [forecast, setForecast] = useState("");
+
+    const load = async (fc) => {
+        setLoading(true);
+        try {
+            const params = {};
+            if (projectId) params.project_id = projectId;
+            const val = fc !== undefined ? fc : forecast;
+            if (val !== "" && val !== null && !Number.isNaN(Number(val))) {
+                params.forecast_cost_per_rzp = Number(val);
+            }
+            const { data } = await api.get("/portfolio-metrics", { params });
+            setMetrics(data);
+        } catch (e) {
+            toast.error(formatApiError(e.response?.data?.detail));
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        load();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [projectId]);
+
+    if (!metrics && !loading) return null;
+
+    const deltaPositive =
+        metrics?.start_to_final_rzp_delta != null && metrics.start_to_final_rzp_delta >= 0;
+
+    return (
+        <div className="rounded-xl border hairline bg-white p-4 space-y-4" data-testid="portfolio-metrics">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                    <div className="overline text-[10px] tracking-widest text-slate-500">Портфейл · цена на РЗП и марж</div>
+                    <div className="text-xs text-slate-500 mt-1">
+                        Compensation не е приход; неговата квадратура участва само в „с включена квадратура“.
+                    </div>
+                </div>
+                <div className="flex items-end gap-2">
+                    <div>
+                        <Label className="text-xs">Прогн. разход / м² РЗП (лв.)</Label>
+                        <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={forecast}
+                            onChange={(e) => setForecast(e.target.value)}
+                            onBlur={() => load(forecast)}
+                            placeholder="напр. 1500"
+                            className="w-40"
+                            data-testid="pm-forecast-input"
+                        />
+                    </div>
+                </div>
+            </div>
+
+            {metrics && (
+                <>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3" data-testid="pm-cards-rzp">
+                        <SummaryCard
+                            label="Ср. РЗП · без обезщ."
+                            value={fmtPerSqm(metrics.portfolio_avg_price_rzp_excluding_compensation_area)}
+                            testId="pm-avg-excl"
+                        />
+                        <SummaryCard
+                            label="Ср. РЗП · с обезщ. кв."
+                            value={fmtPerSqm(metrics.portfolio_avg_price_rzp_including_compensation_area)}
+                            testId="pm-avg-incl"
+                        />
+                        <SummaryCard
+                            label="Ефект от обезщ."
+                            value={fmtPerSqm(metrics.compensation_effect_on_avg_rzp)}
+                            testId="pm-comp-effect"
+                        />
+                        <SummaryCard
+                            label="Стартова РЗП"
+                            value={fmtPerSqm(metrics.portfolio_avg_start_price_rzp)}
+                            testId="pm-start"
+                        />
+                        <SummaryCard
+                            label="Δ старт → финал"
+                            value={
+                                metrics.start_to_final_rzp_delta == null
+                                    ? "—"
+                                    : `${deltaPositive ? "+" : ""}${fmtPerSqm(metrics.start_to_final_rzp_delta)}`
+                            }
+                            testId="pm-delta"
+                        />
+                        <SummaryCard
+                            label="Обезщ. кв. общо"
+                            value={
+                                metrics.compensation_area_total
+                                    ? `${metrics.compensation_area_total} м² · ${metrics.compensation_units_count} бр.`
+                                    : `0 · ${metrics.compensation_units_count || 0} бр.`
+                            }
+                            testId="pm-comp-area"
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" data-testid="pm-cards-margin">
+                        <SummaryCard
+                            label="Прогн. разход · без обезщ."
+                            value={
+                                metrics.portfolio_forecast_cost_total_excluding_compensation != null
+                                    ? currency(metrics.portfolio_forecast_cost_total_excluding_compensation)
+                                    : "—"
+                            }
+                            testId="pm-cost-excl"
+                        />
+                        <SummaryCard
+                            label="Прогн. марж · без обезщ."
+                            value={
+                                metrics.portfolio_forecast_margin_total_excluding_compensation != null
+                                    ? currency(metrics.portfolio_forecast_margin_total_excluding_compensation)
+                                    : "—"
+                            }
+                            testId="pm-margin-val"
+                            accent
+                        />
+                        <SummaryCard
+                            label="Марж % · без обезщ."
+                            value={
+                                metrics.portfolio_forecast_margin_percent_excluding_compensation != null
+                                    ? `${metrics.portfolio_forecast_margin_percent_excluding_compensation.toFixed(2)}%`
+                                    : "—"
+                            }
+                            testId="pm-margin-pct"
+                        />
+                        <SummaryCard
+                            label="Прогн. разход · с обезщ. кв."
+                            value={
+                                metrics.portfolio_forecast_cost_total_including_compensation_area != null
+                                    ? currency(metrics.portfolio_forecast_cost_total_including_compensation_area)
+                                    : "—"
+                            }
+                            testId="pm-cost-incl"
+                        />
+                    </div>
+                </>
+            )}
         </div>
     );
 }

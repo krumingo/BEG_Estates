@@ -442,8 +442,192 @@ def _parse_iso_date(value):
         return None
 
 
+@router.get("/portfolio-metrics")
+async def properties_portfolio_metrics(
+    forecast_cost_per_rzp: Optional[float] = None,
+    project_id: Optional[str] = None,
+    user=Depends(require_staff()),
+):
+    """Portfolio-level pricing & margin metrics.
+
+    Compensation properties are never treated as revenue. The *including compensation area*
+    variant only adds their `raw_area` to the denominator so the dilution effect is visible.
+    """
+    db = get_db()
+    q: dict = {}
+    if project_id:
+        q["project_id"] = project_id
+    props = await db.properties.find(
+        q,
+        {
+            "_id": 0,
+            "id": 1,
+            "code": 1,
+            "status": 1,
+            "raw_area": 1,
+            "list_price": 1,
+            "base_price": 1,
+            "final_contract_price": 1,
+        },
+    ).to_list(5000)
+
+    comp_status = PropertyStatus.COMPENSATION.value
+
+    def _raw(p):
+        try:
+            return float(p.get("raw_area") or 0)
+        except Exception:
+            return 0.0
+
+    def _final(p):
+        try:
+            return float(p.get("final_contract_price") or 0)
+        except Exception:
+            return 0.0
+
+    def _start(p):
+        lp = p.get("list_price")
+        bp = p.get("base_price")
+        try:
+            if lp is not None and float(lp or 0) > 0:
+                return float(lp)
+        except Exception:
+            pass
+        try:
+            if bp is not None and float(bp or 0) > 0:
+                return float(bp)
+        except Exception:
+            pass
+        return 0.0
+
+    # --- Sets ---
+    non_comp = [p for p in props if p.get("status") != comp_status]
+    comp = [p for p in props if p.get("status") == comp_status]
+    # Revenue set: non-compensation with final price > 0 AND valid raw_area
+    revenue_set = [p for p in non_comp if _final(p) > 0 and _raw(p) > 0]
+    # Start-price set: non-compensation with a start basis AND valid raw_area
+    start_set = [p for p in non_comp if _start(p) > 0 and _raw(p) > 0]
+
+    revenue_numerator = sum(_final(p) for p in revenue_set)
+    revenue_denominator_excl = sum(_raw(p) for p in revenue_set)
+    compensation_area_total = sum(_raw(p) for p in comp)
+    # *Including compensation area*: keep the same revenue numerator,
+    # but add compensation raw_area to the denominator.
+    revenue_denominator_incl = revenue_denominator_excl + compensation_area_total
+
+    def _ratio(n, d):
+        return round(n / d, 2) if d > 0 else None
+
+    portfolio_avg_price_rzp_excluding_compensation_area = _ratio(
+        revenue_numerator, revenue_denominator_excl
+    )
+    portfolio_avg_price_rzp_including_compensation_area = _ratio(
+        revenue_numerator, revenue_denominator_incl
+    )
+    portfolio_avg_final_price_rzp_excluding_compensation_area = (
+        portfolio_avg_price_rzp_excluding_compensation_area
+    )
+
+    compensation_effect_on_avg_rzp = None
+    if (
+        portfolio_avg_price_rzp_excluding_compensation_area is not None
+        and portfolio_avg_price_rzp_including_compensation_area is not None
+    ):
+        compensation_effect_on_avg_rzp = round(
+            portfolio_avg_price_rzp_excluding_compensation_area
+            - portfolio_avg_price_rzp_including_compensation_area,
+            2,
+        )
+
+    start_numerator = sum(_start(p) for p in start_set)
+    start_denominator = sum(_raw(p) for p in start_set)
+    portfolio_avg_start_price_rzp = _ratio(start_numerator, start_denominator)
+
+    start_to_final_rzp_delta = None
+    if (
+        portfolio_avg_final_price_rzp_excluding_compensation_area is not None
+        and portfolio_avg_start_price_rzp is not None
+    ):
+        start_to_final_rzp_delta = round(
+            portfolio_avg_final_price_rzp_excluding_compensation_area
+            - portfolio_avg_start_price_rzp,
+            2,
+        )
+
+    # --- Forecast margin block ---
+    fc = None
+    try:
+        if forecast_cost_per_rzp is not None:
+            fc_val = float(forecast_cost_per_rzp)
+            if fc_val >= 0:
+                fc = fc_val
+    except Exception:
+        fc = None
+
+    portfolio_forecast_cost_total_excluding_compensation = None
+    portfolio_forecast_margin_total_excluding_compensation = None
+    portfolio_forecast_margin_percent_excluding_compensation = None
+    portfolio_forecast_cost_total_including_compensation_area = None
+
+    if fc is not None:
+        portfolio_forecast_cost_total_excluding_compensation = round(
+            fc * revenue_denominator_excl, 2
+        )
+        portfolio_forecast_cost_total_including_compensation_area = round(
+            fc * revenue_denominator_incl, 2
+        )
+        portfolio_forecast_margin_total_excluding_compensation = round(
+            revenue_numerator
+            - portfolio_forecast_cost_total_excluding_compensation,
+            2,
+        )
+        if revenue_numerator > 0:
+            portfolio_forecast_margin_percent_excluding_compensation = round(
+                (portfolio_forecast_margin_total_excluding_compensation / revenue_numerator)
+                * 100.0,
+                2,
+            )
+
+    return {
+        "project_id": project_id,
+        "forecast_cost_per_rzp": fc,
+        "counts": {
+            "total_properties": len(props),
+            "revenue_units_count": len(revenue_set),
+            "start_priced_units_count": len(start_set),
+            "compensation_units_count": len(comp),
+        },
+        # --- Clean revenue average RZP ---
+        "portfolio_avg_price_rzp_excluding_compensation_area":
+            portfolio_avg_price_rzp_excluding_compensation_area,
+        "portfolio_avg_price_rzp_including_compensation_area":
+            portfolio_avg_price_rzp_including_compensation_area,
+        "portfolio_avg_final_price_rzp_excluding_compensation_area":
+            portfolio_avg_final_price_rzp_excluding_compensation_area,
+        "compensation_area_total": round(compensation_area_total, 2),
+        "compensation_units_count": len(comp),
+        "compensation_effect_on_avg_rzp": compensation_effect_on_avg_rzp,
+        # --- Start vs final ---
+        "portfolio_avg_start_price_rzp": portfolio_avg_start_price_rzp,
+        "start_to_final_rzp_delta": start_to_final_rzp_delta,
+        # --- Margin forecast ---
+        "portfolio_forecast_cost_total_excluding_compensation":
+            portfolio_forecast_cost_total_excluding_compensation,
+        "portfolio_forecast_margin_total_excluding_compensation":
+            portfolio_forecast_margin_total_excluding_compensation,
+        "portfolio_forecast_margin_percent_excluding_compensation":
+            portfolio_forecast_margin_percent_excluding_compensation,
+        "portfolio_forecast_cost_total_including_compensation_area":
+            portfolio_forecast_cost_total_including_compensation_area,
+    }
+
+
 @router.get("/properties/{property_id}/finance-summary")
-async def property_finance_summary(property_id: str, user=Depends(require_staff())):
+async def property_finance_summary(
+    property_id: str,
+    forecast_cost_per_rzp: Optional[float] = None,
+    user=Depends(require_staff()),
+):
     db = get_db()
     prop = await db.properties.find_one({"id": property_id}, {"_id": 0})
     if not prop:
@@ -495,10 +679,58 @@ async def property_finance_summary(property_id: str, user=Depends(require_staff(
         raw_area_f = float(raw_area) if raw_area is not None else 0.0
     except Exception:
         raw_area_f = 0.0
-    if raw_area_f > 0 and final_price > 0:
-        avg_price_rzp = round(final_price / raw_area_f, 2)
-    else:
-        avg_price_rzp = None
+    has_raw = raw_area_f > 0
+
+    # --- Pricing basis & RZP metrics (v0.5) ---
+    is_compensation = prop.get("status") == PropertyStatus.COMPENSATION.value
+    list_price = prop.get("list_price")
+    base_price = prop.get("base_price")
+    start_price_basis = None
+    if list_price is not None and float(list_price or 0) > 0:
+        start_price_basis = float(list_price)
+    elif base_price is not None and float(base_price or 0) > 0:
+        start_price_basis = float(base_price)
+
+    final_price_basis = final_price if final_price > 0 else None
+
+    avg_price_rzp_start = (
+        round(start_price_basis / raw_area_f, 2)
+        if (has_raw and start_price_basis is not None)
+        else None
+    )
+    avg_price_rzp_final = (
+        round(final_price / raw_area_f, 2)
+        if (has_raw and final_price > 0)
+        else None
+    )
+    # Backwards-compat alias used by the existing UI
+    avg_price_rzp = avg_price_rzp_final
+
+    forecast_cost = (
+        float(forecast_cost_per_rzp) if forecast_cost_per_rzp is not None else None
+    )
+    forecast_total_cost = (
+        round(forecast_cost * raw_area_f, 2)
+        if (has_raw and forecast_cost is not None and forecast_cost >= 0)
+        else None
+    )
+
+    forecast_margin_value = None
+    forecast_margin_percent = None
+    if forecast_total_cost is not None:
+        if is_compensation:
+            # Compensation carries no revenue; margin = 0 − cost
+            forecast_margin_value = round(0.0 - forecast_total_cost, 2)
+            forecast_margin_percent = None
+        elif final_price > 0:
+            forecast_margin_value = round(final_price - forecast_total_cost, 2)
+            forecast_margin_percent = round(
+                (forecast_margin_value / final_price) * 100.0, 2
+            )
+        else:
+            # No revenue yet — we still show the cost; margin is undefined
+            forecast_margin_value = round(0.0 - forecast_total_cost, 2)
+            forecast_margin_percent = None
 
     return {
         "property_id": property_id,
@@ -548,6 +780,17 @@ async def property_finance_summary(property_id: str, user=Depends(require_staff(
         "next_3_due_sum": _sum_next(3),
         "next_due_alert": next_due_alert,
         "avg_price_rzp": avg_price_rzp,
+        # --- v0.5 pricing & margin ---
+        "is_compensation": is_compensation,
+        "raw_area": raw_area_f if has_raw else None,
+        "start_price_basis": start_price_basis,
+        "final_price_basis": final_price_basis,
+        "avg_price_rzp_start": avg_price_rzp_start,
+        "avg_price_rzp_final": avg_price_rzp_final,
+        "forecast_cost_per_rzp": forecast_cost,
+        "forecast_total_cost": forecast_total_cost,
+        "forecast_margin_value": forecast_margin_value,
+        "forecast_margin_percent": forecast_margin_percent,
     }
 
 
@@ -633,7 +876,7 @@ async def update_property_finance_plan(
             "installments_count": len(payload.installments),
         },
     )
-    return await property_finance_summary(property_id, user)  # type: ignore[arg-type]
+    return await property_finance_summary(property_id, None, user)  # type: ignore[arg-type]
 
 
 @router.post("/properties/{property_id}/payments")
@@ -697,4 +940,4 @@ async def record_property_payment(
             "marked_installments": marked,
         },
     )
-    return await property_finance_summary(property_id, user)  # type: ignore[arg-type]
+    return await property_finance_summary(property_id, None, user)  # type: ignore[arg-type]
