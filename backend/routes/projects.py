@@ -1105,3 +1105,62 @@ async def upsert_floor_plan(
     )
     doc.pop("_id", None)
     return doc
+
+
+class SuggestContoursRequest(BaseModel):
+    image_url: Optional[str] = None
+
+
+@router.post("/projects/{project_id}/floor-plans/{floor}/suggest-contours")
+async def suggest_floor_plan_contours(
+    project_id: str,
+    floor: int,
+    payload: SuggestContoursRequest,
+    user=Depends(require_staff()),
+):
+    db = get_db()
+    project = await db.projects.find_one({"id": project_id}, {"_id": 0, "id": 1})
+    if not project:
+        raise HTTPException(status_code=404, detail="Проектът не е намерен")
+
+    # Pick source image — prefer the explicit one, else the stored plan.
+    image_url = (payload.image_url or "").strip()
+    if not image_url:
+        existing = await db.floor_plans.find_one(
+            {"project_id": project_id, "floor": int(floor)}, {"_id": 0, "plan_image_url": 1}
+        )
+        image_url = (existing or {}).get("plan_image_url") or ""
+    if not image_url:
+        raise HTTPException(
+            status_code=400,
+            detail="Няма източник за разпознаване — въведете URL или запишете plan_image_url.",
+        )
+
+    # Scope properties to this (project, floor)
+    props = await db.properties.find(
+        {"project_id": project_id, "floor": int(floor)},
+        {"_id": 0, "id": 1, "code": 1, "rooms": 1, "property_type": 1, "status": 1},
+    ).to_list(500)
+
+    from services.floor_plan_detection import suggest_contours
+
+    try:
+        result = suggest_contours(image_url, props)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve)) from ve
+    except Exception as ex:  # noqa: BLE001
+        raise HTTPException(
+            status_code=500, detail=f"Грешка при разпознаване: {ex}"
+        ) from ex
+
+    await log_action(
+        user["id"], "floor_plan_suggest_contours", "floor_plan",
+        f"{project_id}:{floor}",
+        {"suggestions": len(result["suggestions"]), "image_url": image_url[:120]},
+    )
+    return {
+        "project_id": project_id,
+        "floor": int(floor),
+        "plan_image_url": image_url,
+        **result,
+    }

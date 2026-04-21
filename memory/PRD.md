@@ -1,7 +1,7 @@
 # BEG Estates / EstateFlow — Product Requirements Document
 
-**Last updated:** 2026-04-21 (iteration 7)
-**Status:** Iteration 7 — floor plan mapping + public overlay (v0.7)
+**Last updated:** 2026-04-21 (iteration 8)
+**Status:** Iteration 8 — AI-assisted contour detection for floor plans (v0.8)
 
 ## Iterations
 - **v0.1 (2026-04-17)** — initial scaffold, 3-zone layout, generic demo project "Яна"
@@ -10,7 +10,8 @@
 - **v0.4 (2026-04-20)** — per-property finance/deal panel (plan + installments + payments + summary)
 - **v0.5 (2026-04-20)** — RZP pricing metrics & forecast margin (per-property + portfolio), compensation-aware
 - **v0.6 (2026-04-21)** — client profile + contact completeness + flat client↔admin messaging
-- **v0.7 (2026-04-21)** — admin floor-plan mapping + public clickable floor-plan overlay, compensation/hidden units stripped publicly (never revenue, but its raw_area participates in the *including compensation area* scenario)
+- **v0.7 (2026-04-21)** — admin floor-plan mapping + public clickable floor-plan overlay
+- **v0.8 (2026-04-21)** — AI-assisted contour detection (OpenCV + Tesseract bul+eng) with admin-review workflow; final save still goes through the existing PUT endpoint (never revenue, but its raw_area participates in the *including compensation area* scenario)
 
 ## Original problem statement
 Modern web SaaS/CRM for selling new-construction real estate in Bulgaria.
