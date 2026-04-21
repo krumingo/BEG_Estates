@@ -12,7 +12,7 @@ from fastapi import FastAPI, APIRouter
 from starlette.middleware.cors import CORSMiddleware
 
 from db import close_db, get_db
-from routes import auth_routes, projects, reservations, dashboard, audit
+from routes import auth_routes, projects, reservations, dashboard, audit, profile
 from seed import seed_all
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -33,6 +33,7 @@ api_router.include_router(projects.router)
 api_router.include_router(reservations.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(audit.router)
+api_router.include_router(profile.router)
 
 app.include_router(api_router)
 
@@ -53,6 +54,8 @@ async def on_startup():
     await db.reservations.create_index("client_id")
     await db.reservations.create_index("property_id")
     await db.audit_logs.create_index("at")
+    await db.messages.create_index("client_id")
+    await db.messages.create_index("created_at")
     await seed_all()
     logger.info("BEG Estates API ready (seed complete)")
 

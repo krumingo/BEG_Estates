@@ -23,6 +23,8 @@ import ClientReservations from "./pages/client/ClientReservations";
 import ClientPayments from "./pages/client/ClientPayments";
 import ClientDocuments from "./pages/client/ClientDocuments";
 import ClientUpdates from "./pages/client/ClientUpdates";
+import ClientProfile from "./pages/client/ClientProfile";
+import ClientMessages from "./pages/client/ClientMessages";
 
 // Admin
 import AdminDashboard, { AdminLayout } from "./pages/admin/AdminDashboard";
@@ -68,6 +70,8 @@ function App() {
                             <Route path="payments" element={<ClientPayments />} />
                             <Route path="documents" element={<ClientDocuments />} />
                             <Route path="updates" element={<ClientUpdates />} />
+                            <Route path="profile" element={<ClientProfile />} />
+                            <Route path="messages" element={<ClientMessages />} />
                         </Route>
 
                         {/* Admin */}

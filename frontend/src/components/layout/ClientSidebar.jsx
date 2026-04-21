@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
-import { Home, CalendarClock, Wallet, FileText, LogOut, Newspaper } from "lucide-react";
+import { Home, CalendarClock, Wallet, FileText, LogOut, Newspaper, User, MessageSquare } from "lucide-react";
 import { useAuth } from "../../lib/auth";
 
 const NAV = [
@@ -9,6 +9,8 @@ const NAV = [
     { to: "/portal/payments", label: "Плащания", icon: Wallet, id: "client-nav-payments" },
     { to: "/portal/documents", label: "Документи", icon: FileText, id: "client-nav-documents" },
     { to: "/portal/updates", label: "Прогрес по проекта", icon: Newspaper, id: "client-nav-updates" },
+    { to: "/portal/messages", label: "Кореспонденция", icon: MessageSquare, id: "client-nav-messages" },
+    { to: "/portal/profile", label: "Профил", icon: User, id: "client-nav-profile" },
 ];
 
 export default function ClientSidebar() {
