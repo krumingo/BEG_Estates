@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 
 from auth.dependencies import require_staff, get_current_user
+from services.snapshots import create_prechange_snapshot
 from constants import (
     PUBLIC_VISIBLE_STATUSES,
     INTERNAL_STATUSES,
@@ -283,6 +284,18 @@ async def create_property(payload: PropertyCreate, user=Depends(require_staff())
     base_price = payload.base_price
     list_price = payload.list_price if payload.list_price is not None else base_price
 
+    try:
+        snap = await create_prechange_snapshot(
+            domain="properties",
+            trigger_action="property_create",
+            actor_id=user["id"],
+            project_id=payload.project_id,
+            entity_scope=f"code:{payload.code}",
+            scope_queries={"properties": {"project_id": payload.project_id, "code": payload.code}},
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=f"Snapshot failed: {e}")
+
     doc = {
         "id": str(uuid.uuid4()),
         "project_id": payload.project_id,
@@ -317,7 +330,7 @@ async def create_property(payload: PropertyCreate, user=Depends(require_staff())
     await db.properties.insert_one(doc)
     await log_action(
         user["id"], "property_create", "property", doc["id"],
-        {"code": doc["code"], "project_id": doc["project_id"]},
+        {"code": doc["code"], "project_id": doc["project_id"], "snapshot_id": snap["id"]},
     )
     doc.pop("_id", None)
     return doc
@@ -387,6 +400,17 @@ async def update_property(
     new_status = changes.get("status")
 
     if changes:
+        try:
+            await create_prechange_snapshot(
+                domain="properties",
+                trigger_action="property_update",
+                actor_id=user["id"],
+                project_id=existing.get("project_id"),
+                entity_scope=f"property:{property_id}",
+                scope_queries={"properties": {"id": property_id}},
+            )
+        except RuntimeError as e:
+            raise HTTPException(status_code=500, detail=f"Snapshot failed: {e}")
         await db.properties.update_one({"id": property_id}, {"$set": changes})
 
     # record status change consistently with status-only endpoint
@@ -818,6 +842,22 @@ async def update_property_finance_plan(
                 status_code=400, detail="Купувачът принадлежи на друг проект"
             )
 
+    # Mandatory snapshot before destructive replace of the plan + installments.
+    try:
+        await create_prechange_snapshot(
+            domain="payment_plans",
+            trigger_action="finance_plan_update",
+            actor_id=user["id"],
+            project_id=prop.get("project_id"),
+            entity_scope=f"property:{property_id}",
+            scope_queries={
+                "payment_plans": {"property_id": property_id},
+                "payment_installments": {"property_id": property_id},
+            },
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=f"Snapshot failed: {e}")
+
     # 1. Patch property financial fields (+ optional buyer reassignment)
     prop_changes: dict = {
         "final_contract_price": float(payload.final_contract_price or 0),
@@ -891,6 +931,20 @@ async def record_property_payment(
     prop = await db.properties.find_one({"id": property_id}, {"_id": 0, "id": 1, "buyer_id": 1})
     if not prop:
         raise HTTPException(status_code=404, detail="Имотът не е намерен")
+
+    try:
+        await create_prechange_snapshot(
+            domain="payments",
+            trigger_action="property_payment_record",
+            actor_id=user["id"],
+            entity_scope=f"property:{property_id}",
+            scope_queries={
+                "payments": {"property_id": property_id},
+                "payment_installments": {"property_id": property_id},
+            },
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=f"Snapshot failed: {e}")
 
     now_iso = datetime.now(timezone.utc).isoformat()
     payment_doc = {
@@ -1085,6 +1139,18 @@ async def upsert_floor_plan(
                 status_code=400,
                 detail=f"Имотът {u.property_id} е на етаж {prop.get('floor')}, не {floor}",
             )
+
+    try:
+        await create_prechange_snapshot(
+            domain="floor_plans",
+            trigger_action="floor_plan_save",
+            actor_id=user["id"],
+            project_id=project_id,
+            entity_scope=f"floor:{floor}",
+            scope_queries={"floor_plans": {"project_id": project_id, "floor": int(floor)}},
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=f"Snapshot failed: {e}")
 
     now_iso = datetime.now(timezone.utc).isoformat()
     doc = {

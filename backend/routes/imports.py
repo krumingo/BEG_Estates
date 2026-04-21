@@ -17,6 +17,7 @@ from auth.dependencies import require_staff
 from db import get_db
 from routes.audit import log_action
 from services.document_import import analyze_files, _render_page_thumbnail
+from services.snapshots import create_prechange_snapshot
 
 router = APIRouter(tags=["imports"])
 
@@ -248,6 +249,19 @@ async def apply_session(session_id: str, user=Depends(require_staff())):
     if not project:
         raise HTTPException(status_code=404, detail="Проектът не е намерен")
 
+    # Mandatory pre-change snapshot — covers both properties and buyers for this project.
+    try:
+        snap = await create_prechange_snapshot(
+            domain="imports",
+            trigger_action="import_apply",
+            actor_id=user["id"],
+            project_id=project_id,
+            entity_scope=f"session:{session_id}",
+            notes=f"Pre-change snapshot for import session {session_id}",
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=f"Snapshot failed: {e}")
+
     applied_units = 0
     created_units = 0
     applied_buyers = 0
@@ -339,6 +353,7 @@ async def apply_session(session_id: str, user=Depends(require_staff())):
         "applied_buyers": applied_buyers,
         "created_buyers": created_buyers,
         "skipped": skipped,
+        "prechange_snapshot_id": snap["id"],
     }
     await db.import_sessions.update_one(
         {"id": session_id},

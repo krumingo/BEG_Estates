@@ -15,6 +15,7 @@ from constants import (
 from db import get_db
 from models import ReservationCreate, ReservationExtendRequest, ReservationConvertDepositRequest
 from routes.audit import log_action
+from services.snapshots import create_prechange_snapshot
 
 router = APIRouter(prefix="/reservations", tags=["reservations"])
 
@@ -116,6 +117,23 @@ async def create_reservation(payload: ReservationCreate, user: dict = Depends(ge
 
     days = int(os.environ.get("RESERVATION_EXPIRY_DAYS", "7"))
     now = datetime.now(timezone.utc)
+
+    # Mandatory pre-change snapshot — aborts the write on failure.
+    try:
+        snap = await create_prechange_snapshot(
+            domain="reservations",
+            trigger_action="reservation_create",
+            actor_id=user["id"],
+            project_id=prop.get("project_id"),
+            entity_scope=f"property:{payload.property_id}",
+            scope_queries={
+                "properties": {"id": payload.property_id},
+                "reservations": {"property_id": payload.property_id},
+            },
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=f"Snapshot failed: {e}")
+
     reservation = {
         "id": str(uuid.uuid4()),
         "property_id": payload.property_id,
@@ -127,6 +145,7 @@ async def create_reservation(payload: ReservationCreate, user: dict = Depends(ge
         "created_at": now.isoformat(),
         "expires_at": (now + timedelta(days=days)).isoformat(),
         "created_by": user["id"],
+        "prechange_snapshot_id": snap["id"],
     }
     await db.reservations.insert_one(reservation)
 
@@ -138,7 +157,7 @@ async def create_reservation(payload: ReservationCreate, user: dict = Depends(ge
     )
     await log_action(
         user["id"], "reservation_create", "reservation", reservation["id"],
-        {"type": payload.reservation_type, "client_id": client_id, "amount": amount},
+        {"type": payload.reservation_type, "client_id": client_id, "amount": amount, "snapshot_id": snap["id"]},
     )
     reservation.pop("_id", None)
     return reservation
@@ -152,6 +171,19 @@ async def release_reservation(reservation_id: str, user: dict = Depends(require_
         raise HTTPException(status_code=404, detail="Резервацията не е намерена")
     if r["status"] != "active":
         raise HTTPException(status_code=400, detail="Резервацията не е активна")
+    try:
+        await create_prechange_snapshot(
+            domain="reservations",
+            trigger_action="reservation_release",
+            actor_id=user["id"],
+            entity_scope=f"reservation:{reservation_id}",
+            scope_queries={
+                "reservations": {"id": reservation_id},
+                "properties": {"id": r["property_id"]},
+            },
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=f"Snapshot failed: {e}")
     await db.reservations.update_one(
         {"id": reservation_id},
         {"$set": {"status": "cancelled", "cancelled_at": datetime.now(timezone.utc).isoformat()}},
@@ -178,6 +210,16 @@ async def extend_reservation(
 
     old_expiry = datetime.fromisoformat(r["expires_at"])
     new_expiry = old_expiry + timedelta(days=payload.days)
+    try:
+        await create_prechange_snapshot(
+            domain="reservations",
+            trigger_action="reservation_extend",
+            actor_id=user["id"],
+            entity_scope=f"reservation:{reservation_id}",
+            scope_queries={"reservations": {"id": reservation_id}, "properties": {"id": r["property_id"]}},
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=f"Snapshot failed: {e}")
     await db.reservations.update_one(
         {"id": reservation_id},
         {"$set": {
@@ -212,6 +254,16 @@ async def convert_to_deposit(
         )
 
     now_iso = datetime.now(timezone.utc).isoformat()
+    try:
+        await create_prechange_snapshot(
+            domain="reservations",
+            trigger_action="reservation_convert_to_deposit",
+            actor_id=user["id"],
+            entity_scope=f"reservation:{reservation_id}",
+            scope_queries={"reservations": {"id": reservation_id}, "properties": {"id": r["property_id"]}},
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=f"Snapshot failed: {e}")
     updates = {
         "reservation_type": "deposit",
         "amount": payload.amount,
