@@ -35,6 +35,7 @@ import AdminClients from "./pages/admin/AdminClients";
 import AdminInquiries from "./pages/admin/AdminInquiries";
 import AdminAudit from "./pages/admin/AdminAudit";
 import AdminFloorPlans from "./pages/admin/AdminFloorPlans";
+import AdminImportDocs from "./pages/admin/AdminImportDocs";
 
 import NotFound from "./pages/NotFound";
 
@@ -88,6 +89,7 @@ function App() {
                             <Route path="projects" element={<AdminProjects />} />
                             <Route path="properties" element={<AdminProperties />} />
                             <Route path="floor-plans" element={<AdminFloorPlans />} />
+                            <Route path="import-docs" element={<AdminImportDocs />} />
                             <Route path="reservations" element={<AdminReservations />} />
                             <Route path="clients" element={<AdminClients />} />
                             <Route path="inquiries" element={<AdminInquiries />} />

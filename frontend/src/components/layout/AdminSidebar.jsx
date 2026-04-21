@@ -9,6 +9,7 @@ import {
     Receipt,
     ClipboardList,
     Map,
+    UploadCloud,
     LogOut,
 } from "lucide-react";
 import { useAuth } from "../../lib/auth";
@@ -19,6 +20,7 @@ const NAV = [
     { to: "/admin/projects", label: "Проекти", icon: Building2, id: "admin-nav-projects" },
     { to: "/admin/properties", label: "Имоти", icon: Home, id: "admin-nav-properties" },
     { to: "/admin/floor-plans", label: "Етажни схеми", icon: Map, id: "admin-nav-floor-plans" },
+    { to: "/admin/import-docs", label: "AI Import", icon: UploadCloud, id: "admin-nav-import" },
     { to: "/admin/reservations", label: "Резервации", icon: CalendarClock, id: "admin-nav-reservations" },
     { to: "/admin/clients", label: "Клиенти", icon: Users, id: "admin-nav-clients" },
     { to: "/admin/inquiries", label: "Запитвания", icon: Receipt, id: "admin-nav-inquiries" },

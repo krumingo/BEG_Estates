@@ -1,17 +1,18 @@
 # BEG Estates / EstateFlow — Product Requirements Document
 
-**Last updated:** 2026-04-21 (iteration 8)
-**Status:** Iteration 8 — AI-assisted contour detection for floor plans (v0.8)
+**Last updated:** 2026-04-21 (iteration 9)
+**Status:** Iteration 9 — AI-assisted PDF import pipeline with admin review (v0.9)
 
 ## Iterations
-- **v0.1 (2026-04-17)** — initial scaffold, 3-zone layout, generic demo project "Яна"
-- **v0.2 (2026-04-17)** — real project seed "BEG Estates / Хаджи Димитър", normalized status model, admin-only buyer layer
-- **v0.3 (2026-04-18)** — admin projects/properties CRUD, reservation extend & convert-to-deposit, admin reserve-from-property dialog
-- **v0.4 (2026-04-20)** — per-property finance/deal panel (plan + installments + payments + summary)
-- **v0.5 (2026-04-20)** — RZP pricing metrics & forecast margin (per-property + portfolio), compensation-aware
-- **v0.6 (2026-04-21)** — client profile + contact completeness + flat client↔admin messaging
-- **v0.7 (2026-04-21)** — admin floor-plan mapping + public clickable floor-plan overlay
-- **v0.8 (2026-04-21)** — AI-assisted contour detection (OpenCV + Tesseract bul+eng) with admin-review workflow; final save still goes through the existing PUT endpoint (never revenue, but its raw_area participates in the *including compensation area* scenario)
+- **v0.1 (2026-04-17)** — initial scaffold
+- **v0.2 (2026-04-17)** — real project seed, normalized statuses, buyer layer
+- **v0.3 (2026-04-18)** — admin CRUD + reservation actions
+- **v0.4 (2026-04-20)** — per-property finance panel
+- **v0.5 (2026-04-20)** — RZP metrics & forecast margin (portfolio-aware)
+- **v0.6 (2026-04-21)** — client profile + contact completeness + messaging
+- **v0.7 (2026-04-21)** — admin floor-plan mapping + public overlay
+- **v0.8 (2026-04-21)** — AI-assisted contour detection for floor plans
+- **v0.9 (2026-04-21)** — AI-assisted PDF import pipeline: multi-file upload → classify → extract → review → apply. Writes only after explicit admin confirmation. (never revenue, but its raw_area participates in the *including compensation area* scenario)
 
 ## Original problem statement
 Modern web SaaS/CRM for selling new-construction real estate in Bulgaria.
