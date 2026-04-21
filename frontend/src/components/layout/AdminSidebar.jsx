@@ -8,6 +8,7 @@ import {
     Users,
     Receipt,
     ClipboardList,
+    Map,
     LogOut,
 } from "lucide-react";
 import { useAuth } from "../../lib/auth";
@@ -17,6 +18,7 @@ const NAV = [
     { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true, id: "admin-nav-dashboard" },
     { to: "/admin/projects", label: "Проекти", icon: Building2, id: "admin-nav-projects" },
     { to: "/admin/properties", label: "Имоти", icon: Home, id: "admin-nav-properties" },
+    { to: "/admin/floor-plans", label: "Етажни схеми", icon: Map, id: "admin-nav-floor-plans" },
     { to: "/admin/reservations", label: "Резервации", icon: CalendarClock, id: "admin-nav-reservations" },
     { to: "/admin/clients", label: "Клиенти", icon: Users, id: "admin-nav-clients" },
     { to: "/admin/inquiries", label: "Запитвания", icon: Receipt, id: "admin-nav-inquiries" },

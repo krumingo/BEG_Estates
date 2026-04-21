@@ -5,6 +5,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
+from pydantic import BaseModel, Field, field_validator
+
 from auth.dependencies import require_staff, get_current_user
 from constants import (
     PUBLIC_VISIBLE_STATUSES,
@@ -941,3 +943,165 @@ async def record_property_payment(
         },
     )
     return await property_finance_summary(property_id, None, user)  # type: ignore[arg-type]
+
+
+# ---------- Floor plans ----------
+class FloorPlanUnitInput(BaseModel):
+    property_id: str
+    x: float = Field(ge=0)
+    y: float = Field(ge=0)
+    width: float = Field(gt=0)
+    height: float = Field(gt=0)
+    label_x: Optional[float] = None
+    label_y: Optional[float] = None
+
+
+class FloorPlanUpdate(BaseModel):
+    plan_image_url: str
+    units: list[FloorPlanUnitInput] = Field(default_factory=list)
+
+    @field_validator("plan_image_url")
+    @classmethod
+    def _url_non_empty(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("plan_image_url е задължителен")
+        return v
+
+
+def _public_unit(u: dict, prop_by_id: dict) -> Optional[dict]:
+    prop = prop_by_id.get(u.get("property_id"))
+    if not prop:
+        return None
+    if prop.get("status") in INTERNAL_STATUSES:
+        return None
+    return {
+        "property_id": prop["id"],
+        "code": prop.get("code"),
+        "rooms": prop.get("rooms"),
+        "status": prop.get("status"),
+        "x": u.get("x"),
+        "y": u.get("y"),
+        "width": u.get("width"),
+        "height": u.get("height"),
+        "label_x": u.get("label_x"),
+        "label_y": u.get("label_y"),
+    }
+
+
+@router.get("/projects/{project_id}/floor-plans")
+async def list_floor_plans(project_id: str, request: Request):
+    db = get_db()
+    plans = (
+        await db.floor_plans.find({"project_id": project_id}, {"_id": 0})
+        .sort("floor", 1)
+        .to_list(200)
+    )
+    is_staff = await _is_staff(request)
+    if is_staff:
+        return plans
+
+    # public view — enrich units with public-safe property fields, strip internals
+    prop_ids = [u.get("property_id") for p in plans for u in (p.get("units") or [])]
+    props = (
+        await db.properties.find({"id": {"$in": prop_ids}}, {"_id": 0}).to_list(2000)
+        if prop_ids
+        else []
+    )
+    prop_by_id = {p["id"]: p for p in props}
+    out = []
+    for p in plans:
+        safe_units = [u for u in (_public_unit(u, prop_by_id) for u in (p.get("units") or [])) if u]
+        out.append(
+            {
+                "project_id": p["project_id"],
+                "floor": p["floor"],
+                "plan_image_url": p.get("plan_image_url"),
+                "units": safe_units,
+            }
+        )
+    return out
+
+
+@router.get("/projects/{project_id}/floor-plan-public/{floor}")
+async def public_floor_plan(project_id: str, floor: int):
+    db = get_db()
+    plan = await db.floor_plans.find_one(
+        {"project_id": project_id, "floor": floor}, {"_id": 0}
+    )
+    if not plan:
+        raise HTTPException(status_code=404, detail="Няма схема за този етаж")
+    prop_ids = [u.get("property_id") for u in (plan.get("units") or [])]
+    props = (
+        await db.properties.find({"id": {"$in": prop_ids}}, {"_id": 0}).to_list(2000)
+        if prop_ids
+        else []
+    )
+    prop_by_id = {p["id"]: p for p in props}
+    safe_units = [u for u in (_public_unit(u, prop_by_id) for u in (plan.get("units") or [])) if u]
+    return {
+        "project_id": plan["project_id"],
+        "floor": plan["floor"],
+        "plan_image_url": plan.get("plan_image_url"),
+        "units": safe_units,
+    }
+
+
+@router.put("/projects/{project_id}/floor-plans/{floor}")
+async def upsert_floor_plan(
+    project_id: str,
+    floor: int,
+    payload: FloorPlanUpdate,
+    user=Depends(require_staff()),
+):
+    db = get_db()
+    project = await db.projects.find_one({"id": project_id}, {"_id": 0, "id": 1})
+    if not project:
+        raise HTTPException(status_code=404, detail="Проектът не е намерен")
+
+    # Validate all referenced properties belong to this project + floor.
+    seen: set[str] = set()
+    for u in payload.units:
+        if u.property_id in seen:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Дублиран имот в схемата: {u.property_id}",
+            )
+        seen.add(u.property_id)
+        prop = await db.properties.find_one(
+            {"id": u.property_id}, {"_id": 0, "project_id": 1, "floor": 1}
+        )
+        if not prop:
+            raise HTTPException(
+                status_code=400, detail=f"Имотът {u.property_id} не съществува"
+            )
+        if prop.get("project_id") != project_id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Имотът {u.property_id} принадлежи на друг проект",
+            )
+        if int(prop.get("floor") or 0) != int(floor):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Имотът {u.property_id} е на етаж {prop.get('floor')}, не {floor}",
+            )
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": str(uuid.uuid4()),
+        "project_id": project_id,
+        "floor": int(floor),
+        "plan_image_url": payload.plan_image_url,
+        "units": [u.model_dump() for u in payload.units],
+        "updated_at": now_iso,
+        "updated_by": user["id"],
+    }
+    # clean replace for (project_id, floor)
+    await db.floor_plans.delete_many({"project_id": project_id, "floor": int(floor)})
+    await db.floor_plans.insert_one(doc)
+    await log_action(
+        user["id"], "floor_plan_update", "floor_plan", doc["id"],
+        {"project_id": project_id, "floor": floor, "units_count": len(payload.units)},
+    )
+    doc.pop("_id", None)
+    return doc

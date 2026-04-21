@@ -1,15 +1,16 @@
 # BEG Estates / EstateFlow — Product Requirements Document
 
-**Last updated:** 2026-04-21 (iteration 6)
-**Status:** Iteration 6 — client profile + correspondence (v0.6)
+**Last updated:** 2026-04-21 (iteration 7)
+**Status:** Iteration 7 — floor plan mapping + public overlay (v0.7)
 
 ## Iterations
 - **v0.1 (2026-04-17)** — initial scaffold, 3-zone layout, generic demo project "Яна"
 - **v0.2 (2026-04-17)** — real project seed "BEG Estates / Хаджи Димитър", normalized status model, admin-only buyer layer
 - **v0.3 (2026-04-18)** — admin projects/properties CRUD, reservation extend & convert-to-deposit, admin reserve-from-property dialog
-- **v0.4 (2026-04-20)** — per-property finance/deal panel (plan + installments + payments + summary), source of truth = `payment_plans` / `payment_installments` / `payments` keyed by `property_id`
+- **v0.4 (2026-04-20)** — per-property finance/deal panel (plan + installments + payments + summary)
 - **v0.5 (2026-04-20)** — RZP pricing metrics & forecast margin (per-property + portfolio), compensation-aware
-- **v0.6 (2026-04-21)** — client profile + contact completeness + flat client↔admin messaging (never revenue, but its raw_area participates in the *including compensation area* scenario)
+- **v0.6 (2026-04-21)** — client profile + contact completeness + flat client↔admin messaging
+- **v0.7 (2026-04-21)** — admin floor-plan mapping + public clickable floor-plan overlay, compensation/hidden units stripped publicly (never revenue, but its raw_area participates in the *including compensation area* scenario)
 
 ## Original problem statement
 Modern web SaaS/CRM for selling new-construction real estate in Bulgaria.
