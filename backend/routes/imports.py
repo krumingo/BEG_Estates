@@ -16,7 +16,11 @@ from pydantic import BaseModel
 from auth.dependencies import require_staff
 from db import get_db
 from routes.audit import log_action
-from services.document_import import analyze_files, _render_page_thumbnail
+from services.document_import import (
+    analyze_files,
+    _render_page_thumbnail,
+    ALLOWED_DOCUMENT_TYPES,
+)
 from services.snapshots import create_prechange_snapshot
 
 router = APIRouter(tags=["imports"])
@@ -35,6 +39,10 @@ class ReviewPayloadUpdate(BaseModel):
     candidate_units: Optional[list[dict]] = None
     candidate_buyers: Optional[list[dict]] = None
     candidate_floor_plans: Optional[list[dict]] = None
+
+
+class DocumentTypeOverride(BaseModel):
+    document_type: Optional[str] = None  # None изчиства override-а
 
 
 def _public_session(doc: dict) -> dict:
@@ -147,6 +155,7 @@ async def analyze_session(session_id: str, user=Depends(require_staff())):
             "id": f["id"],
             "original_name": f["original_name"],
             "content": path.read_bytes(),
+            "document_type_override": f.get("document_type_override"),
         })
 
     result = analyze_files(file_blobs)
@@ -156,6 +165,10 @@ async def analyze_session(session_id: str, user=Depends(require_staff())):
         if pf:
             f["document_type_guess"] = pf["document_type_guess"]
             f["document_type_guess_confidence"] = pf["document_type_guess_confidence"]
+            f["document_type_applied"] = pf["document_type_applied"]
+            f["extracted_units_count"] = pf["extracted_units_count"]
+            f["extracted_units_by_type"] = pf["extracted_units_by_type"]
+            f["extracted_buyers_count"] = pf["extracted_buyers_count"]
             f["pages_count"] = pf["pages_count"]
 
     await db.import_sessions.update_one(
@@ -196,6 +209,57 @@ async def get_session(session_id: str, _=Depends(require_staff())):
     sess = await db.import_sessions.find_one({"id": session_id}, {"_id": 0})
     if not sess:
         raise HTTPException(status_code=404, detail="Сесията не е намерена")
+    return _public_session(sess)
+
+
+@router.patch("/import-sessions/{session_id}/files/{file_id}/document-type")
+async def set_document_type_override(
+    session_id: str,
+    file_id: str,
+    payload: DocumentTypeOverride,
+    user=Depends(require_staff()),
+):
+    """Ръчен override на document type за конкретен файл в сесията.
+
+    След override-а админът може отново да натисне „Разпознай“, за да се
+    приложат новите правила без re-upload на файла.
+    """
+    db = get_db()
+    sess = await db.import_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not sess:
+        raise HTTPException(status_code=404, detail="Сесията не е намерена")
+    if sess.get("status") == "applied":
+        raise HTTPException(status_code=400, detail="Сесията вече е приложена")
+
+    override = (payload.document_type or "").strip() or None
+    if override is not None and override not in ALLOWED_DOCUMENT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Невалиден document_type. Позволени: {', '.join(ALLOWED_DOCUMENT_TYPES)}",
+        )
+
+    files = sess.get("files", [])
+    file_found = False
+    for f in files:
+        if f["id"] == file_id:
+            if override is None:
+                f.pop("document_type_override", None)
+            else:
+                f["document_type_override"] = override
+            file_found = True
+            break
+    if not file_found:
+        raise HTTPException(status_code=404, detail="Файлът не е намерен в сесията")
+
+    await db.import_sessions.update_one(
+        {"id": session_id},
+        {"$set": {"files": files, "status": "uploaded"}},
+    )
+    await log_action(
+        user["id"], "import_session_set_doc_type", "import_session", session_id,
+        {"file_id": file_id, "document_type": override},
+    )
+    sess = await db.import_sessions.find_one({"id": session_id}, {"_id": 0})
     return _public_session(sess)
 
 

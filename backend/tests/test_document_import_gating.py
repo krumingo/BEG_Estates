@@ -130,3 +130,47 @@ def test_apartment_code_with_prefix_is_accepted():
     m = UNIT_CODE_RE.search("APT.305 | 2 rooms | 85 m2")
     assert m is not None
     assert _unit_code_from_match(m) == "305"
+
+
+def test_document_type_override_beats_ai_guess():
+    """AI класифицира файла като unknown, но админският override го форсира в area_schedule."""
+    text = "inventory\n" + "\n".join(
+        f"APT.{200+i} | 2 rooms | {70+i} m2 | {90+i} m2 | {15000+i*100} EUR"
+        for i in range(5)
+    )
+    blob = _mkpdf(text, "misnamed.pdf")
+
+    # Без override: "misnamed" няма никакви hints → unknown → 0 units
+    result_no = analyze_files([blob])
+    assert result_no["summary"]["candidate_units_count"] == 0
+
+    # С override: forced area_schedule → 5 units
+    blob_over = {**blob, "document_type_override": "area_schedule"}
+    result_yes = analyze_files([blob_over])
+    assert result_yes["summary"]["candidate_units_count"] == 5
+    pf = result_yes["per_file"][0]
+    assert pf["document_type_applied"] == "area_schedule"
+    assert pf["document_type_override"] == "area_schedule"
+    assert pf["extracted_units_count"] == 5
+    assert pf["extracted_units_by_type"]["apartment"] == 5
+
+
+def test_breakdown_by_type_and_per_file():
+    """Summary трябва да носи by_type и sanity_warnings за missing categories."""
+    text = "\n".join(
+        f"APT.{100+i} | 2 rooms | {60+i} m2 | {80+i} m2 | {12000+i*100} EUR"
+        for i in range(18)
+    )
+    blob = {**_mkpdf(text, "Ploshti (1).pdf"), "document_type_override": "area_schedule"}
+    result = analyze_files([blob])
+    by_type = result["summary"]["by_type"]
+    assert by_type["apartment"] == 18
+    assert by_type["parking"] == 0
+    assert by_type["storage"] == 0
+
+    # Sanity warnings — трябва да съдържат missing parking/storage notes
+    warns = result["summary"]["sanity_warnings"]
+    assert any("паркоместа" in w for w in warns)
+    assert any("складове" in w for w in warns)
+    # Apartment-level warning, защото 18 < 15 → не; но total 18 < 45 → да.
+    assert any("непълен" in w.lower() for w in warns)

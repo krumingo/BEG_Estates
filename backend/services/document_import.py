@@ -399,9 +399,17 @@ def _detect_conflicts(units: list[dict], buyers: list[dict]) -> list[dict]:
 
 
 # ---------- orchestrator ----------
-def analyze_files(files: list[dict]) -> dict:
-    """``files`` is a list of {id, original_name, content: bytes}.
+ALLOWED_DOCUMENT_TYPES = (
+    "area_schedule", "pricing", "buyers",
+    "floor_plan", "summary_table", "mixed", "unknown",
+)
+_UNIT_TYPES = ("apartment", "parking", "garage", "storage", "shop")
 
+
+def analyze_files(files: list[dict]) -> dict:
+    """``files`` is a list of {id, original_name, content: bytes, document_type_override?: str}.
+
+    Ако `document_type_override` е зададен, той има приоритет над AI класификацията.
     Returns the full extracted payload ready for the review screen.
     """
     units: list[dict] = []
@@ -414,6 +422,10 @@ def analyze_files(files: list[dict]) -> dict:
         fid = f["id"]
         name = f["original_name"]
         content: bytes = f["content"]
+        override = (f.get("document_type_override") or "").strip() or None
+        if override and override not in ALLOWED_DOCUMENT_TYPES:
+            override = None  # игнорираме невалидни override-и
+
         try:
             pages = _extract_text_per_page(content)
         except Exception as e:
@@ -421,31 +433,25 @@ def analyze_files(files: list[dict]) -> dict:
             continue
 
         full_text = "\n".join(pages)
-        doc_type, dt_conf = classify(name, full_text)
-        per_file.append({
-            "id": fid,
-            "pages_count": len(pages),
-            "document_type_guess": doc_type,
-            "document_type_guess_confidence": dt_conf,
-        })
+        ai_type, ai_conf = classify(name, full_text)
+        doc_type = override if override else ai_type
+
+        units_before = len(units)
+        buyers_before = len(buyers)
 
         if doc_type in ("area_schedule", "pricing", "mixed"):
             units.extend(extract_units_from_area_schedule(full_text, fid))
         if doc_type in ("buyers", "mixed"):
             buyers.extend(extract_buyers(full_text, fid))
         if doc_type == "summary_table":
-            # Summary / „tablица OBSHTO" — не е primary unit source.
-            # Използва се за cross-check, но не генерира кандидати автоматично.
             warnings.append(
-                f"{name}: разпознат като обобщаваща таблица — не се използва като primary inventory източник."
+                f"{name}: обобщаваща таблица — използва се за validation, не генерира units."
             )
         if doc_type == "unknown":
             warnings.append(
-                f"{name}: типът не може да бъде разпознат — ръчно укажете document type, за да се извлекат редове."
+                f"{name}: типът не може да бъде разпознат — ръчно укажете document type и пуснете „Разпознай отново“."
             )
         if doc_type in ("floor_plan", "summary_table", "unknown"):
-            # Floor plans & summary tables не дават inventory rows.
-            # Извличаме само етикети/кодове на страницата за user-оверка.
             for idx, page_text in enumerate(pages):
                 labels = [_unit_code_from_match(m) for m in UNIT_CODE_RE.finditer(page_text)] + [
                     f"{m.group(1)}-{m.group(2)}" for m in PM_CODE_RE.finditer(page_text)
@@ -453,15 +459,38 @@ def analyze_files(files: list[dict]) -> dict:
                 labels = [lbl for lbl in labels if lbl]
                 floor_plans.append({
                     "source_file_id": fid,
-                    "floor": None,  # admin fills this in before using
+                    "floor": None,
                     "page_number": idx + 1,
-                    "preview_image_url": None,  # thumbnail endpoint serves it on demand
+                    "preview_image_url": None,
                     "detected_labels": sorted(set(labels))[:40],
                     "confidence": 0.5 if labels else 0.2,
                     "document_type": doc_type,
                 })
 
+        # Per-file breakdown of what this document contributed.
+        file_units = units[units_before:]
+        file_buyers_count = len(buyers) - buyers_before
+        per_file.append({
+            "id": fid,
+            "pages_count": len(pages),
+            "document_type_guess": ai_type,
+            "document_type_guess_confidence": ai_conf,
+            "document_type_applied": doc_type,
+            "document_type_override": override,
+            "extracted_units_count": len(file_units),
+            "extracted_units_by_type": {
+                t: sum(1 for u in file_units if u.get("property_type") == t)
+                for t in _UNIT_TYPES
+            },
+            "extracted_buyers_count": file_buyers_count,
+        })
+
     conflicts = _detect_conflicts(units, buyers)
+    by_type_totals = {
+        t: sum(1 for u in units if u.get("property_type") == t) for t in _UNIT_TYPES
+    }
+    sanity_warnings = _diagnose_missing(units, buyers, per_file, by_type_totals)
+
     summary = {
         "files_count": len(files),
         "candidate_units_count": len(units),
@@ -469,6 +498,8 @@ def analyze_files(files: list[dict]) -> dict:
         "candidate_floor_plans_count": len(floor_plans),
         "conflicts_count": len(conflicts),
         "unknown_rows_count": sum(1 for u in units if u["confidence"] < 0.45),
+        "by_type": by_type_totals,
+        "sanity_warnings": sanity_warnings,
     }
 
     return {
@@ -482,4 +513,61 @@ def analyze_files(files: list[dict]) -> dict:
     }
 
 
-__all__ = ["analyze_files", "classify", "_render_page_thumbnail"]
+def _diagnose_missing(
+    units: list[dict],
+    buyers: list[dict],
+    per_file: list[dict],
+    by_type: dict[str, int],
+) -> list[str]:
+    """Soft sanity warnings за вероятно непълен import."""
+    out: list[str] = []
+    total = len(units)
+
+    # Практически floor-и: ако видим area_schedule/pricing/mixed, но 0 апартамента → подозрително.
+    primary_files = [
+        pf for pf in per_file
+        if pf.get("document_type_applied") in ("area_schedule", "pricing", "mixed")
+    ]
+    if primary_files and by_type["apartment"] == 0:
+        out.append(
+            "Няма разпознати апартаменти в primary документите — проверете document types."
+        )
+    if primary_files and by_type["parking"] == 0:
+        out.append(
+            "Не са разпознати паркоместа — възможно липсва отделен списък или PM кодовете са в нестандартен формат."
+        )
+    if primary_files and by_type["storage"] == 0:
+        out.append(
+            "Не са разпознати складове — проверете дали в PDF-ите има ред „Склад N“."
+        )
+    if primary_files and by_type["garage"] == 0:
+        out.append(
+            "Не са разпознати гаражи — ако проектът няма гаражи, може да игнорирате това предупреждение."
+        )
+
+    # Scale sanity: малки проекти ≥15 апартамента, общо ≥45 units е типично за ново строителство.
+    if primary_files:
+        if by_type["apartment"] < 15:
+            out.append(
+                f"Разпознати са само {by_type['apartment']} апартамента — очакват се поне 15 за типичен проект."
+            )
+        if total < 45:
+            out.append(
+                f"Общо {total} обекта — вероятно import-ът е непълен. Проверете document types и missing categories."
+            )
+
+    # Info bits for non-primary files
+    for pf in per_file:
+        dt = pf.get("document_type_applied")
+        if dt == "floor_plan":
+            out.append(
+                f"„{pf['id'][:8]}…“ е етажен план — не генерира units (expected)."
+            )
+        elif dt == "summary_table":
+            out.append(
+                f"„{pf['id'][:8]}…“ е обобщителна таблица — validation only."
+            )
+    return out
+
+
+__all__ = ["analyze_files", "classify", "_render_page_thumbnail", "ALLOWED_DOCUMENT_TYPES"]

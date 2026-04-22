@@ -11,7 +11,7 @@ import {
     SelectValue,
 } from "../../components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../../components/ui/tabs";
-import { UploadCloud, Sparkles, CheckCircle2, AlertTriangle, XCircle, FileText } from "lucide-react";
+import { UploadCloud, Sparkles, CheckCircle2, AlertTriangle, XCircle, FileText, Info } from "lucide-react";
 import { toast } from "sonner";
 
 const DOC_LABELS = {
@@ -129,6 +129,21 @@ export default function AdminImportDocs() {
             candidate_buyers: nextBuyers ?? buyers,
         });
     };
+
+    const setDocumentTypeOverride = async (fileId, value) => {
+        if (!session) return;
+        try {
+            const { data } = await api.patch(
+                `/import-sessions/${session.id}/files/${fileId}/document-type`,
+                { document_type: value === "__auto__" ? null : value },
+            );
+            setSession(data);
+            toast.success("Document type обновен — пуснете „Разпознай отново“");
+        } catch (e) {
+            toast.error(formatApiError(e.response?.data?.detail));
+        }
+    };
+
 
     const updateUnit = (idx, field, value) => {
         const next = units.map((u, i) => (i === idx ? { ...u, [field]: value } : u));
@@ -262,7 +277,7 @@ export default function AdminImportDocs() {
                             data-testid="imp-analyze"
                         >
                             <Sparkles className="h-4 w-4 mr-2" />
-                            {analyzing ? "Разпознаване…" : "Разпознай документи"}
+                            {analyzing ? "Разпознаване…" : (session.status === "review_ready" ? "Разпознай отново" : "Разпознай документи")}
                         </Button>
                         {sessionApplied && (
                             <Button variant="outline" onClick={startOver} data-testid="imp-reset">
@@ -279,22 +294,68 @@ export default function AdminImportDocs() {
                         <thead className="bg-stone-50 text-slate-600">
                             <tr>
                                 <th className="p-2 text-left font-medium">Файл</th>
-                                <th className="p-2 text-left font-medium">Разпознат тип</th>
-                                <th className="p-2 text-right font-medium">Страници</th>
+                                <th className="p-2 text-left font-medium">AI guess</th>
+                                <th className="p-2 text-left font-medium">Приложен тип (override)</th>
+                                <th className="p-2 text-right font-medium">Обекти</th>
+                                <th className="p-2 text-right font-medium">Стр.</th>
                                 <th className="p-2 text-right font-medium">Сигурност</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {session.files.map((f) => (
-                                <tr key={f.id} className="border-t hairline">
-                                    <td className="p-2">{f.original_name}</td>
-                                    <td className="p-2 text-slate-600">{DOC_LABELS[f.document_type_guess] || "—"}</td>
-                                    <td className="p-2 text-right">{f.pages_count ?? "—"}</td>
-                                    <td className={`p-2 text-right ${confClass(f.document_type_guess_confidence || 0)}`}>
-                                        {f.document_type_guess_confidence != null ? confBadge(f.document_type_guess_confidence) : "—"}
-                                    </td>
-                                </tr>
-                            ))}
+                            {session.files.map((f) => {
+                                const byType = f.extracted_units_by_type || {};
+                                const appliedHint = [
+                                    byType.apartment ? `${byType.apartment} АП` : null,
+                                    byType.parking ? `${byType.parking} ПМ` : null,
+                                    byType.garage ? `${byType.garage} Г` : null,
+                                    byType.storage ? `${byType.storage} СКЛ` : null,
+                                    byType.shop ? `${byType.shop} МАГ` : null,
+                                ].filter(Boolean).join(" · ");
+                                return (
+                                    <tr key={f.id} className="border-t hairline" data-testid={`imp-file-row-${f.id}`}>
+                                        <td className="p-2 align-middle max-w-xs">
+                                            <div className="truncate">{f.original_name}</div>
+                                            {appliedHint && (
+                                                <div className="text-[10px] text-slate-500 font-mono mt-0.5">{appliedHint}</div>
+                                            )}
+                                        </td>
+                                        <td className="p-2 text-slate-600">{DOC_LABELS[f.document_type_guess] || "—"}</td>
+                                        <td className="p-2">
+                                            <Select
+                                                value={f.document_type_override || "__auto__"}
+                                                onValueChange={(v) => setDocumentTypeOverride(f.id, v)}
+                                                disabled={sessionApplied}
+                                            >
+                                                <SelectTrigger
+                                                    className="h-8 w-44"
+                                                    data-testid={`imp-doc-type-${f.id}`}
+                                                >
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="__auto__">
+                                                        Auto (AI: {DOC_LABELS[f.document_type_guess] || "—"})
+                                                    </SelectItem>
+                                                    <SelectItem value="area_schedule">Квадратури</SelectItem>
+                                                    <SelectItem value="pricing">Цени</SelectItem>
+                                                    <SelectItem value="buyers">Купувачи</SelectItem>
+                                                    <SelectItem value="floor_plan">Етажен план</SelectItem>
+                                                    <SelectItem value="summary_table">Обобщителна таблица</SelectItem>
+                                                    <SelectItem value="mixed">Смесен</SelectItem>
+                                                    <SelectItem value="unknown">Неизвестен</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </td>
+                                        <td className="p-2 text-right font-mono text-xs">
+                                            {f.extracted_units_count ?? "—"}
+                                        </td>
+                                        <td className="p-2 text-right">{f.pages_count ?? "—"}</td>
+                                        <td className={`p-2 text-right ${confClass(f.document_type_guess_confidence || 0)}`}>
+                                            {f.document_type_guess_confidence != null ? confBadge(f.document_type_guess_confidence) : "—"}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>
@@ -303,6 +364,7 @@ export default function AdminImportDocs() {
             {session?.status === "review_ready" || sessionApplied ? (
                 <div className="space-y-6" data-testid="imp-review">
                     <SummaryBar summary={summary} approvedUnits={approvedUnits} approvedBuyers={approvedBuyers} conflicts={conflicts} />
+                    <BreakdownPanel summary={summary} perFile={session.files || []} />
 
                     <Tabs defaultValue="units" className="w-full">
                         <TabsList className="grid grid-cols-3 w-full max-w-2xl" data-testid="imp-tabs">
@@ -376,6 +438,99 @@ function SummaryBar({ summary, approvedUnits, approvedBuyers, conflicts }) {
         </div>
     );
 }
+
+const TYPE_LABELS = {
+    apartment: "Апартаменти",
+    parking: "Паркоместа",
+    garage: "Гаражи",
+    storage: "Складове",
+    shop: "Магазини",
+};
+
+function BreakdownPanel({ summary, perFile }) {
+    const byType = summary.by_type || {};
+    const sanity = summary.sanity_warnings || [];
+    return (
+        <div className="space-y-4" data-testid="imp-breakdown">
+            <div>
+                <div className="overline mb-2 text-slate-500">Breakdown по тип</div>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3" data-testid="imp-breakdown-types">
+                    {Object.entries(TYPE_LABELS).map(([key, label]) => (
+                        <Card
+                            key={key}
+                            label={label}
+                            value={byType[key] ?? 0}
+                            hint={(byType[key] ?? 0) === 0 ? "няма разпознати" : ""}
+                        />
+                    ))}
+                </div>
+            </div>
+
+            {perFile.length > 0 && (
+                <div>
+                    <div className="overline mb-2 text-slate-500">По файл</div>
+                    <div className="rounded-lg border hairline bg-white overflow-x-auto" data-testid="imp-breakdown-files">
+                        <table className="w-full text-xs">
+                            <thead className="bg-stone-50 text-slate-600">
+                                <tr>
+                                    <th className="p-2 text-left font-medium">Файл</th>
+                                    <th className="p-2 text-left font-medium">Приложен тип</th>
+                                    <th className="p-2 text-right font-medium">Обекти</th>
+                                    <th className="p-2 text-right font-medium">Апарт.</th>
+                                    <th className="p-2 text-right font-medium">ПМ</th>
+                                    <th className="p-2 text-right font-medium">Гаражи</th>
+                                    <th className="p-2 text-right font-medium">Складове</th>
+                                    <th className="p-2 text-right font-medium">Магазини</th>
+                                    <th className="p-2 text-right font-medium">Купувачи</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {perFile.map((f) => {
+                                    const b = f.extracted_units_by_type || {};
+                                    return (
+                                        <tr key={f.id} className="border-t hairline">
+                                            <td className="p-2 truncate max-w-xs">{f.original_name}</td>
+                                            <td className="p-2 text-slate-600">
+                                                {DOC_LABELS[f.document_type_applied || f.document_type_guess] || "—"}
+                                            </td>
+                                            <td className="p-2 text-right font-mono">{f.extracted_units_count ?? 0}</td>
+                                            <td className="p-2 text-right font-mono">{b.apartment ?? 0}</td>
+                                            <td className="p-2 text-right font-mono">{b.parking ?? 0}</td>
+                                            <td className="p-2 text-right font-mono">{b.garage ?? 0}</td>
+                                            <td className="p-2 text-right font-mono">{b.storage ?? 0}</td>
+                                            <td className="p-2 text-right font-mono">{b.shop ?? 0}</td>
+                                            <td className="p-2 text-right font-mono">{f.extracted_buyers_count ?? 0}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {sanity.length > 0 && (
+                <div
+                    className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 space-y-1"
+                    data-testid="imp-sanity-warnings"
+                >
+                    <div className="flex items-center gap-2 font-medium">
+                        <Info className="h-4 w-4" /> Diagnosis
+                    </div>
+                    <ul className="list-disc ml-5 space-y-0.5 text-xs">
+                        {sanity.map((w, i) => (
+                            <li key={i} data-testid={`imp-sanity-${i}`}>{w}</li>
+                        ))}
+                    </ul>
+                    <div className="text-[10px] text-amber-800/80 italic pt-1">
+                        Ако някой файл е класифициран грешно — сменете „Приложен тип" в таблицата с файловете и натиснете „Разпознай отново".
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
 
 function Card({ label, value, hint }) {
     return (
