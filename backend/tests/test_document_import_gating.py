@@ -159,6 +159,88 @@ def test_technical_rooms_are_excluded():
     assert len(result["candidate_units"]) == 1
 
 
+def _mkmultipage(pages: list[str], name: str) -> dict:
+    doc = fitz.open()
+    for page_lines in pages:
+        p = doc.new_page()
+        y = 50
+        for ln in page_lines.splitlines():
+            p.insert_text((40, y), ln[:160], fontsize=9)
+            y += 14
+    blob = doc.write()
+    doc.close()
+    return {"id": name, "original_name": name, "content": blob}
+
+
+def test_multipage_floor_plan_extraction_with_floor_guess():
+    """Архитектурен PDF с 6 етажа → 6 pages с floor guess + matched codes."""
+    # Area schedule: 18 apts — същите codes, които ще се появят в плановете
+    apts = (
+        ["101", "102", "103", "104"]
+        + ["201", "202", "203", "204"]
+        + ["301", "302", "303"]
+        + ["401", "402"]
+        + ["501", "502", "503"]
+        + ["601", "602"]
+    )
+    sched = "area schedule\n" + "\n".join(
+        f"APT.{c} | 2 rooms | 80 m2 | 90 m2 | 100000 EUR" for c in apts
+    )
+    sched_blob = {**_mkpdf(sched, "Ploshti.pdf"), "document_type_override": "area_schedule"}
+
+    # Architectural PDF: page-by-page
+    pages = [
+        "Cover\n(само заглавие)",
+        "Legend\n(легенда)",
+        "Етаж 2\n101 102 103 104\n3.45 2.80 4.12",
+        "Етаж 3\n201 202 203 204\n4.10 3.55 2.70",
+        "Етаж 4\n301 302 303\n3.80 2.95",
+        "Етаж 5\n401 402\n4.00 3.20",
+        "Етаж 6\n501 502 503\n3.50 2.85",
+        "Етаж 7\n601 602\n3.30 4.40",
+    ]
+    arch_blob = {**_mkmultipage(pages, "SD-AR-R05.pdf"), "document_type_override": "floor_plan"}
+
+    result = analyze_files([sched_blob, arch_blob])
+
+    fps = result["candidate_floor_plans"]
+    # 8 pages в архитектурния + 0 от schedule-а
+    assert len(fps) == 8
+
+    # Страниците 3..8 трябва да имат floor guess и matched codes
+    by_page = {p["page_number"]: p for p in fps if p["source_file_id"] == "SD-AR-R05.pdf"}
+    assert by_page[3]["detected_floor_guess"] == 2
+    assert set(by_page[3]["matched_unit_codes"]) == {"101", "102", "103", "104"}
+    assert by_page[4]["detected_floor_guess"] == 3
+    assert by_page[5]["detected_floor_guess"] == 4
+    assert by_page[6]["detected_floor_guess"] == 5
+    assert by_page[7]["detected_floor_guess"] == 6
+    assert by_page[8]["detected_floor_guess"] == 7
+
+    # Cover/legend без кодове → no floor guess + warning
+    assert by_page[1]["detected_floor_guess"] is None
+    assert any("не може" in w.lower() for w in by_page[1]["warnings"])
+
+    # Summary metrics
+    s = result["summary"]
+    assert s["floor_plan_pages_total"] == 8
+    assert s["auto_linked_pages"] == 6  # 6-те страници с floor+match
+    assert s["unlinked_pages"] == 2
+    # Всички 18 apt-а от schedule са поставени → unplaced_units == 0
+    assert s["unplaced_units"] == 0
+
+
+def test_floor_guess_from_hundreds_fallback():
+    """Ако няма explicit текст „Етаж N", hundreds-group cluster дава floor."""
+    pages = ["101 102 103 104\n3.45 2.80 4.12"]
+    blob = {**_mkmultipage(pages, "plan.pdf"), "document_type_override": "floor_plan"}
+    result = analyze_files([blob])
+    fp = result["candidate_floor_plans"][0]
+    assert fp["detected_floor_guess"] == 2  # hundreds 1 → floor 2
+    assert fp["floor_guess_confidence"] > 0
+    assert fp["floor_guess_confidence"] < 0.8  # fallback е по-несигурен от explicit
+
+
 def test_apartment_code_with_prefix_is_accepted():
     from services.document_import import UNIT_CODE_RE, _unit_code_from_match
 

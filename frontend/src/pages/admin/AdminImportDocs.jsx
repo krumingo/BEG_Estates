@@ -202,6 +202,7 @@ export default function AdminImportDocs() {
         await api.patch(`/import-sessions/${session.id}/review-payload`, {
             candidate_units: nextUnits ?? units,
             candidate_buyers: nextBuyers ?? buyers,
+            candidate_floor_plans: extracted.candidate_floor_plans || [],
         });
     };
 
@@ -242,6 +243,11 @@ export default function AdminImportDocs() {
     const updateBuyer = (idx, field, value) => {
         const next = buyers.map((b, i) => (i === idx ? { ...b, [field]: value } : b));
         setSession((s) => ({ ...s, extracted_payload: { ...s.extracted_payload, candidate_buyers: next } }));
+    };
+    const updateFloorPlan = (idx, field, value) => {
+        const plans = extracted.candidate_floor_plans || [];
+        const next = plans.map((p, i) => (i === idx ? { ...p, [field]: value } : p));
+        setSession((s) => ({ ...s, extracted_payload: { ...s.extracted_payload, candidate_floor_plans: next } }));
     };
 
     const apply = async () => {
@@ -468,9 +474,10 @@ export default function AdminImportDocs() {
                     />
 
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                        <TabsList className="grid grid-cols-3 w-full max-w-2xl" data-testid="imp-tabs">
+                        <TabsList className="grid grid-cols-4 w-full max-w-3xl" data-testid="imp-tabs">
                             <TabsTrigger value="units" data-testid="imp-tab-units">Обекти ({units.length})</TabsTrigger>
                             <TabsTrigger value="buyers" data-testid="imp-tab-buyers">Купувачи ({buyers.length})</TabsTrigger>
+                            <TabsTrigger value="floors" data-testid="imp-tab-floors">Етажи / Планове ({(extracted.candidate_floor_plans || []).length})</TabsTrigger>
                             <TabsTrigger value="conflicts" data-testid="imp-tab-conflicts">Конфликти ({conflicts.length})</TabsTrigger>
                         </TabsList>
 
@@ -485,6 +492,15 @@ export default function AdminImportDocs() {
                         </TabsContent>
                         <TabsContent value="buyers" className="pt-4">
                             <BuyersTable buyers={buyers} onChange={updateBuyer} disabled={sessionApplied} />
+                        </TabsContent>
+                        <TabsContent value="floors" className="pt-4">
+                            <FloorPlanPagesTable
+                                pages={extracted.candidate_floor_plans || []}
+                                files={session.files || []}
+                                summary={summary}
+                                onChange={updateFloorPlan}
+                                disabled={sessionApplied}
+                            />
                         </TabsContent>
                         <TabsContent value="conflicts" className="pt-4">
                             <ConflictsTable conflicts={conflicts} />
@@ -1107,6 +1123,145 @@ function ConflictsTable({ conflicts }) {
                     ))}
                 </tbody>
             </table>
+        </div>
+    );
+}
+
+
+function FloorPlanPagesTable({ pages, files, summary, onChange, disabled }) {
+    const fileById = React.useMemo(() => {
+        const m = {};
+        for (const f of files) m[f.id] = f;
+        return m;
+    }, [files]);
+
+    if (!pages || pages.length === 0) {
+        return (
+            <div className="text-sm text-slate-500" data-testid="imp-floors-empty">
+                Няма разпознати етажни страници. Качете архитектурен PDF и натиснете „Разпознай отново".
+            </div>
+        );
+    }
+
+    const floorOptions = ["__none__", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"];
+
+    return (
+        <div className="space-y-3" data-testid="imp-floors-panel">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" data-testid="imp-floors-summary">
+                <Card label="Етажни страници" value={summary.floor_plan_pages_total ?? pages.length} />
+                <Card label="Автоматично вързани" value={summary.auto_linked_pages ?? 0} />
+                <Card label="Невързани страници" value={summary.unlinked_pages ?? 0} />
+                <Card
+                    label="Невързани units"
+                    value={summary.unplaced_units ?? 0}
+                    hint={(summary.unplaced_unit_codes || []).slice(0, 6).join(", ")}
+                />
+            </div>
+
+            <div className="rounded-lg border hairline bg-white overflow-x-auto">
+                <table className="w-full text-xs">
+                    <thead className="bg-stone-50 text-slate-600">
+                        <tr>
+                            <th className="p-2 text-left">✓</th>
+                            <th className="p-2 text-left">Файл / стр.</th>
+                            <th className="p-2 text-left">Етаж</th>
+                            <th className="p-2 text-right">Увереност</th>
+                            <th className="p-2 text-left">Matched codes</th>
+                            <th className="p-2 text-left">Detected (+extra)</th>
+                            <th className="p-2 text-left">Предупреждения</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {pages.map((p, i) => {
+                            const fname = fileById[p.source_file_id]?.original_name || p.source_file_id;
+                            const matched = p.matched_unit_codes || [];
+                            const unmatched = p.unmatched_detected_codes || [];
+                            const approved = p.review_status === "approved";
+                            return (
+                                <tr key={i} className="border-t hairline" data-testid={`imp-floor-page-${i}`}>
+                                    <td className="p-2">
+                                        <input
+                                            type="checkbox"
+                                            checked={approved}
+                                            disabled={disabled}
+                                            onChange={(e) => onChange(i, "review_status", e.target.checked ? "approved" : "pending")}
+                                            data-testid={`imp-floor-approve-${i}`}
+                                        />
+                                    </td>
+                                    <td className="p-2">
+                                        <div className="font-mono text-[11px] text-slate-900">{fname}</div>
+                                        <div className="text-[10px] text-slate-500">стр. {p.page_number}</div>
+                                        {p.page_text_excerpt && (
+                                            <div className="text-[10px] text-slate-400 truncate max-w-xs italic">
+                                                {p.page_text_excerpt.slice(0, 60)}…
+                                            </div>
+                                        )}
+                                    </td>
+                                    <td className="p-2">
+                                        <Select
+                                            value={p.floor == null ? "__none__" : String(p.floor)}
+                                            onValueChange={(v) => onChange(i, "floor", v === "__none__" ? null : Number(v))}
+                                            disabled={disabled}
+                                        >
+                                            <SelectTrigger className="h-7 w-20" data-testid={`imp-floor-select-${i}`}>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {floorOptions.map((v) => (
+                                                    <SelectItem key={v} value={v}>
+                                                        {v === "__none__" ? "—" : v}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </td>
+                                    <td className={`p-2 text-right font-semibold ${confClass(p.floor_guess_confidence || 0)}`}>
+                                        {confBadge(p.floor_guess_confidence || 0)}
+                                    </td>
+                                    <td className="p-2">
+                                        {matched.length === 0 ? (
+                                            <span className="text-slate-400 italic">—</span>
+                                        ) : (
+                                            <div className="flex flex-wrap gap-1">
+                                                {matched.slice(0, 10).map((c) => (
+                                                    <span key={c} className="inline-flex rounded bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 font-mono text-[10px] text-emerald-800">
+                                                        {c}
+                                                    </span>
+                                                ))}
+                                                {matched.length > 10 && (
+                                                    <span className="text-[10px] text-slate-500">+{matched.length - 10}</span>
+                                                )}
+                                            </div>
+                                        )}
+                                    </td>
+                                    <td className="p-2">
+                                        {unmatched.length === 0 ? (
+                                            <span className="text-slate-400 italic">—</span>
+                                        ) : (
+                                            <div className="flex flex-wrap gap-1">
+                                                {unmatched.slice(0, 8).map((c) => (
+                                                    <span key={c} className="inline-flex rounded bg-stone-100 border border-stone-200 px-1.5 py-0.5 font-mono text-[10px] text-slate-600">
+                                                        {c}
+                                                    </span>
+                                                ))}
+                                                {unmatched.length > 8 && (
+                                                    <span className="text-[10px] text-slate-500">+{unmatched.length - 8}</span>
+                                                )}
+                                            </div>
+                                        )}
+                                    </td>
+                                    <td className="p-2 text-slate-500 text-[11px]">
+                                        {(p.warnings || []).join(" · ") || "—"}
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+            <div className="text-[11px] text-slate-500 italic">
+                Тези данни са само преглед — няма да бъдат записани в Етажни планове без ръчно потвърждение от Admin → Етажни схеми.
+            </div>
         </div>
     );
 }

@@ -147,6 +147,14 @@ PRICE_RE = re.compile(r"(\d{1,3}(?:[.,\s]\d{3})+(?:[.,]\d{1,2})?|\d{4,8})\s*(л�
 PHONE_RE = re.compile(r"\+?\d[\d\s\-\(\)]{7,}\d")
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
+# Explicit floor hints на архитектурна страница: „Етаж 2", „2 ет.", „2-ри етаж", „floor 3"…
+# Изключваме „кота" / „+3.40" — абсолютни денивелационни марки, които НЕ са етажни номера.
+FLOOR_EXPLICIT_RE = re.compile(
+    r"(?:(?:етаж|ет\.?|floor)\s*[:\-]?\s*(\d{1,2})"
+    r"|(\d{1,2})\s*(?:-(?:ти|ри|ви|и|ий|ият)?)?\s*(?:етаж|ет\.?|floor))",
+    re.I | re.UNICODE,
+)
+
 
 def _unit_code_from_match(m: "re.Match") -> Optional[str]:
     """Extract normalized unit code from a UNIT_CODE_RE match.
@@ -469,20 +477,7 @@ def analyze_files(files: list[dict]) -> dict:
                 f"{name}: типът не може да бъде разпознат — ръчно укажете document type и пуснете „Разпознай отново“."
             )
         if doc_type in ("floor_plan", "summary_table", "unknown"):
-            for idx, page_text in enumerate(pages):
-                labels = [_unit_code_from_match(m) for m in UNIT_CODE_RE.finditer(page_text)] + [
-                    f"{m.group(1)}-{m.group(2)}" for m in PM_CODE_RE.finditer(page_text)
-                ]
-                labels = [lbl for lbl in labels if lbl]
-                floor_plans.append({
-                    "source_file_id": fid,
-                    "floor": None,
-                    "page_number": idx + 1,
-                    "preview_image_url": None,
-                    "detected_labels": sorted(set(labels))[:40],
-                    "confidence": 0.5 if labels else 0.2,
-                    "document_type": doc_type,
-                })
+            floor_plans.extend(_extract_floor_plan_pages(fid, pages, doc_type))
 
         # Per-file breakdown of what this document contributed.
         file_units = units[units_before:]
@@ -508,6 +503,21 @@ def analyze_files(files: list[dict]) -> dict:
     }
     sanity_warnings = _diagnose_missing(units, buyers, per_file, by_type_totals)
 
+    # Global match между floor-plan pages и area-schedule units.
+    unit_codes_all = {u["code"] for u in units if u.get("code")}
+    placed_codes: set = set()
+    linked_pages = 0
+    for page in floor_plans:
+        detected = page.get("detected_unit_codes", [])
+        matched = [c for c in detected if c in unit_codes_all]
+        unmatched = [c for c in detected if c not in unit_codes_all]
+        page["matched_unit_codes"] = matched
+        page["unmatched_detected_codes"] = unmatched
+        placed_codes.update(matched)
+        if page.get("detected_floor_guess") is not None and matched:
+            linked_pages += 1
+    unplaced_units = sorted(unit_codes_all - placed_codes)
+
     summary = {
         "files_count": len(files),
         "candidate_units_count": len(units),
@@ -517,6 +527,11 @@ def analyze_files(files: list[dict]) -> dict:
         "unknown_rows_count": sum(1 for u in units if u["confidence"] < 0.45),
         "by_type": by_type_totals,
         "sanity_warnings": sanity_warnings,
+        "floor_plan_pages_total": len(floor_plans),
+        "auto_linked_pages": linked_pages,
+        "unlinked_pages": len(floor_plans) - linked_pages,
+        "unplaced_units": len(unplaced_units),
+        "unplaced_unit_codes": unplaced_units[:50],
     }
 
     return {
@@ -528,6 +543,92 @@ def analyze_files(files: list[dict]) -> dict:
         "warnings": warnings,
         "summary": summary,
     }
+
+
+def _extract_floor_plan_pages(file_id: str, pages: list[str], doc_type: str) -> list[dict]:
+    """Page-by-page обработка на архитектурен/план PDF.
+
+    За всяка страница извлича detected unit codes, guessing на етажа (от explicit
+    текстов hint или от hundreds-group кластериране на apartment кодовете) и
+    подготвя payload за review (review_status='pending').
+    """
+    out: list[dict] = []
+    for idx, page_text in enumerate(pages):
+        # Apartment кодове (strict: ≥3 цифри) + specialni
+        apt_codes: set[str] = set()
+        for m in UNIT_CODE_RE.finditer(page_text):
+            bare = _unit_code_from_match(m)
+            if bare and bare.isdigit() and 100 <= int(bare) <= 9999:
+                apt_codes.add(bare)
+        pm_codes: list[str] = []
+        for m in PM_CODE_RE.finditer(page_text):
+            prefix = m.group(1).upper()
+            try:
+                num = int(m.group(2))
+            except (TypeError, ValueError):
+                continue
+            if prefix.startswith(("ПМ", "PM", "ПАРКО")):
+                pm_codes.append(f"ПМ-{num:02d}")
+            elif prefix.startswith(("ГАРАЖ", "GARAGE")):
+                pm_codes.append(f"Г-{num}")
+            elif prefix.startswith(("СКЛАД", "STORAGE")):
+                pm_codes.append(f"Склад {num}")
+            elif prefix.startswith(("МАГАЗИН", "SHOP")):
+                pm_codes.append(f"Магазин {num}")
+        detected = sorted(apt_codes) + sorted(set(pm_codes))
+
+        # Floor guess
+        floor_guess = None
+        floor_conf = 0.0
+        warn: list[str] = []
+
+        # 1) Explicit текст („Етаж 3", „3 ет.")
+        explicit: list[int] = []
+        for m in FLOOR_EXPLICIT_RE.finditer(page_text):
+            g = m.group(1) or m.group(2)
+            if g and 0 < int(g) < 50:
+                explicit.append(int(g))
+        if explicit:
+            # Ако се повтаря → още по-сигурно
+            from collections import Counter
+            top, cnt = Counter(explicit).most_common(1)[0]
+            floor_guess = top
+            floor_conf = min(0.95, 0.65 + 0.1 * cnt)
+
+        # 2) Fallback: hundreds-group на apartment кодовете
+        if floor_guess is None and apt_codes:
+            from collections import Counter
+            hundreds = [int(c) // 100 for c in apt_codes if 100 <= int(c) <= 9999]
+            if hundreds:
+                top, cnt = Counter(hundreds).most_common(1)[0]
+                ratio = cnt / len(hundreds)
+                if cnt >= 2 and ratio >= 0.6:
+                    # 1xx → етаж 2 (партер = 1); 2xx → 3; и т.н.
+                    floor_guess = top + 1
+                    floor_conf = round(min(0.75, 0.35 + 0.08 * cnt), 2)
+
+        if floor_guess is None:
+            warn.append("Не може да се определи етажът автоматично")
+        elif floor_conf < 0.5:
+            warn.append("Етажната оценка е с ниска сигурност")
+
+        excerpt = " ".join(page_text.split())[:180]
+        out.append({
+            "source_file_id": file_id,
+            "page_number": idx + 1,
+            "page_text_excerpt": excerpt,
+            "detected_unit_codes": detected,
+            "detected_floor_guess": floor_guess,
+            "floor_guess_confidence": round(floor_conf, 2),
+            "warnings": warn,
+            "document_type": doc_type,
+            # Review-layer props
+            "floor": floor_guess,  # reusable override field
+            "matched_unit_codes": [],
+            "unmatched_detected_codes": [],
+            "review_status": "pending",
+        })
+    return out
 
 
 def _diagnose_missing(
