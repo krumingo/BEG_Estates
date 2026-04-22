@@ -25,11 +25,24 @@ from PIL import Image
 
 
 # ---------- classification ----------
+# Имена, които явно са архитектурни разпределения / планове.
+# Тези файлове не съдържат inventory rows — само размери, callouts, легенди.
+_FLOOR_PLAN_FILENAME_PATTERNS = [
+    "етаж", "floor", "plan", "планировк", "схема", "разпределен",
+    "-ar", "_ar", "sd-ar", "np1", "r05", "r-05", "r06",
+]
+# Филенейм, който е обобщителна / tablица OBSHTO / summary — да не се извличат units
+_SUMMARY_FILENAME_PATTERNS = ["общо", "obsht", "обща", "summary", "total", "swod", "свод"]
+
 _FILENAME_HINTS = [
-    ("floor_plan", ["етаж", "floor", "plan", "планировк", "схема"]),
-    ("buyers", ["купувач", "buyer", "собствен", "owners", "титуляр"]),
-    ("pricing", ["цен", "price", "pric", "списък", "list", "rzp", "рзп"]),
-    ("area_schedule", ["квадрат", "площ", "area", "раздел", "таблиц"]),
+    ("summary_table", _SUMMARY_FILENAME_PATTERNS),
+    ("floor_plan", _FLOOR_PLAN_FILENAME_PATTERNS),
+    ("buyers", ["купувач", "buyer", "собствен", "owners", "титуляр", "kupovach"]),
+    ("pricing", ["цен", "price", "pric", "списък", "list", "rzp", "рзп", "spis"]),
+    ("area_schedule", [
+        "квадрат", "площ", "area", "раздел", "таблиц",
+        "ploshti", "ploshto", "kvadrat", "razdel",
+    ]),
 ]
 _CONTENT_HINTS = [
     ("buyers", ["купувач", "егн", "телефон", "email", "имейл", "@"]),
@@ -61,7 +74,7 @@ def classify(filename: str, text: str) -> tuple[str, float]:
             return top_label, min(0.9, 0.3 + 0.15 * top_score)
 
     # Floor-plan pages tend to have very little text relative to image size
-    if len(tl.strip()) < 120 and ("план" in fl or "plan" in fl or "этаж" in fl):
+    if len(tl.strip()) < 120:
         return "floor_plan", 0.4
 
     return "unknown", 0.0
@@ -110,13 +123,27 @@ def _render_page_thumbnail(blob: bytes, page_index: int, max_width: int = 1200) 
 
 
 # ---------- regexes ----------
-UNIT_CODE_RE = re.compile(r"(?<![A-ZА-Я])(АП\.?\s*|APT\.?\s*|АП\s+)?(\d{2,4}[A-ZА-Я]?)\b", re.I | re.UNICODE)
-PM_CODE_RE = re.compile(r"(ПМ|PM|ГАРАЖ|Г|СКЛАД|С)\s*[-\s\.]*(\d{1,3})", re.I | re.UNICODE)
+# Apartment code: изисква explicit префикс (АП/APT) ИЛИ 3+ цифрен код.
+# Това отхвърля 2-цифрени dimension fragments като "76", "19", "02"
+# от архитектурните планове и summary таблици.
+UNIT_CODE_RE = re.compile(
+    r"(?:(?:АП|APT|AP)\.?\s*(\d{2,4}[A-ZА-Я]?)|(?<![A-ZА-Я\d])(\d{3,4}[A-ZА-Я]?))\b",
+    re.I | re.UNICODE,
+)
+PM_CODE_RE = re.compile(r"(ПМ|PM|ГАРАЖ|СКЛАД)\s*[-\s\.]*(\d{1,3})", re.I | re.UNICODE)
 ROOMS_RE = re.compile(r"(\d)\s*[-\s]*(?:ста(?:и|йн|ен)|стая|rooms?)", re.I)
 AREA_RE = re.compile(r"(\d{1,4}[.,]\d{1,2}|\d{2,4})\s*(?:м²|кв\.?\s*м|м2|sq\.?\s*m|m²)", re.I)
 PRICE_RE = re.compile(r"(\d{1,3}(?:[.,\s]\d{3})+(?:[.,]\d{1,2})?|\d{4,8})\s*(лв|EUR|€|\$)", re.I)
 PHONE_RE = re.compile(r"\+?\d[\d\s\-\(\)]{7,}\d")
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+
+
+def _unit_code_from_match(m: "re.Match") -> Optional[str]:
+    """Extract normalized unit code from a UNIT_CODE_RE match.
+
+    Group 1 = код с явен префикс (АП.101), group 2 = bare 3-4 цифрен код.
+    """
+    return (m.group(1) or m.group(2) or "").upper().replace(" ", "").replace(".", "")
 
 
 def _normalize_code(raw: str) -> str:
@@ -138,14 +165,29 @@ def _to_float(s: str) -> Optional[float]:
 
 # ---------- extraction ----------
 def extract_units_from_area_schedule(text: str, source_file_id: str) -> list[dict]:
-    """Parse rows that look like 'АП.101 | 2 стаи | 95.5 м² | ...' style entries."""
+    """Parse rows that look like 'АП.101 | 2 стаи | 95.5 м² | ...' style entries.
+
+    Hard requirement: редът трябва да съдържа поне един от:
+      - area с explicit unit (м²/кв.м)
+      - price с валута
+      - „N стаи" паттерн
+    Инак dimension fragments от планове се превръщат в fake units.
+    """
     results: list[dict] = []
     for ln, line in enumerate(text.splitlines()):
         s = line.strip()
-        if len(s) < 4:
+        if len(s) < 6:
             continue
-        m_code = UNIT_CODE_RE.search(s)
+
+        # Gate: без area/price/rooms сигнал пропускаме цялата линия.
+        has_area = bool(AREA_RE.search(s))
+        has_price = bool(PRICE_RE.search(s))
+        has_rooms = bool(ROOMS_RE.search(s))
+        if not (has_area or has_price or has_rooms):
+            continue
+
         m_pm = PM_CODE_RE.search(s)
+        m_code = UNIT_CODE_RE.search(s)
         code = None
         property_type = None
         if m_pm:
@@ -154,14 +196,19 @@ def extract_units_from_area_schedule(text: str, source_file_id: str) -> list[dic
             if prefix.startswith(("ПМ", "PM", "ПАРКО")):
                 code = f"ПМ-{int(num):02d}"
                 property_type = "parking"
-            elif prefix.startswith(("ГАРАЖ", "Г")):
+            elif prefix.startswith("ГАРАЖ"):
                 code = f"Г-{int(num)}"
                 property_type = "garage"
-            elif prefix.startswith(("СКЛАД", "С")):
+            elif prefix.startswith("СКЛАД"):
                 code = f"Склад {int(num)}"
                 property_type = "storage"
         elif m_code:
-            code = _normalize_code(m_code.group(2))
+            bare = _unit_code_from_match(m_code)
+            # Reject кодове като само 2 цифри (фалшиви dimension fragments).
+            # UNIT_CODE_RE вече изисква 3+ цифри за bare codes, но осигуряваме отново.
+            if not bare or (bare.isdigit() and len(bare) < 3):
+                continue
+            code = bare
             property_type = "apartment"
         if not code:
             continue
@@ -262,10 +309,10 @@ def extract_buyers(text: str, source_file_id: str) -> list[dict]:
                 num = unit_m.group(2)
                 if prefix.startswith(("ПМ", "PM", "ПАРКО")):
                     linked_unit = f"ПМ-{int(num):02d}"
-                elif prefix.startswith(("ГАРАЖ", "Г")):
+                elif prefix.startswith("ГАРАЖ"):
                     linked_unit = f"Г-{int(num)}"
             else:
-                linked_unit = _normalize_code(unit_m.group(2))
+                linked_unit = _unit_code_from_match(unit_m)
             stripped = stripped.replace(unit_m.group(0), " ")
 
         name = re.sub(r"[\|;,\t]+", " ", stripped).strip()
@@ -382,15 +429,28 @@ def analyze_files(files: list[dict]) -> dict:
             "document_type_guess_confidence": dt_conf,
         })
 
-        if doc_type in ("area_schedule", "pricing", "mixed", "unknown"):
+        if doc_type in ("area_schedule", "pricing", "mixed"):
             units.extend(extract_units_from_area_schedule(full_text, fid))
-        if doc_type in ("buyers", "mixed", "unknown"):
+        if doc_type in ("buyers", "mixed"):
             buyers.extend(extract_buyers(full_text, fid))
-        if doc_type == "floor_plan":
+        if doc_type == "summary_table":
+            # Summary / „tablица OBSHTO" — не е primary unit source.
+            # Използва се за cross-check, но не генерира кандидати автоматично.
+            warnings.append(
+                f"{name}: разпознат като обобщаваща таблица — не се използва като primary inventory източник."
+            )
+        if doc_type == "unknown":
+            warnings.append(
+                f"{name}: типът не може да бъде разпознат — ръчно укажете document type, за да се извлекат редове."
+            )
+        if doc_type in ("floor_plan", "summary_table", "unknown"):
+            # Floor plans & summary tables не дават inventory rows.
+            # Извличаме само етикети/кодове на страницата за user-оверка.
             for idx, page_text in enumerate(pages):
-                labels = [m.group(2) for m in UNIT_CODE_RE.finditer(page_text)] + [
+                labels = [_unit_code_from_match(m) for m in UNIT_CODE_RE.finditer(page_text)] + [
                     f"{m.group(1)}-{m.group(2)}" for m in PM_CODE_RE.finditer(page_text)
                 ]
+                labels = [lbl for lbl in labels if lbl]
                 floor_plans.append({
                     "source_file_id": fid,
                     "floor": None,  # admin fills this in before using
@@ -398,6 +458,7 @@ def analyze_files(files: list[dict]) -> dict:
                     "preview_image_url": None,  # thumbnail endpoint serves it on demand
                     "detected_labels": sorted(set(labels))[:40],
                     "confidence": 0.5 if labels else 0.2,
+                    "document_type": doc_type,
                 })
 
     conflicts = _detect_conflicts(units, buyers)

@@ -19,6 +19,7 @@ const DOC_LABELS = {
     pricing: "Цени",
     buyers: "Купувачи",
     floor_plan: "Етажен план",
+    summary_table: "Обобщителна таблица",
     mixed: "Смесен",
     unknown: "Неизвестен",
 };
