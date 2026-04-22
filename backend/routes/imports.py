@@ -288,6 +288,168 @@ async def update_review_payload(
     return _public_session(sess)
 
 
+@router.get("/import-sessions/{session_id}/apply-diff")
+async def apply_diff(session_id: str, _=Depends(require_staff())):
+    """Dry-run preview: какво ще се създаде / update-не / skip-не, БЕЗ write.
+
+    Същата логика на matching както `apply`, но не пише в базата.
+    """
+    db = get_db()
+    sess = await db.import_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not sess:
+        raise HTTPException(status_code=404, detail="Сесията не е намерена")
+    extracted = sess.get("extracted_payload") or {}
+    project_id = sess["project_id"]
+    project = await db.projects.find_one({"id": project_id}, {"_id": 0, "id": 1, "name": 1})
+    if not project:
+        raise HTTPException(status_code=404, detail="Проектът не е намерен")
+
+    to_create_props: list[dict] = []
+    to_update_props: list[dict] = []
+    to_skip: list[dict] = []
+    to_create_buyers: list[dict] = []
+    to_update_buyers: list[dict] = []
+
+    approved_codes: set[str] = set()
+    for u in extracted.get("candidate_units", []) or []:
+        if not u.get("approved"):
+            to_skip.append({
+                "kind": "unit",
+                "code": u.get("code"),
+                "reason": "не е одобрен",
+            })
+            continue
+        code = (u.get("code") or "").strip()
+        if not code:
+            to_skip.append({"kind": "unit", "code": None, "reason": "липсва code"})
+            continue
+        approved_codes.add(code)
+
+        existing = await db.properties.find_one(
+            {"project_id": project_id, "code": code},
+            {"_id": 0, "id": 1, "code": 1, "property_type": 1, "floor": 1,
+             "rooms": 1, "area_total": 1, "list_price": 1, "status": 1},
+        )
+        desired = {
+            "code": code,
+            "property_type": u.get("property_type"),
+            "floor": u.get("floor"),
+            "rooms": u.get("rooms"),
+            "area_total": u.get("area_total"),
+            "list_price": u.get("start_price_basis"),
+            "status": u.get("status_guess") or "available",
+        }
+        desired = {k: v for k, v in desired.items() if v is not None}
+        if existing:
+            changed_fields: list[dict] = []
+            for k, new_val in desired.items():
+                old_val = existing.get(k)
+                if old_val != new_val:
+                    changed_fields.append({"field": k, "from": old_val, "to": new_val})
+            if changed_fields:
+                to_update_props.append({
+                    "code": code,
+                    "existing_id": existing["id"],
+                    "property_type": u.get("property_type"),
+                    "changed_fields": changed_fields,
+                })
+            else:
+                to_skip.append({
+                    "kind": "unit",
+                    "code": code,
+                    "reason": "вече съществува, без промени",
+                })
+        else:
+            to_create_props.append({
+                "code": code,
+                "property_type": u.get("property_type"),
+                "area_total": u.get("area_total"),
+                "list_price": u.get("start_price_basis"),
+                "floor": u.get("floor"),
+                "rooms": u.get("rooms"),
+            })
+
+    for b in extracted.get("candidate_buyers", []) or []:
+        if not b.get("approved"):
+            to_skip.append({
+                "kind": "buyer",
+                "code": b.get("name"),
+                "reason": "не е одобрен",
+            })
+            continue
+        name = (b.get("name") or "").strip()
+        if not name or name == "(неизвестен)":
+            to_skip.append({"kind": "buyer", "code": None, "reason": "липсва име"})
+            continue
+        existing = await db.buyers.find_one(
+            {"project_id": project_id, "name": name},
+            {"_id": 0, "id": 1, "name": 1, "phone": 1, "email": 1},
+        )
+        link_note = None
+        linked = b.get("linked_unit_code")
+        if linked:
+            if linked in approved_codes:
+                link_note = f"ще се свърже с '{linked}' (от тази сесия)"
+            else:
+                prop = await db.properties.find_one(
+                    {"project_id": project_id, "code": linked}, {"_id": 0, "id": 1}
+                )
+                link_note = (
+                    f"ще се свърже със съществуващ '{linked}'"
+                    if prop else f"непознат code '{linked}' (ще остане несвързан)"
+                )
+        if existing:
+            changed_fields = []
+            if b.get("phone") and b["phone"] != existing.get("phone"):
+                changed_fields.append(
+                    {"field": "phone", "from": existing.get("phone"), "to": b["phone"]}
+                )
+            if b.get("email") and b["email"] != existing.get("email"):
+                changed_fields.append(
+                    {"field": "email", "from": existing.get("email"), "to": b["email"]}
+                )
+            if changed_fields or link_note:
+                to_update_buyers.append({
+                    "name": name,
+                    "existing_id": existing["id"],
+                    "changed_fields": changed_fields,
+                    "link_note": link_note,
+                })
+            else:
+                to_skip.append({
+                    "kind": "buyer", "code": name,
+                    "reason": "вече съществува, без промени",
+                })
+        else:
+            to_create_buyers.append({
+                "name": name,
+                "phone": b.get("phone"),
+                "email": b.get("email"),
+                "link_note": link_note,
+            })
+
+    return {
+        "project_id": project_id,
+        "project_name": project.get("name"),
+        "summary": {
+            "create_properties": len(to_create_props),
+            "update_properties": len(to_update_props),
+            "create_buyers": len(to_create_buyers),
+            "update_buyers": len(to_update_buyers),
+            "skip_total": len(to_skip),
+        },
+        "to_create": {
+            "properties": to_create_props,
+            "buyers": to_create_buyers,
+        },
+        "to_update": {
+            "properties": to_update_props,
+            "buyers": to_update_buyers,
+        },
+        "to_skip": to_skip,
+    }
+
+
 @router.post("/import-sessions/{session_id}/apply")
 async def apply_session(session_id: str, user=Depends(require_staff())):
     db = get_db()

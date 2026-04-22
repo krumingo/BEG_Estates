@@ -124,6 +124,41 @@ def test_unit_code_regex_rejects_bare_two_digit_fragments():
         )
 
 
+def test_garage_storage_shop_extracted_when_in_area_schedule():
+    """GARAGE / STORAGE / SHOP (и кирилицата в real OCR) трябва да се извличат както PM."""
+    # Тестовият PDF шрифт не рендерира кирилица, затова ползваме latin alias-и.
+    # Real OCR текстът с „ГАРАЖ/СКЛАД/МАГАЗИН" минава през същия regex (case-insensitive).
+    text = "\n".join([
+        "GARAGE 1 | 18.0 m2 | 15000 EUR",
+        "GARAGE 2 | 20.0 m2 | 16000 EUR",
+        "STORAGE 1 | 4.5 m2 | 2000 EUR",
+        "STORAGE 12 | 6.0 m2 | 2500 EUR",
+        "SHOP 1 | 85.0 m2 | 90000 EUR",
+    ])
+    blob = {**_mkpdf(text, "pricing.pdf"), "document_type_override": "area_schedule"}
+    result = analyze_files([blob])
+    by_type = result["summary"]["by_type"]
+    assert by_type["garage"] == 2, f"expected 2 garages, got {by_type}"
+    assert by_type["storage"] == 2, f"expected 2 storages, got {by_type}"
+    assert by_type["shop"] == 1, f"expected 1 shop, got {by_type}"
+
+
+def test_technical_rooms_are_excluded():
+    """Технически помещения (techno/machine/pump) не стават inventory."""
+    text = "\n".join([
+        "APT.201 | 2 rooms | 85 m2 | 100 m2 | 120000 EUR",
+        "tehnichno 1 | 15 m2 | 0 EUR",
+        "mashinno pomeshtenie | 8 m2 | 0 EUR",
+        "asansyorna 1 | 5 m2 | 0 EUR",
+    ])
+    blob = {**_mkpdf(text, "pricing.pdf"), "document_type_override": "area_schedule"}
+    result = analyze_files([blob])
+    codes = {u["code"] for u in result["candidate_units"]}
+    # Само апартаментът остава
+    assert "201" in codes
+    assert len(result["candidate_units"]) == 1
+
+
 def test_apartment_code_with_prefix_is_accepted():
     from services.document_import import UNIT_CODE_RE, _unit_code_from_match
 

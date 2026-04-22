@@ -42,6 +42,8 @@ export default function AdminImportDocs() {
     const [uploading, setUploading] = useState(false);
     const [analyzing, setAnalyzing] = useState(false);
     const [applying, setApplying] = useState(false);
+    const [diff, setDiff] = useState(null);
+    const [loadingDiff, setLoadingDiff] = useState(false);
     const inputRef = useRef(null);
 
     useEffect(() => {
@@ -138,9 +140,24 @@ export default function AdminImportDocs() {
                 { document_type: value === "__auto__" ? null : value },
             );
             setSession(data);
+            setDiff(null);
             toast.success("Document type обновен — пуснете „Разпознай отново“");
         } catch (e) {
             toast.error(formatApiError(e.response?.data?.detail));
+        }
+    };
+
+    const loadDiff = async () => {
+        if (!session) return;
+        setLoadingDiff(true);
+        try {
+            await persistReview(); // запазва edits преди diff calc
+            const { data } = await api.get(`/import-sessions/${session.id}/apply-diff`);
+            setDiff(data);
+        } catch (e) {
+            toast.error(formatApiError(e.response?.data?.detail));
+        } finally {
+            setLoadingDiff(false);
         }
     };
 
@@ -385,6 +402,14 @@ export default function AdminImportDocs() {
                     </Tabs>
 
                     {!sessionApplied && (
+                        <ApplyDiffPanel
+                            diff={diff}
+                            loading={loadingDiff}
+                            onLoad={loadDiff}
+                        />
+                    )}
+
+                    {!sessionApplied && (
                         <div className="flex items-center justify-end gap-3 pt-4 border-t hairline">
                             <div className="text-xs text-slate-500 mr-auto">
                                 {hasCritical && (
@@ -530,6 +555,188 @@ function BreakdownPanel({ summary, perFile }) {
         </div>
     );
 }
+
+
+const PROP_TYPE_LABELS = {
+    apartment: "Апарт.",
+    parking: "ПМ",
+    garage: "Гараж",
+    storage: "Склад",
+    shop: "Магазин",
+};
+
+function ApplyDiffPanel({ diff, loading, onLoad }) {
+    const [open, setOpen] = React.useState(false);
+    return (
+        <div className="rounded-lg border hairline bg-white p-4 space-y-3" data-testid="imp-diff-panel">
+            <div className="flex items-center gap-3 flex-wrap">
+                <div className="text-sm font-semibold text-slate-900">Какво ще се промени?</div>
+                <div className="text-xs text-slate-500">
+                    Dry-run preview — не записва нищо в базата.
+                </div>
+                <div className="ml-auto">
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => { onLoad(); setOpen(true); }}
+                        disabled={loading}
+                        data-testid="imp-diff-load"
+                    >
+                        {loading ? "Изчисляване…" : (diff ? "Прекалкулирай" : "Покажи diff")}
+                    </Button>
+                </div>
+            </div>
+
+            {diff && (
+                <>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3" data-testid="imp-diff-summary">
+                        <Card label="Нови имоти" value={diff.summary.create_properties} />
+                        <Card label="Update имоти" value={diff.summary.update_properties} />
+                        <Card label="Нови купувачи" value={diff.summary.create_buyers} />
+                        <Card label="Update купувачи" value={diff.summary.update_buyers} />
+                        <Card label="Пропуснати" value={diff.summary.skip_total} />
+                    </div>
+                    <button
+                        className="text-xs text-slate-600 underline"
+                        onClick={() => setOpen((v) => !v)}
+                        data-testid="imp-diff-toggle"
+                    >
+                        {open ? "Скрий детайли" : "Покажи детайли"}
+                    </button>
+                    {open && (
+                        <div className="space-y-4" data-testid="imp-diff-details">
+                            <DiffSection
+                                title={`Нови имоти (${diff.to_create.properties.length})`}
+                                tone="emerald"
+                            >
+                                {diff.to_create.properties.length === 0 ? (
+                                    <div className="text-xs text-slate-500 italic">—</div>
+                                ) : (
+                                    <ul className="text-xs space-y-0.5">
+                                        {diff.to_create.properties.map((p, i) => (
+                                            <li key={i} className="flex gap-2 items-baseline">
+                                                <span className="font-mono w-20">{p.code}</span>
+                                                <span className="text-slate-500">{PROP_TYPE_LABELS[p.property_type] || p.property_type || "?"}</span>
+                                                {p.area_total && <span className="text-slate-500">{p.area_total} м²</span>}
+                                                {p.list_price && <span className="text-slate-500">{p.list_price} EUR</span>}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </DiffSection>
+                            <DiffSection
+                                title={`Update имоти (${diff.to_update.properties.length})`}
+                                tone="amber"
+                            >
+                                {diff.to_update.properties.length === 0 ? (
+                                    <div className="text-xs text-slate-500 italic">—</div>
+                                ) : (
+                                    <ul className="text-xs space-y-1">
+                                        {diff.to_update.properties.map((p, i) => (
+                                            <li key={i}>
+                                                <div className="flex gap-2 items-baseline">
+                                                    <span className="font-mono w-20">{p.code}</span>
+                                                    <span className="text-slate-500">{PROP_TYPE_LABELS[p.property_type] || p.property_type || "?"}</span>
+                                                </div>
+                                                <ul className="ml-6 text-[11px] text-slate-600">
+                                                    {p.changed_fields.map((f, j) => (
+                                                        <li key={j}>
+                                                            <span className="font-mono">{f.field}:</span>{" "}
+                                                            <span className="line-through text-rose-600">{String(f.from ?? "—")}</span>{" → "}
+                                                            <span className="text-emerald-700">{String(f.to ?? "—")}</span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </DiffSection>
+                            <DiffSection
+                                title={`Нови купувачи (${diff.to_create.buyers.length})`}
+                                tone="emerald"
+                            >
+                                {diff.to_create.buyers.length === 0 ? (
+                                    <div className="text-xs text-slate-500 italic">—</div>
+                                ) : (
+                                    <ul className="text-xs space-y-0.5">
+                                        {diff.to_create.buyers.map((b, i) => (
+                                            <li key={i}>
+                                                <strong>{b.name}</strong>
+                                                {b.phone && <span className="text-slate-500"> · {b.phone}</span>}
+                                                {b.email && <span className="text-slate-500"> · {b.email}</span>}
+                                                {b.link_note && <span className="text-slate-500 italic"> · {b.link_note}</span>}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </DiffSection>
+                            <DiffSection
+                                title={`Update купувачи (${diff.to_update.buyers.length})`}
+                                tone="amber"
+                            >
+                                {diff.to_update.buyers.length === 0 ? (
+                                    <div className="text-xs text-slate-500 italic">—</div>
+                                ) : (
+                                    <ul className="text-xs space-y-1">
+                                        {diff.to_update.buyers.map((b, i) => (
+                                            <li key={i}>
+                                                <strong>{b.name}</strong>
+                                                <ul className="ml-4 text-[11px] text-slate-600">
+                                                    {b.changed_fields.map((f, j) => (
+                                                        <li key={j}>
+                                                            <span className="font-mono">{f.field}:</span>{" "}
+                                                            <span className="line-through text-rose-600">{String(f.from ?? "—")}</span>{" → "}
+                                                            <span className="text-emerald-700">{String(f.to ?? "—")}</span>
+                                                        </li>
+                                                    ))}
+                                                    {b.link_note && <li className="italic text-slate-500">{b.link_note}</li>}
+                                                </ul>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </DiffSection>
+                            <DiffSection
+                                title={`Пропуснати (${diff.to_skip.length})`}
+                                tone="slate"
+                            >
+                                {diff.to_skip.length === 0 ? (
+                                    <div className="text-xs text-slate-500 italic">—</div>
+                                ) : (
+                                    <ul className="text-xs space-y-0.5 max-h-48 overflow-y-auto">
+                                        {diff.to_skip.map((s, i) => (
+                                            <li key={i}>
+                                                <span className="font-mono w-16 inline-block">[{s.kind}]</span>
+                                                {" "}{s.code || "—"}{" "}
+                                                <span className="text-slate-500 italic">· {s.reason}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </DiffSection>
+                        </div>
+                    )}
+                </>
+            )}
+        </div>
+    );
+}
+
+function DiffSection({ title, tone = "slate", children }) {
+    const toneBorder = {
+        emerald: "border-emerald-200 bg-emerald-50/40",
+        amber: "border-amber-200 bg-amber-50/40",
+        slate: "border-slate-200 bg-stone-50",
+    }[tone];
+    return (
+        <div className={`rounded-md border ${toneBorder} p-3`}>
+            <div className="text-xs font-semibold text-slate-800 mb-1.5">{title}</div>
+            {children}
+        </div>
+    );
+}
+
 
 
 function Card({ label, value, hint }) {

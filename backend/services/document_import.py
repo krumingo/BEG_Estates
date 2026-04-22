@@ -130,7 +130,17 @@ UNIT_CODE_RE = re.compile(
     r"(?:(?:АП|APT|AP)\.?\s*(\d{2,4}[A-ZА-Я]?)|(?<![A-ZА-Я\d])(\d{3,4}[A-ZА-Я]?))\b",
     re.I | re.UNICODE,
 )
-PM_CODE_RE = re.compile(r"(ПМ|PM|ГАРАЖ|СКЛАД)\s*[-\s\.]*(\d{1,3})", re.I | re.UNICODE)
+PM_CODE_RE = re.compile(
+    r"(ПМ|PM|ПАРКОМЯСТО|ГАРАЖ|СКЛАД|МАГАЗИН|SHOP|STORAGE|GARAGE)\s*[-\s№\.]*(\d{1,3})",
+    re.I | re.UNICODE,
+)
+# Изключваме non-sale technical rooms от extraction (реален OCR съдържа много от тях).
+EXCLUDED_LINE_RE = re.compile(
+    r"(трафопост|резервоар|машинно|стълбищ|асансьор|коридор|helipad|"
+    r"технич|абонатн|портиерск|вентилац|"
+    r"mashinno|asansyor|tehnichno|tehnich|rezervoar|trafopost)",
+    re.I | re.UNICODE,
+)
 ROOMS_RE = re.compile(r"(\d)\s*[-\s]*(?:ста(?:и|йн|ен)|стая|rooms?)", re.I)
 AREA_RE = re.compile(r"(\d{1,4}[.,]\d{1,2}|\d{2,4})\s*(?:м²|кв\.?\s*м|м2|sq\.?\s*m|m²)", re.I)
 PRICE_RE = re.compile(r"(\d{1,3}(?:[.,\s]\d{3})+(?:[.,]\d{1,2})?|\d{4,8})\s*(лв|EUR|€|\$)", re.I)
@@ -179,6 +189,10 @@ def extract_units_from_area_schedule(text: str, source_file_id: str) -> list[dic
         if len(s) < 6:
             continue
 
+        # Technical/non-sale rooms (трафопост, резервоар, машинно…) → skip.
+        if EXCLUDED_LINE_RE.search(s):
+            continue
+
         # Gate: без area/price/rooms сигнал пропускаме цялата линия.
         has_area = bool(AREA_RE.search(s))
         has_price = bool(PRICE_RE.search(s))
@@ -196,12 +210,15 @@ def extract_units_from_area_schedule(text: str, source_file_id: str) -> list[dic
             if prefix.startswith(("ПМ", "PM", "ПАРКО")):
                 code = f"ПМ-{int(num):02d}"
                 property_type = "parking"
-            elif prefix.startswith("ГАРАЖ"):
+            elif prefix.startswith(("ГАРАЖ", "GARAGE")):
                 code = f"Г-{int(num)}"
                 property_type = "garage"
-            elif prefix.startswith("СКЛАД"):
+            elif prefix.startswith(("СКЛАД", "STORAGE")):
                 code = f"Склад {int(num)}"
                 property_type = "storage"
+            elif prefix.startswith(("МАГАЗИН", "SHOP")):
+                code = f"Магазин {int(num)}"
+                property_type = "shop"
         elif m_code:
             bare = _unit_code_from_match(m_code)
             # Reject кодове като само 2 цифри (фалшиви dimension fragments).
