@@ -54,6 +54,8 @@ export default function AdminImportDocs() {
     const [applying, setApplying] = useState(false);
     const [diff, setDiff] = useState(null);
     const [loadingDiff, setLoadingDiff] = useState(false);
+    const [activeTab, setActiveTab] = useState("units");
+    const [unitsFilter, setUnitsFilter] = useState({ type: null, manualOnly: false });
     const inputRef = useRef(null);
 
     useEffect(() => {
@@ -91,6 +93,16 @@ export default function AdminImportDocs() {
         if (conflictCodes.has(u.code)) return false;
         return true;
     }, [conflictCodes]);
+
+    // Filtered изглед за tab „Обекти" (ползва originalIndex за callbacks).
+    const filteredUnitsView = React.useMemo(() => {
+        const rows = units.map((u, idx) => ({ ...u, _idx: idx }));
+        return rows.filter((u) => {
+            if (unitsFilter.type && u.property_type !== unitsFilter.type) return false;
+            if (unitsFilter.manualOnly && isSafeForBulk(u)) return false;
+            return true;
+        });
+    }, [units, unitsFilter, isSafeForBulk]);
 
     const bulkApproveByType = async (propertyType, approve) => {
         if (!session) return;
@@ -448,18 +460,28 @@ export default function AdminImportDocs() {
                         units={units}
                         isSafeForBulk={isSafeForBulk}
                         onBulkApprove={bulkApproveByType}
+                        onManualReviewClick={(type) => {
+                            setUnitsFilter({ type, manualOnly: true });
+                            setActiveTab("units");
+                        }}
                         disabled={sessionApplied}
                     />
 
-                    <Tabs defaultValue="units" className="w-full">
+                    <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                         <TabsList className="grid grid-cols-3 w-full max-w-2xl" data-testid="imp-tabs">
                             <TabsTrigger value="units" data-testid="imp-tab-units">Обекти ({units.length})</TabsTrigger>
                             <TabsTrigger value="buyers" data-testid="imp-tab-buyers">Купувачи ({buyers.length})</TabsTrigger>
                             <TabsTrigger value="conflicts" data-testid="imp-tab-conflicts">Конфликти ({conflicts.length})</TabsTrigger>
                         </TabsList>
 
-                        <TabsContent value="units" className="pt-4">
-                            <UnitsTable units={units} onChange={updateUnit} disabled={sessionApplied} />
+                        <TabsContent value="units" className="pt-4 space-y-2">
+                            <UnitsFilterBar
+                                filter={unitsFilter}
+                                totalVisible={filteredUnitsView.length}
+                                totalAll={units.length}
+                                onClear={() => setUnitsFilter({ type: null, manualOnly: false })}
+                            />
+                            <UnitsTable units={filteredUnitsView} onChange={updateUnit} disabled={sessionApplied} />
                         </TabsContent>
                         <TabsContent value="buyers" className="pt-4">
                             <BuyersTable buyers={buyers} onChange={updateBuyer} disabled={sessionApplied} />
@@ -532,7 +554,7 @@ function SummaryBar({ summary, approvedUnits, approvedBuyers, conflicts }) {
     );
 }
 
-function BreakdownPanel({ summary, perFile, units, isSafeForBulk, onBulkApprove, disabled }) {
+function BreakdownPanel({ summary, perFile, units, isSafeForBulk, onBulkApprove, onManualReviewClick, disabled }) {
     const byType = summary.by_type || {};
     const sanity = summary.sanity_warnings || [];
 
@@ -566,12 +588,17 @@ function BreakdownPanel({ summary, perFile, units, isSafeForBulk, onBulkApprove,
                                     <div>одобрени: <span className="font-mono">{s.approved}</span></div>
                                     <div>за одобряване: <span className="font-mono">{s.eligibleRemaining}</span></div>
                                     {s.manualRemaining > 0 && (
-                                        <div className="text-amber-700" data-testid={`imp-type-manual-${key}`}>
+                                        <button
+                                            type="button"
+                                            className="text-amber-700 text-left w-full hover:text-amber-900 hover:underline focus:outline-none"
+                                            onClick={() => onManualReviewClick?.(key)}
+                                            data-testid={`imp-type-manual-${key}`}
+                                        >
                                             {s.manualRemaining} за ръчен преглед
                                             <span className="text-[10px] text-amber-600/80 block">
-                                                (ниска сигурност / конфликт)
+                                                (ниска сигурност / конфликт — клик за филтър)
                                             </span>
-                                        </div>
+                                        </button>
                                     )}
                                 </div>
                                 <div className="flex gap-1.5 pt-1">
@@ -860,8 +887,48 @@ function Card({ label, value, hint }) {
     );
 }
 
+function UnitsFilterBar({ filter, totalVisible, totalAll, onClear }) {
+    const hasFilter = !!(filter.type || filter.manualOnly);
+    if (!hasFilter) return null;
+    return (
+        <div
+            className="flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs"
+            data-testid="imp-units-filter-bar"
+        >
+            <span className="text-slate-700 font-medium">Филтър:</span>
+            {filter.type && (
+                <span
+                    className="inline-flex items-center rounded-full bg-white border border-slate-200 px-2 py-0.5 font-mono text-slate-700"
+                    data-testid="imp-units-filter-type"
+                >
+                    Тип: {TYPE_LABELS[filter.type] || filter.type}
+                </span>
+            )}
+            {filter.manualOnly && (
+                <span
+                    className="inline-flex items-center rounded-full bg-white border border-amber-300 px-2 py-0.5 text-amber-800"
+                    data-testid="imp-units-filter-manual"
+                >
+                    Само за ръчен преглед
+                </span>
+            )}
+            <span className="text-slate-500 ml-1">
+                {totalVisible} / {totalAll}
+            </span>
+            <button
+                type="button"
+                className="ml-auto text-slate-600 hover:text-slate-900 underline"
+                onClick={onClear}
+                data-testid="imp-units-filter-clear"
+            >
+                Изчисти филтрите
+            </button>
+        </div>
+    );
+}
+
 function UnitsTable({ units, onChange, disabled }) {
-    if (units.length === 0) return <div className="text-sm text-slate-500">Няма разпознати обекти.</div>;
+    if (units.length === 0) return <div className="text-sm text-slate-500" data-testid="imp-units-empty">Няма обекти за показване при текущите филтри.</div>;
     return (
         <div className="rounded-lg border hairline bg-white overflow-x-auto">
             <table className="w-full text-xs">
@@ -880,23 +947,25 @@ function UnitsTable({ units, onChange, disabled }) {
                     </tr>
                 </thead>
                 <tbody>
-                    {units.map((u, i) => (
-                        <tr key={i} className="border-t hairline" data-testid={`imp-unit-${i}`}>
+                    {units.map((u, i) => {
+                        const idx = u._idx ?? i;
+                        return (
+                        <tr key={idx} className="border-t hairline" data-testid={`imp-unit-${idx}`}>
                             <td className="p-2">
                                 <input
                                     type="checkbox"
                                     checked={!!u.approved}
                                     disabled={disabled}
-                                    onChange={(e) => onChange(i, "approved", e.target.checked)}
-                                    data-testid={`imp-unit-approve-${i}`}
+                                    onChange={(e) => onChange(idx, "approved", e.target.checked)}
+                                    data-testid={`imp-unit-approve-${idx}`}
                                 />
                             </td>
                             <td className="p-2">
                                 <Input className="h-7 w-24" value={u.code || ""} disabled={disabled}
-                                    onChange={(e) => onChange(i, "code", e.target.value)} />
+                                    onChange={(e) => onChange(idx, "code", e.target.value)} />
                             </td>
                             <td className="p-2">
-                                <Select value={u.property_type || "apartment"} onValueChange={(v) => onChange(i, "property_type", v)} disabled={disabled}>
+                                <Select value={u.property_type || "apartment"} onValueChange={(v) => onChange(idx, "property_type", v)} disabled={disabled}>
                                     <SelectTrigger className="h-7 w-28"><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="apartment">Апартамент</SelectItem>
@@ -909,22 +978,22 @@ function UnitsTable({ units, onChange, disabled }) {
                             </td>
                             <td className="p-2 text-right">
                                 <Input className="h-7 w-14 ml-auto" type="number" value={u.floor ?? ""} disabled={disabled}
-                                    onChange={(e) => onChange(i, "floor", e.target.value === "" ? null : Number(e.target.value))} />
+                                    onChange={(e) => onChange(idx, "floor", e.target.value === "" ? null : Number(e.target.value))} />
                             </td>
                             <td className="p-2 text-right">
                                 <Input className="h-7 w-14 ml-auto" type="number" value={u.rooms ?? ""} disabled={disabled}
-                                    onChange={(e) => onChange(i, "rooms", e.target.value === "" ? null : Number(e.target.value))} />
+                                    onChange={(e) => onChange(idx, "rooms", e.target.value === "" ? null : Number(e.target.value))} />
                             </td>
                             <td className="p-2 text-right">
                                 <Input className="h-7 w-20 ml-auto" type="number" step="0.01" value={u.area_total ?? ""} disabled={disabled}
-                                    onChange={(e) => onChange(i, "area_total", e.target.value === "" ? null : Number(e.target.value))} />
+                                    onChange={(e) => onChange(idx, "area_total", e.target.value === "" ? null : Number(e.target.value))} />
                             </td>
                             <td className="p-2 text-right">
                                 <Input className="h-7 w-24 ml-auto" type="number" step="0.01" value={u.start_price_basis ?? ""} disabled={disabled}
-                                    onChange={(e) => onChange(i, "start_price_basis", e.target.value === "" ? null : Number(e.target.value))} />
+                                    onChange={(e) => onChange(idx, "start_price_basis", e.target.value === "" ? null : Number(e.target.value))} />
                             </td>
                             <td className="p-2">
-                                <Select value={u.status_guess || "available"} onValueChange={(v) => onChange(i, "status_guess", v)} disabled={disabled}>
+                                <Select value={u.status_guess || "available"} onValueChange={(v) => onChange(idx, "status_guess", v)} disabled={disabled}>
                                     <SelectTrigger className="h-7 w-28"><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="available">Свободен</SelectItem>
@@ -936,7 +1005,8 @@ function UnitsTable({ units, onChange, disabled }) {
                             <td className={`p-2 text-right font-semibold ${confClass(u.confidence)}`}>{confBadge(u.confidence)}</td>
                             <td className="p-2 text-slate-500">{(u.warnings || []).join(" · ") || "—"}</td>
                         </tr>
-                    ))}
+                        );
+                    })}
                 </tbody>
             </table>
         </div>
