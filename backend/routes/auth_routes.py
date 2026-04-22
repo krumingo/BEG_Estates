@@ -3,12 +3,14 @@ import os
 import uuid
 from datetime import datetime, timezone, timedelta
 
+import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from auth.dependencies import get_current_user
 from auth.security import (
     create_access_token,
     create_refresh_token,
+    decode_token,
     generate_otp_code,
     generate_totp_secret,
     hash_password,
@@ -204,6 +206,35 @@ async def totp_verify(payload: TotpSetupVerify, user: dict = Depends(get_current
 @router.get("/me")
 async def me(user: dict = Depends(get_current_user)):
     return _public_user(user)
+
+
+@router.post("/refresh")
+async def refresh_access_token(request: Request, response: Response):
+    """Издава нов access_token от refresh_token cookie.
+
+    Само ротира access_token; refresh_token остава непроменен до expiry.
+    Връща 401 ако refresh_token липсва, изтекъл е или потребителят вече не съществува.
+    """
+    token = request.cookies.get("refresh_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Сесията е изтекла")
+    try:
+        payload = decode_token(token)
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Сесията е изтекла")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Невалидна сесия")
+    if payload.get("type") != "refresh":
+        raise HTTPException(status_code=401, detail="Невалиден тип токен")
+    db = get_db()
+    user = await db.users.find_one(
+        {"id": payload["sub"]}, {"_id": 0, "password_hash": 0, "totp_secret": 0}
+    )
+    if not user:
+        raise HTTPException(status_code=401, detail="Потребителят не е намерен")
+    access = create_access_token(user["id"], user["email"], user["role"])
+    response.set_cookie("access_token", access, max_age=3600, **COOKIE_KW)
+    return {"ok": True}
 
 
 @router.post("/logout")

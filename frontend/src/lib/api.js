@@ -8,6 +8,38 @@ export const api = axios.create({
     withCredentials: true,
 });
 
+// Авто-refresh на access_token при 401.
+// Не refresh-ваме за самите auth ендпойнти (за да няма безкраен цикъл).
+let refreshPromise = null;
+const isAuthEndpoint = (url = "") =>
+    url.includes("/auth/refresh") ||
+    url.includes("/auth/staff/login") ||
+    url.includes("/auth/client/verify-otp") ||
+    url.includes("/auth/logout");
+
+api.interceptors.response.use(
+    (r) => r,
+    async (error) => {
+        const original = error.config;
+        const status = error.response?.status;
+        if (status !== 401 || !original || original._retried || isAuthEndpoint(original.url || "")) {
+            return Promise.reject(error);
+        }
+        original._retried = true;
+        try {
+            if (!refreshPromise) {
+                refreshPromise = api.post("/auth/refresh").finally(() => {
+                    refreshPromise = null;
+                });
+            }
+            await refreshPromise;
+            return api(original);
+        } catch (e) {
+            return Promise.reject(error);
+        }
+    }
+);
+
 export function formatApiError(detail) {
     if (detail == null) return "Нещо се обърка. Опитайте отново.";
     if (typeof detail === "string") return detail;
