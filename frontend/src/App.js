@@ -36,6 +36,7 @@ import AdminInquiries from "./pages/admin/AdminInquiries";
 import AdminAudit from "./pages/admin/AdminAudit";
 import AdminFloorPlans from "./pages/admin/AdminFloorPlans";
 import AdminImportDocs from "./pages/admin/AdminImportDocs";
+import AdminVersions from "./pages/admin/AdminVersions";
 
 import NotFound from "./pages/NotFound";
 
@@ -94,6 +95,7 @@ function App() {
                             <Route path="clients" element={<AdminClients />} />
                             <Route path="inquiries" element={<AdminInquiries />} />
                             <Route path="audit" element={<AdminAudit />} />
+                            <Route path="versions" element={<AdminVersions />} />
                         </Route>
 
                         <Route path="*" element={<NotFound />} />

@@ -10,6 +10,7 @@ import {
     ClipboardList,
     Map,
     UploadCloud,
+    History,
     LogOut,
 } from "lucide-react";
 import { useAuth } from "../../lib/auth";
@@ -25,6 +26,7 @@ const NAV = [
     { to: "/admin/clients", label: "Клиенти", icon: Users, id: "admin-nav-clients" },
     { to: "/admin/inquiries", label: "Запитвания", icon: Receipt, id: "admin-nav-inquiries" },
     { to: "/admin/audit", label: "Audit log", icon: ClipboardList, id: "admin-nav-audit" },
+    { to: "/admin/versions", label: "Версии / Backups", icon: History, id: "admin-nav-versions" },
 ];
 
 export default function AdminSidebar() {
