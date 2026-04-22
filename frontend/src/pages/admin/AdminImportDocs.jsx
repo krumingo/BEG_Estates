@@ -24,6 +24,16 @@ const DOC_LABELS = {
     unknown: "Неизвестен",
 };
 
+const TYPE_LABELS = {
+    apartment: "Апартаменти",
+    parking: "Паркоместа",
+    garage: "Гаражи",
+    storage: "Складове",
+    shop: "Магазини",
+};
+
+const BULK_APPROVE_MIN_CONFIDENCE = 0.80;
+
 function confClass(c) {
     if (c >= 0.8) return "text-emerald-700";
     if (c >= 0.45) return "text-amber-700";
@@ -62,6 +72,57 @@ export default function AdminImportDocs() {
     const hasCritical = conflicts.some((c) => c.severity === "critical");
     const approvedUnits = units.filter((u) => u.approved).length;
     const approvedBuyers = buyers.filter((b) => b.approved).length;
+
+    // Safety predicate за bulk approve. Rows, които НЕ match-ват, се оставят за ръчен преглед.
+    const conflictCodes = React.useMemo(() => {
+        const s = new Set();
+        for (const c of conflicts) {
+            if (c?.code && (c.severity === "critical" || c.severity === "warning")) {
+                s.add(c.code);
+            }
+        }
+        return s;
+    }, [conflicts]);
+    const isSafeForBulk = React.useCallback((u) => {
+        if (!u) return false;
+        if (typeof u.code !== "string" || !u.code.trim()) return false;
+        if (!u.property_type) return false;
+        if ((u.confidence ?? 0) < 0.80) return false;
+        if (conflictCodes.has(u.code)) return false;
+        return true;
+    }, [conflictCodes]);
+
+    const bulkApproveByType = async (propertyType, approve) => {
+        if (!session) return;
+        const next = units.map((u) => {
+            if (u.property_type !== propertyType) return u;
+            if (approve) {
+                return isSafeForBulk(u) ? { ...u, approved: true } : u;
+            }
+            return { ...u, approved: false };
+        });
+        setSession((s) => ({
+            ...s,
+            extracted_payload: { ...s.extracted_payload, candidate_units: next },
+        }));
+        setDiff(null);
+        try {
+            await api.patch(`/import-sessions/${session.id}/review-payload`, {
+                candidate_units: next,
+                candidate_buyers: buyers,
+            });
+            const label = TYPE_LABELS[propertyType] || propertyType;
+            if (approve) {
+                const changed = next.filter((u, i) => u.property_type === propertyType && !units[i].approved && u.approved).length;
+                toast.success(`Одобрени ${changed} ${label.toLowerCase()}`);
+            } else {
+                const changed = units.filter((u) => u.property_type === propertyType && u.approved).length;
+                toast.success(`Махнато одобрение от ${changed} ${label.toLowerCase()}`);
+            }
+        } catch (e) {
+            toast.error(formatApiError(e.response?.data?.detail));
+        }
+    };
 
     const createSession = async () => {
         if (!projectId) {
@@ -381,7 +442,14 @@ export default function AdminImportDocs() {
             {session?.status === "review_ready" || sessionApplied ? (
                 <div className="space-y-6" data-testid="imp-review">
                     <SummaryBar summary={summary} approvedUnits={approvedUnits} approvedBuyers={approvedBuyers} conflicts={conflicts} />
-                    <BreakdownPanel summary={summary} perFile={session.files || []} />
+                    <BreakdownPanel
+                        summary={summary}
+                        perFile={session.files || []}
+                        units={units}
+                        isSafeForBulk={isSafeForBulk}
+                        onBulkApprove={bulkApproveByType}
+                        disabled={sessionApplied}
+                    />
 
                     <Tabs defaultValue="units" className="w-full">
                         <TabsList className="grid grid-cols-3 w-full max-w-2xl" data-testid="imp-tabs">
@@ -464,30 +532,73 @@ function SummaryBar({ summary, approvedUnits, approvedBuyers, conflicts }) {
     );
 }
 
-const TYPE_LABELS = {
-    apartment: "Апартаменти",
-    parking: "Паркоместа",
-    garage: "Гаражи",
-    storage: "Складове",
-    shop: "Магазини",
-};
-
-function BreakdownPanel({ summary, perFile }) {
+function BreakdownPanel({ summary, perFile, units, isSafeForBulk, onBulkApprove, disabled }) {
     const byType = summary.by_type || {};
     const sanity = summary.sanity_warnings || [];
+
+    const typeStats = (key) => {
+        const filtered = (units || []).filter((u) => u.property_type === key);
+        const total = byType[key] ?? filtered.length;
+        const approved = filtered.filter((u) => u.approved).length;
+        const eligibleRemaining = filtered.filter((u) => !u.approved && isSafeForBulk?.(u)).length;
+        const manualRemaining = filtered.filter((u) => !u.approved && !isSafeForBulk?.(u)).length;
+        return { total, approved, eligibleRemaining, manualRemaining };
+    };
+
     return (
         <div className="space-y-4" data-testid="imp-breakdown">
             <div>
                 <div className="overline mb-2 text-slate-500">Breakdown по тип</div>
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3" data-testid="imp-breakdown-types">
-                    {Object.entries(TYPE_LABELS).map(([key, label]) => (
-                        <Card
-                            key={key}
-                            label={label}
-                            value={byType[key] ?? 0}
-                            hint={(byType[key] ?? 0) === 0 ? "няма разпознати" : ""}
-                        />
-                    ))}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3" data-testid="imp-breakdown-types">
+                    {Object.entries(TYPE_LABELS).map(([key, label]) => {
+                        const s = typeStats(key);
+                        return (
+                            <div
+                                key={key}
+                                className="rounded-lg border hairline bg-white p-3 space-y-2"
+                                data-testid={`imp-type-card-${key}`}
+                            >
+                                <div className="overline text-slate-500">{label}</div>
+                                <div className="text-2xl font-semibold tabular-nums text-slate-900">
+                                    {s.total}
+                                </div>
+                                <div className="text-[11px] text-slate-600 space-y-0.5 leading-tight">
+                                    <div>одобрени: <span className="font-mono">{s.approved}</span></div>
+                                    <div>за одобряване: <span className="font-mono">{s.eligibleRemaining}</span></div>
+                                    {s.manualRemaining > 0 && (
+                                        <div className="text-amber-700" data-testid={`imp-type-manual-${key}`}>
+                                            {s.manualRemaining} за ръчен преглед
+                                            <span className="text-[10px] text-amber-600/80 block">
+                                                (ниска сигурност / конфликт)
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex gap-1.5 pt-1">
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="flex-1 h-7 text-[11px]"
+                                        onClick={() => onBulkApprove?.(key, true)}
+                                        disabled={disabled || s.eligibleRemaining === 0}
+                                        data-testid={`imp-type-approve-${key}`}
+                                    >
+                                        Одобри всички
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="flex-1 h-7 text-[11px]"
+                                        onClick={() => onBulkApprove?.(key, false)}
+                                        disabled={disabled || s.approved === 0}
+                                        data-testid={`imp-type-unapprove-${key}`}
+                                    >
+                                        Махни
+                                    </Button>
+                                </div>
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
 
