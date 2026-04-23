@@ -500,6 +500,8 @@ export default function AdminImportDocs() {
                                 summary={summary}
                                 onChange={updateFloorPlan}
                                 disabled={sessionApplied}
+                                sessionId={session.id}
+                                projectId={session.project_id}
                             />
                         </TabsContent>
                         <TabsContent value="conflicts" className="pt-4">
@@ -1128,12 +1130,45 @@ function ConflictsTable({ conflicts }) {
 }
 
 
-function FloorPlanPagesTable({ pages, files, summary, onChange, disabled }) {
+function FloorPlanPagesTable({ pages, files, summary, onChange, disabled, sessionId, projectId }) {
     const fileById = React.useMemo(() => {
         const m = {};
         for (const f of files) m[f.id] = f;
         return m;
     }, [files]);
+
+    const [applying, setApplying] = React.useState(false);
+    const [applyReport, setApplyReport] = React.useState(null);
+
+    const approvedCount = (pages || []).filter(
+        (p) => p.review_status === "approved" && typeof p.floor === "number"
+    ).length;
+
+    const applyFloorPlans = async (dryRun = false) => {
+        if (!sessionId) return;
+        setApplying(true);
+        try {
+            // Винаги първо persist-ваме review payload, за да не се губят edits
+            await api.patch(`/import-sessions/${sessionId}/review-payload`, {
+                candidate_floor_plans: pages,
+            });
+            const endpoint = dryRun
+                ? `/import-sessions/${sessionId}/floor-plans-diff`
+                : `/import-sessions/${sessionId}/apply-floor-plans`;
+            const resp = dryRun ? await api.get(endpoint) : await api.post(endpoint);
+            setApplyReport({ ...resp.data, wasDryRun: dryRun });
+            if (!dryRun) {
+                const s = resp.data.summary || {};
+                toast.success(
+                    `Приложено: ${s.created || 0} създадени · ${s.updated || 0} обновени · ${s.skipped || 0} пропуснати`
+                );
+            }
+        } catch (e) {
+            toast.error(formatApiError(e.response?.data?.detail));
+        } finally {
+            setApplying(false);
+        }
+    };
 
     if (!pages || pages.length === 0) {
         return (
@@ -1147,6 +1182,38 @@ function FloorPlanPagesTable({ pages, files, summary, onChange, disabled }) {
 
     return (
         <div className="space-y-3" data-testid="imp-floors-panel">
+            <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => applyFloorPlans(true)}
+                    disabled={applying || approvedCount === 0 || disabled}
+                    data-testid="imp-floors-dryrun"
+                >
+                    Преглед преди apply
+                </Button>
+                <Button
+                    size="sm"
+                    onClick={() => applyFloorPlans(false)}
+                    disabled={applying || approvedCount === 0 || disabled}
+                    data-testid="imp-floors-apply"
+                >
+                    {applying ? "Прилагане…" : `Приложи към Етажни схеми (${approvedCount})`}
+                </Button>
+                <div className="text-xs text-slate-500">
+                    Записва само approved страници · manual mappings не се заместват
+                </div>
+                {projectId && (
+                    <a
+                        href={`/admin/floor-plans?project=${projectId}`}
+                        className="ml-auto text-xs text-blue-600 hover:underline"
+                        data-testid="imp-floors-goto-mapper"
+                    >
+                        Отвори „Етажни схеми" →
+                    </a>
+                )}
+            </div>
+
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" data-testid="imp-floors-summary">
                 <Card label="Етажни страници" value={summary.floor_plan_pages_total ?? pages.length} />
                 <Card label="Автоматично вързани" value={summary.auto_linked_pages ?? 0} />
@@ -1157,6 +1224,44 @@ function FloorPlanPagesTable({ pages, files, summary, onChange, disabled }) {
                     hint={(summary.unplaced_unit_codes || []).slice(0, 6).join(", ")}
                 />
             </div>
+
+            {applyReport && (
+                <div
+                    className="rounded-md border border-slate-200 bg-stone-50 p-3 text-xs space-y-2"
+                    data-testid="imp-floors-report"
+                >
+                    <div className="flex items-center gap-2">
+                        <span className="font-semibold text-slate-800">
+                            {applyReport.wasDryRun ? "Dry-run преглед" : "Резултат от apply"}
+                        </span>
+                        <span className="text-slate-500">
+                            create: <strong className="text-emerald-700">{applyReport.summary.created}</strong>
+                            {" · "}update: <strong className="text-amber-700">{applyReport.summary.updated}</strong>
+                            {" · "}skip: <strong className="text-slate-700">{applyReport.summary.skipped}</strong>
+                        </span>
+                    </div>
+                    <ul className="space-y-0.5 max-h-60 overflow-y-auto">
+                        {applyReport.details.map((d, i) => (
+                            <li key={i} className="flex gap-2 items-baseline">
+                                <span className="font-mono w-14 text-slate-600">fl:{d.floor ?? "—"}</span>
+                                <span
+                                    className={
+                                        d.action === "created" ? "text-emerald-700"
+                                        : d.action === "updated" ? "text-amber-700"
+                                        : "text-slate-500"
+                                    }
+                                >
+                                    {d.action}
+                                </span>
+                                {d.reason && <span className="text-slate-500 italic">· {d.reason}</span>}
+                                {d.matched_unit_codes && d.matched_unit_codes.length > 0 && (
+                                    <span className="text-slate-600">· {d.matched_unit_codes.join(", ")}</span>
+                                )}
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
 
             <div className="rounded-lg border hairline bg-white overflow-x-auto">
                 <table className="w-full text-xs">

@@ -45,6 +45,11 @@ class DocumentTypeOverride(BaseModel):
     document_type: Optional[str] = None  # None изчиства override-а
 
 
+class ApplyFloorPlansRequest(BaseModel):
+    dry_run: bool = False
+    force_overwrite: bool = False  # ако е True, allow заместване на manual mapping
+
+
 def _public_session(doc: dict) -> dict:
     out = {k: v for k, v in doc.items() if k != "_id"}
     # Never leak absolute paths
@@ -448,6 +453,249 @@ async def apply_diff(session_id: str, _=Depends(require_staff())):
         },
         "to_skip": to_skip,
     }
+
+
+@router.post("/import-sessions/{session_id}/apply-floor-plans")
+async def apply_floor_plans(
+    session_id: str,
+    payload: Optional[ApplyFloorPlansRequest] = None,
+    user=Depends(require_staff()),
+):
+    """Apply approved floor-plan pages to `floor_plans` collection.
+
+    Write logic (safe merge):
+      * Взима само pages с `review_status=="approved"` и валиден `floor`.
+      * Групира по `floor` (ако няколко pages адресират същия етаж, обединяват се).
+      * Съществуващ `floor_plans` документ с manual mapping (units с x/y) се SKIP-ва
+        освен ако force_overwrite=True. Manual mapping никога не се трие сляпо.
+      * Празен / новосъздаден floor_plan получава `import_candidates[]` поле (pairs
+        {property_id, code, detected_from_page, source_file_id}) — manual mapper
+        може по-късно да ги използва за бързо placing на contours.
+      * `units[]` остава ПРАЗЕН от import-а (x/y не се измислят).
+      * `plan_image_url` никога не се презаписва — запазва existing стойност.
+
+    Skip reasons: `not_approved`, `missing_floor`, `no_matched_units`,
+    `manual_mapping_exists`, `invalid_project_scope`.
+    """
+    opts = payload or ApplyFloorPlansRequest()
+    db = get_db()
+    sess = await db.import_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not sess:
+        raise HTTPException(status_code=404, detail="Сесията не е намерена")
+    project_id = sess["project_id"]
+    project = await db.projects.find_one({"id": project_id}, {"_id": 0, "id": 1, "name": 1})
+    if not project:
+        raise HTTPException(status_code=404, detail="Проектът не е намерен")
+
+    pages = (sess.get("extracted_payload") or {}).get("candidate_floor_plans", []) or []
+    approved = [
+        p for p in pages
+        if p.get("review_status") == "approved" and isinstance(p.get("floor"), (int, float))
+    ]
+
+    # Групиране по floor
+    by_floor: dict[int, list[dict]] = {}
+    for p in pages:
+        if p.get("review_status") != "approved":
+            continue
+        fl = p.get("floor")
+        if not isinstance(fl, (int, float)):
+            continue
+        by_floor.setdefault(int(fl), []).append(p)
+
+    details: list[dict] = []
+    created = updated = skipped = 0
+
+    # Non-approved pages report (за пълнота)
+    for p in pages:
+        if p.get("review_status") == "approved" and isinstance(p.get("floor"), (int, float)):
+            continue
+        reason = "not_approved" if p.get("review_status") != "approved" else "missing_floor"
+        details.append({
+            "floor": p.get("floor"),
+            "page_number": p.get("page_number"),
+            "source_file_id": p.get("source_file_id"),
+            "action": "skipped",
+            "reason": reason,
+            "matched_unit_codes": p.get("matched_unit_codes", []),
+            "unmatched_detected_codes": p.get("unmatched_detected_codes", []),
+        })
+        skipped += 1
+
+    # Pre-change snapshot (само ако ще пишем)
+    will_write = not opts.dry_run and bool(by_floor)
+    if will_write:
+        try:
+            await create_prechange_snapshot(
+                domain="floor_plans",
+                trigger_action="floor_plan_import_apply",
+                actor_id=user["id"],
+                project_id=project_id,
+                entity_scope=f"session:{session_id}",
+                scope_queries={"floor_plans": {"project_id": project_id}},
+            )
+        except RuntimeError as e:
+            raise HTTPException(status_code=500, detail=f"Snapshot failed: {e}")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    for floor, floor_pages in sorted(by_floor.items()):
+        # Съберi всички matched codes от всички approved pages за този етаж
+        all_codes: list[str] = []
+        all_source_refs: list[dict] = []
+        for p in floor_pages:
+            for c in (p.get("matched_unit_codes") or []):
+                if c and c not in all_codes:
+                    all_codes.append(c)
+            all_source_refs.append({
+                "source_file_id": p.get("source_file_id"),
+                "page_number": p.get("page_number"),
+                "detected_unit_codes": p.get("detected_unit_codes", []),
+                "unmatched_detected_codes": p.get("unmatched_detected_codes", []),
+            })
+
+        if not all_codes:
+            details.append({
+                "floor": floor,
+                "action": "skipped",
+                "reason": "no_matched_units",
+                "source_refs": all_source_refs,
+            })
+            skipped += 1
+            continue
+
+        # Resolve codes → properties (само за този project + floor)
+        props = await db.properties.find(
+            {"project_id": project_id, "code": {"$in": all_codes}},
+            {"_id": 0, "id": 1, "code": 1, "project_id": 1, "floor": 1},
+        ).to_list(500)
+        project_prop_codes = {pr["code"]: pr for pr in props}
+        resolved: list[dict] = []
+        scope_errors: list[str] = []
+        for code in all_codes:
+            pr = project_prop_codes.get(code)
+            if not pr:
+                # Кодът липсва в проекта (би трябвало да е бил apply-нат преди)
+                scope_errors.append(code)
+                continue
+            resolved.append({
+                "property_id": pr["id"],
+                "code": code,
+                "property_floor": pr.get("floor"),
+            })
+
+        if not resolved:
+            details.append({
+                "floor": floor,
+                "action": "skipped",
+                "reason": "invalid_project_scope",
+                "extra": {"missing_codes": scope_errors},
+                "source_refs": all_source_refs,
+            })
+            skipped += 1
+            continue
+
+        # Проверка за существуващи manual mapping
+        existing = await db.floor_plans.find_one(
+            {"project_id": project_id, "floor": int(floor)}, {"_id": 0}
+        )
+        existing_units = (existing or {}).get("units") or []
+        has_manual = any(
+            (u.get("x") is not None and u.get("y") is not None and
+             u.get("width") is not None and u.get("height") is not None)
+            for u in existing_units
+        )
+
+        if has_manual and not opts.force_overwrite:
+            details.append({
+                "floor": floor,
+                "action": "skipped",
+                "reason": "manual_mapping_exists",
+                "matched_unit_codes": all_codes,
+                "existing_units_count": len(existing_units),
+                "source_refs": all_source_refs,
+                "hint": "Използвайте force_overwrite=true, ако искате да замените ръчно направените координати (не се препоръчва).",
+            })
+            skipped += 1
+            continue
+
+        # Construct the new / updated doc
+        import_candidates = [
+            {
+                "property_id": r["property_id"],
+                "code": r["code"],
+                "floor": floor,
+            }
+            for r in resolved
+        ]
+        action = "updated" if existing else "created"
+        new_doc = {
+            "id": existing.get("id") if existing else str(uuid.uuid4()),
+            "project_id": project_id,
+            "floor": int(floor),
+            "plan_image_url": existing.get("plan_image_url") if existing else None,
+            "units": existing_units,  # ПАЗИМ existing units (може да са празен масив)
+            "import_candidates": import_candidates,
+            "imported_from_session_id": session_id,
+            "import_meta": {
+                "source_refs": all_source_refs,
+                "applied_at": now_iso,
+                "applied_by": user["id"],
+            },
+            "updated_at": now_iso,
+            "updated_by": user["id"],
+        }
+
+        if not opts.dry_run:
+            await db.floor_plans.delete_many(
+                {"project_id": project_id, "floor": int(floor)}
+            )
+            await db.floor_plans.insert_one(new_doc)
+
+        details.append({
+            "floor": floor,
+            "action": action,
+            "matched_unit_codes": all_codes,
+            "resolved_property_ids": [r["property_id"] for r in resolved],
+            "scope_errors": scope_errors,
+            "source_refs": all_source_refs,
+            "plan_image_url_preserved": bool(new_doc["plan_image_url"]),
+        })
+        if action == "created":
+            created += 1
+        else:
+            updated += 1
+
+    if will_write:
+        await log_action(
+            user["id"], "floor_plan_import_apply", "import_session", session_id,
+            {
+                "created": created, "updated": updated, "skipped": skipped,
+                "floors_touched": sorted(by_floor.keys()),
+            },
+        )
+
+    return {
+        "dry_run": opts.dry_run,
+        "approved_pages": len(approved),
+        "summary": {
+            "created": created,
+            "updated": updated,
+            "skipped": skipped,
+        },
+        "details": details,
+    }
+
+
+@router.get("/import-sessions/{session_id}/floor-plans-diff")
+async def floor_plans_diff(session_id: str, user=Depends(require_staff())):
+    """Dry-run предварителен преглед — без да записва нищо."""
+    # Просто reuse-ваме apply-floor-plans в dry-run режим
+    return await apply_floor_plans(
+        session_id,
+        ApplyFloorPlansRequest(dry_run=True, force_overwrite=False),
+        user=user,
+    )
 
 
 @router.post("/import-sessions/{session_id}/apply")
