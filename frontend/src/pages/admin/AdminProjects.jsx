@@ -25,6 +25,33 @@ import {
 import { PROJECT_STATUS_LABELS } from "../../lib/constants";
 import { toast } from "sonner";
 
+// Кирилица → латиница (BDS-OCN style, лек практически вариант).
+const CYR_MAP = {
+    "а":"a","б":"b","в":"v","г":"g","д":"d","е":"e","ж":"zh","з":"z","и":"i",
+    "й":"y","к":"k","л":"l","м":"m","н":"n","о":"o","п":"p","р":"r","с":"s",
+    "т":"t","у":"u","ф":"f","х":"h","ц":"ts","ч":"ch","ш":"sh","щ":"sht",
+    "ъ":"a","ь":"y","ю":"yu","я":"ya",
+    // украински/руски екстри, които често се срещат в имена
+    "є":"e","і":"i","ї":"yi","ё":"yo","ы":"y","э":"e",
+};
+
+function slugify(input = "") {
+    let lower = (input || "").toString().toLowerCase().trim();
+    // Digraph първо: „дж" → „dj" (Hadji, Mladji), за да не дава „dzh".
+    lower = lower.replace(/дж/g, "dj");
+    let out = "";
+    for (const ch of lower) {
+        out += CYR_MAP[ch] != null ? CYR_MAP[ch] : ch;
+    }
+    return out
+        .normalize("NFKD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .replace(/-{2,}/g, "-");
+}
+
+
 const EMPTY_FORM = {
     name: "",
     slug: "",
@@ -92,6 +119,7 @@ export default function AdminProjects() {
     const [mode, setMode] = useState("create"); // "create" | "edit"
     const [editingId, setEditingId] = useState(null);
     const [form, setForm] = useState(EMPTY_FORM);
+    const [slugTouched, setSlugTouched] = useState(false);
     const [saving, setSaving] = useState(false);
 
     const load = () => api.get("/projects").then((r) => setItems(r.data));
@@ -102,6 +130,7 @@ export default function AdminProjects() {
         setMode("create");
         setEditingId(null);
         setForm({ ...EMPTY_FORM });
+        setSlugTouched(false);
         setDialogOpen(true);
     };
 
@@ -111,12 +140,33 @@ export default function AdminProjects() {
         setMode("edit");
         setEditingId(project.id);
         setForm(toForm(project));
+        // При edit: вече има потребителски slug → не auto-fill-ваме при typing
+        setSlugTouched(true);
         setDialogOpen(true);
     };
 
     const set = (k) => (e) => {
         const v = e && e.target ? e.target.value : e;
         setForm((f) => ({ ...f, [k]: v }));
+    };
+
+    // Custom handler за полето „Име": auto-fill на slug, докато не е ръчно пипнат.
+    const onNameChange = (e) => {
+        const v = e.target.value;
+        setForm((f) => ({
+            ...f,
+            name: v,
+            slug: slugTouched ? f.slug : slugify(v),
+        }));
+    };
+
+    // Custom handler за slug: маркираме като touched при първа ръчна редакция.
+    const onSlugChange = (e) => {
+        setSlugTouched(true);
+        // Нормализираме on-the-fly (lowercase, латински chars/dashes), но
+        // позволяваме празен интервал по време на typing.
+        const raw = e.target.value;
+        setForm((f) => ({ ...f, slug: raw.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/-{2,}/g, "-") }));
     };
 
     const submit = async () => {
@@ -212,11 +262,11 @@ export default function AdminProjects() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <Label htmlFor="pf-name">Име</Label>
-                                <Input id="pf-name" value={form.name} onChange={set("name")} data-testid="pf-name" />
+                                <Input id="pf-name" value={form.name} onChange={onNameChange} data-testid="pf-name" />
                             </div>
                             <div>
                                 <Label htmlFor="pf-slug">Slug</Label>
-                                <Input id="pf-slug" value={form.slug} onChange={set("slug")} placeholder="primer-slug" data-testid="pf-slug" />
+                                <Input id="pf-slug" value={form.slug} onChange={onSlugChange} placeholder="primer-slug" data-testid="pf-slug" />
                             </div>
                         </div>
 
