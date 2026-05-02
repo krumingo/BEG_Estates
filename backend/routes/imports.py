@@ -136,6 +136,7 @@ class BulkPropertyIn(BaseModel):
     area_total: Optional[float] = None
     list_price: Optional[float] = None
     final_contract_price: Optional[float] = None
+    ideal_parts: Optional[float] = None
     exposure: Optional[str] = None
     description: Optional[str] = None
     status: Optional[str] = None  # default = "available" при create
