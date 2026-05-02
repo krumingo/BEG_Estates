@@ -169,6 +169,7 @@ See `/app/docs/AUTH_GUIDE.md` (Bulgarian end-user guide).
 
 ## Changelog highlights
 
+- **2026-02-05** — **Bulk Import endpoint + Hadji Dimitar inventory complete (52 объекта)**. Deprecated regex-based PDF parser (recognized 5/52). New `POST /api/admin/import/bulk-properties` with full Smart Diff (protects sold/reserved/with buyer). New `/admin/bulk-import` page: JSON paste/file → validate → dry-run preview → apply. Hadji Dimitar 30 → 52 (18 ap, 1 shop, 13 parking, 6 yard_parking, 2 garage, 12 storage). Public site merges `parking` + `yard_parking` under "Паркоместа" tab. Project endpoint supports slug fallback.
 - **2026-02-05** — **TOTP REMOVED**. Auth опростен до email + парола за всички роли. Компенсация: 12+ char policy с спец. символ, 3 опита/10мин → 1ч lockout, 8h session, 90-дневна ротация. Backend endpoints `/auth/staff/setup-totp`, `/auth/staff/verify-totp`, `/auth/2fa/*`, `/admin/staff-users/{id}/reset-totp` премахнати. User полета `totp_secret`, `totp_setup_completed`, `two_factor_enabled` unset чрез idempotent migration в seed.py. Default seeded credentials обновени до `BegEstates2026!Admin/Sales/Client` (16 chars). Tests: 18/19 backend + 100% frontend pass.
 - **2026-02-05** — Staff Management UI (super_admin only): пълен CRUD с self-protection, last-super-admin guard, session invalidation on deactivate, conditional sidebar.
 - **2026-02-05** — Auth refactor: removed OTP, added password (+TOTP, later removed), password resets admin UI, read-only client portal, inquiry modal.

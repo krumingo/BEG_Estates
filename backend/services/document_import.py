@@ -1,19 +1,17 @@
-"""AI-assisted PDF import: classification + extraction into a review payload.
+"""[DEPRECATED] AI-assisted PDF import: classification + extraction.
 
-Practical approach (not a full ETL):
-- PyMuPDF extracts native text when the PDF has selectable text.
-- OCR (Tesseract bul+eng) is used as a fallback *per page* only when a page
-  has no text layer.
-- Classification combines filename keywords + content keywords.
-- Extraction is regex-based for cells that repeat across BG real-estate
-  area schedules / price lists / buyer rosters.
-
-Nothing here writes to the database.
+⚠️  ВНИМАНИЕ: regex-based parser-ът тук НЕ работи надеждно. Не извлича пълен
+    inventory от реални PDF-и (например 5 от 52 обекта).
+    Заменен е от `POST /api/admin/import/bulk-properties` (вижте routes/imports.py).
+    Кодът се запазва само за съществуващи import sessions / тестове;
+    новата OpenAI-driven замяна ще се добави в отделен пакет.
 """
 from __future__ import annotations
 
 import io
+import logging
 import re
+import warnings as _warnings
 from collections.abc import Iterable
 from typing import Optional
 
@@ -22,6 +20,12 @@ import fitz  # PyMuPDF
 import numpy as np
 import pytesseract
 from PIL import Image
+
+_log = logging.getLogger(__name__)
+_log.warning(
+    "services.document_import: regex-based parser is DEPRECATED. "
+    "Use POST /api/admin/import/bulk-properties instead.",
+)
 
 
 # ---------- classification ----------
@@ -432,11 +436,18 @@ _UNIT_TYPES = ("apartment", "parking", "garage", "storage", "shop")
 
 
 def analyze_files(files: list[dict]) -> dict:
-    """``files`` is a list of {id, original_name, content: bytes, document_type_override?: str}.
+    """[DEPRECATED] Regex-based parser. Use bulk-properties endpoint вместо това.
 
+    ``files`` is a list of {id, original_name, content: bytes, document_type_override?: str}.
     Ако `document_type_override` е зададен, той има приоритет над AI класификацията.
     Returns the full extracted payload ready for the review screen.
     """
+    _warnings.warn(
+        "services.document_import.analyze_files is deprecated; "
+        "use POST /api/admin/import/bulk-properties.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     units: list[dict] = []
     buyers: list[dict] = []
     floor_plans: list[dict] = []

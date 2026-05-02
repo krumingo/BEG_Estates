@@ -288,7 +288,22 @@ export default function AdminImportDocs() {
                 <h1 className="font-serif text-4xl text-slate-900">Импорт на PDF документи</h1>
                 <p className="text-sm text-slate-500 mt-2">
                     Дропнете 4–5 PDF файла (квадратури, цени, купувачи, етажни планове). Системата ги разпознава и ви показва преглед —
-                    нищо не се записва преди „Потвърди import“.
+                    нищо не се записва преди „Потвърди import".
+                </p>
+            </div>
+
+            <div
+                className="rounded-lg border-2 border-amber-300 bg-amber-50 p-4 text-sm text-amber-900"
+                data-testid="ai-import-deprecated-banner"
+            >
+                <div className="font-medium mb-1">⚠️ AI/regex parser — известни ограничения</div>
+                <p className="text-xs leading-relaxed">
+                    Текущият PDF parser не разпознава всички редове в нестандартни таблици.
+                    За пълен и предвидим импорт препоръчваме новия{" "}
+                    <a href="/admin/bulk-import" className="underline font-medium" data-testid="goto-bulk-import">
+                        Bulk JSON Import
+                    </a>{" "}
+                    flow — поставяте готов JSON и Smart Diff защитава продадените обекти.
                 </p>
             </div>
 

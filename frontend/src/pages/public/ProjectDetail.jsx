@@ -43,20 +43,30 @@ export default function ProjectDetail() {
 
     const project = data?.project;
 
-    // Пребройване по type за бадж-ове върху tab-овете
+    // Пребройване по type за бадж-ове върху tab-овете.
+    // "parking" в публичния филтър обединява `parking` + `yard_parking` (надземни/дворни).
     const typeCounts = useMemo(() => {
         const counts = { all: properties.length };
         properties.forEach((p) => {
             const t = p.property_type;
             counts[t] = (counts[t] || 0) + 1;
+            if (t === "yard_parking") {
+                counts.parking = (counts.parking || 0) + 1;
+            }
         });
         return counts;
     }, [properties]);
 
+    const matchesType = (p, filter) => {
+        if (filter === "all") return true;
+        if (filter === "parking") return p.property_type === "parking" || p.property_type === "yard_parking";
+        return p.property_type === filter;
+    };
+
     const byFloor = useMemo(() => {
         const filtered = typeFilter === "all"
             ? properties
-            : properties.filter((p) => p.property_type === typeFilter);
+            : properties.filter((p) => matchesType(p, typeFilter));
         const groups = {};
         filtered.forEach((p) => {
             const k = p.floor;

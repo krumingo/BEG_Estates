@@ -136,10 +136,14 @@ async def get_project(project_id: str):
     db = get_db()
     project = await db.projects.find_one({"id": project_id}, {"_id": 0})
     if not project:
+        # Fallback: позволяваме slug в URL-а
+        project = await db.projects.find_one({"slug": project_id}, {"_id": 0})
+    if not project:
         raise HTTPException(status_code=404, detail="Проектът не е намерен")
-    buildings = await db.buildings.find({"project_id": project_id}, {"_id": 0}).to_list(50)
+    pid = project["id"]
+    buildings = await db.buildings.find({"project_id": pid}, {"_id": 0}).to_list(50)
     updates = (
-        await db.project_updates.find({"project_id": project_id}, {"_id": 0})
+        await db.project_updates.find({"project_id": pid}, {"_id": 0})
         .sort("created_at", -1)
         .to_list(20)
     )
@@ -155,6 +159,11 @@ async def project_properties(
     status: Optional[str] = None,
 ):
     db = get_db()
+    # Slug fallback
+    if not await db.projects.find_one({"id": project_id}, {"_id": 0, "id": 1}):
+        slug_proj = await db.projects.find_one({"slug": project_id}, {"_id": 0, "id": 1})
+        if slug_proj:
+            project_id = slug_proj["id"]
     q: dict = {"project_id": project_id}
     if property_type:
         q["property_type"] = property_type

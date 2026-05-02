@@ -124,6 +124,30 @@ class ApplyFloorPlansRequest(BaseModel):
     force_overwrite: bool = False  # ако е True, allow заместване на manual mapping
 
 
+class BulkPropertyIn(BaseModel):
+    """Един обект в bulk-properties payload — всичко освен code/property_type е optional."""
+    code: str
+    property_type: str
+    floor: Optional[int] = None
+    rooms: Optional[int] = None
+    raw_area: Optional[float] = None
+    area_pure: Optional[float] = None
+    area_common: Optional[float] = None
+    area_total: Optional[float] = None
+    list_price: Optional[float] = None
+    final_contract_price: Optional[float] = None
+    exposure: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None  # default = "available" при create
+
+
+class BulkImportRequest(BaseModel):
+    project_id: str
+    properties: list[BulkPropertyIn]
+    mode: str = "smart_diff"  # "smart_diff" | "force_create"
+    dry_run: bool = False
+
+
 def _public_session(doc: dict) -> dict:
     out = {k: v for k, v in doc.items() if k != "_id"}
     # Never leak absolute paths
@@ -1149,3 +1173,239 @@ async def file_page_preview(
     if not png:
         raise HTTPException(status_code=404, detail="Страницата не е налична")
     return Response(content=png, media_type="image/png")
+
+
+# ---------------------------------------------------------------------------
+# BULK IMPORT — JSON-driven, заобикаля счупения regex parser
+# ---------------------------------------------------------------------------
+_VALID_PROPERTY_TYPES = {"apartment", "garage", "parking", "yard_parking", "storage", "house", "shop"}
+
+
+@router.post("/admin/import/bulk-properties")
+async def bulk_import_properties(
+    payload: BulkImportRequest,
+    user=Depends(require_staff()),
+):
+    """Bulk създаване / обновяване на обекти от готов JSON.
+
+    Реизползва Smart Import Diff логиката — продадени / резервирани обекти се
+    защитават; свободните се обновяват напълно; нови се създават.
+    """
+    db = get_db()
+    if payload.mode not in ("smart_diff", "force_create"):
+        raise HTTPException(status_code=400, detail="mode трябва да е 'smart_diff' или 'force_create'")
+    if not payload.properties:
+        raise HTTPException(status_code=400, detail="properties е празен")
+
+    project = await db.projects.find_one({"id": payload.project_id}, {"_id": 0, "id": 1, "name": 1})
+    if not project:
+        raise HTTPException(status_code=404, detail="Проектът не е намерен")
+
+    # Валидация на property_type
+    invalid = [p.code for p in payload.properties if p.property_type not in _VALID_PROPERTY_TYPES]
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Невалиден property_type за: {invalid[:5]} (валидни: {sorted(_VALID_PROPERTY_TYPES)})",
+        )
+    # Дубликати в payload
+    code_counts: dict[str, int] = {}
+    for p in payload.properties:
+        code_counts[p.code] = code_counts.get(p.code, 0) + 1
+    dups = [c for c, n in code_counts.items() if n > 1]
+    if dups:
+        raise HTTPException(status_code=400, detail=f"Дублирани кодове в payload: {dups}")
+
+    existing_count = await db.properties.count_documents({"project_id": payload.project_id})
+    is_greenfield = existing_count == 0
+    reservation_map = await _active_reservation_map(db, payload.project_id) if not is_greenfield else {}
+
+    created: list[dict] = []
+    updated_free: list[dict] = []
+    updated_protected: list[dict] = []
+    skipped: list[dict] = []
+    audit_rows: list[dict] = []
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Pre-change snapshot (ако ще пишем и не е greenfield)
+    if not payload.dry_run and not is_greenfield:
+        try:
+            await create_prechange_snapshot(
+                domain="properties",
+                trigger_action="bulk_import_apply",
+                actor_id=user["id"],
+                project_id=payload.project_id,
+                entity_scope=f"bulk:{payload.project_id}",
+                scope_queries={"properties": {"project_id": payload.project_id}},
+            )
+        except RuntimeError as e:
+            raise HTTPException(status_code=500, detail=f"Snapshot failed: {e}")
+
+    for p in payload.properties:
+        code = (p.code or "").strip()
+        if not code:
+            skipped.append({"code": None, "reason": "липсва code"})
+            continue
+
+        desired = p.model_dump(exclude_none=True)
+        # status default = "available" при create
+        if "status" not in desired:
+            desired["status"] = "available"
+
+        existing = await db.properties.find_one(
+            {"project_id": payload.project_id, "code": code}, {"_id": 0}
+        )
+
+        if not existing:
+            if payload.dry_run:
+                created.append({"code": code, "property_type": desired.get("property_type")})
+            else:
+                new_doc = {
+                    "id": str(uuid.uuid4()),
+                    "project_id": payload.project_id,
+                    "code": code,
+                    "created_at": now_iso,
+                    "import_source": {
+                        "kind": "bulk_import",
+                        "imported_at": now_iso,
+                        "imported_by": user["id"],
+                    },
+                    **desired,
+                }
+                await db.properties.insert_one(new_doc)
+                created.append({
+                    "code": code,
+                    "property_type": desired.get("property_type"),
+                    "id": new_doc["id"],
+                })
+                audit_rows.append({
+                    "action": "bulk_import_create",
+                    "property_id": new_doc["id"],
+                    "code": code,
+                    "changes": [{"field": k, "from": None, "to": v} for k, v in desired.items()],
+                })
+            continue
+
+        # Existing — force_create режим: пропускаме
+        if payload.mode == "force_create":
+            skipped.append({"code": code, "reason": "вече съществува (force_create)"})
+            continue
+
+        has_reservation = reservation_map.get(existing["id"], False)
+        protected = (not is_greenfield) and _is_property_protected(existing, has_reservation)
+
+        if protected:
+            # Само neutral fields + fill-if-empty
+            set_fields: dict = {}
+            changes: list[dict] = []
+            for k in NEUTRAL_IMPORT_FIELDS:
+                if k in desired and desired[k] != existing.get(k):
+                    set_fields[k] = desired[k]
+                    changes.append({"field": k, "from": existing.get(k), "to": desired[k]})
+            for k in FILL_IF_EMPTY_FIELDS:
+                if k in desired and not existing.get(k):
+                    set_fields[k] = desired[k]
+                    changes.append({"field": k, "from": None, "to": desired[k]})
+            skipped_fields = [
+                f for f in PROTECTED_FIELDS
+                if f in desired and desired.get(f) != existing.get(f)
+            ]
+            if (set_fields or skipped_fields):
+                if not payload.dry_run and set_fields:
+                    set_fields["import_source"] = {
+                        "kind": "bulk_import",
+                        "imported_at": now_iso,
+                        "imported_by": user["id"],
+                    }
+                    await db.properties.update_one({"id": existing["id"]}, {"$set": set_fields})
+                updated_protected.append({
+                    "code": code,
+                    "existing_id": existing["id"],
+                    "current_status": existing.get("status"),
+                    "buyer_id": existing.get("buyer_id"),
+                    "neutral_changes": changes,
+                    "skipped_fields": skipped_fields,
+                })
+                audit_rows.append({
+                    "action": "bulk_import_protected",
+                    "property_id": existing["id"],
+                    "code": code,
+                    "changes": changes,
+                    "skipped_fields": skipped_fields,
+                    "current_status": existing.get("status"),
+                })
+            else:
+                skipped.append({"code": code, "reason": "защитен, без релевантни промени"})
+        else:
+            # Свободен — full update
+            changes = _full_changes(existing, desired)
+            if changes:
+                if not payload.dry_run:
+                    set_fields = {k: v for k, v in desired.items() if k not in ("id", "created_at", "project_id")}
+                    set_fields["import_source"] = {
+                        "kind": "bulk_import",
+                        "imported_at": now_iso,
+                        "imported_by": user["id"],
+                    }
+                    await db.properties.update_one({"id": existing["id"]}, {"$set": set_fields})
+                updated_free.append({
+                    "code": code,
+                    "existing_id": existing["id"],
+                    "current_status": existing.get("status") or "available",
+                    "changes": changes,
+                })
+                audit_rows.append({
+                    "action": "bulk_import_neutral",
+                    "property_id": existing["id"],
+                    "code": code,
+                    "changes": changes,
+                })
+            else:
+                skipped.append({"code": code, "reason": "вече съществува, без промени"})
+
+    # Per-property audit
+    if not payload.dry_run:
+        for row in audit_rows:
+            await log_action(
+                user["id"], row["action"], "property", row["property_id"],
+                {
+                    "code": row.get("code"),
+                    "changes": row.get("changes") or [],
+                    "skipped_fields": row.get("skipped_fields") or [],
+                    "current_status": row.get("current_status"),
+                },
+            )
+        await log_action(
+            user["id"], "bulk_import_apply", "project", payload.project_id,
+            {
+                "total": len(payload.properties),
+                "created": len(created),
+                "updated_neutral": len(updated_free),
+                "updated_protected": len(updated_protected),
+                "skipped": len(skipped),
+                "mode": payload.mode,
+            },
+        )
+
+    return {
+        "project_id": payload.project_id,
+        "project_name": project.get("name"),
+        "is_greenfield": is_greenfield,
+        "dry_run": payload.dry_run,
+        "mode": payload.mode,
+        "summary": {
+            "total_in_payload": len(payload.properties),
+            "created": len(created),
+            "updated_neutral": len(updated_free),
+            "updated_protected": len(updated_protected),
+            "skipped": len(skipped),
+        },
+        "details": {
+            "created": created,
+            "free_updates": updated_free,
+            "protected": updated_protected,
+            "skipped": skipped,
+        },
+    }
+
