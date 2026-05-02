@@ -152,7 +152,6 @@
 - "Моят интерес / Wishlist" — публичен flow за запазване на имоти
 - Broker роля + комисионни tracking
 - Change-requests flow
-- Force TOTP rotation / disable за загубен телефон (super-admin endpoint)
 
 ### Refactoring (по желание)
 - Изнасяне на оставащите routes от server.py
@@ -171,4 +170,5 @@ See `/app/docs/AUTH_GUIDE.md` (Bulgarian end-user guide).
 ## Changelog highlights
 
 - **2026-02-05** — Auth refactor: removed OTP, added password+TOTP, password resets admin UI, read-only client portal, inquiry modal.
+- **2026-02-05** — **Staff Management UI (super_admin only)**: пълен CRUD (create/edit/reset-password/reset-totp/deactivate/activate/delete) с self-protection, last-super-admin guard, session invalidation on deactivate, conditional sidebar. Admin promoted to super_admin for UI access. Backend: 23/23 tests passed, frontend flows verified.
 - **2026-02 (earlier session)** — Versions UI, AI Import enhancements, project slug auto-generate, floor plan section in PropertyDetail, lightbox.
