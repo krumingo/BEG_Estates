@@ -34,7 +34,7 @@ export default function ProjectDetail() {
     const { id } = useParams();
     const [data, setData] = useState(null);
     const [properties, setProperties] = useState([]);
-    const [typeFilter, setTypeFilter] = useState("apartment");
+    const [typeFilter, setTypeFilter] = useState("all");
 
     useEffect(() => {
         api.get(`/projects/${id}`).then((r) => setData(r.data)).catch(() => {});
@@ -43,14 +43,31 @@ export default function ProjectDetail() {
 
     const project = data?.project;
 
+    // Пребройване по type за бадж-ове върху tab-овете
+    const typeCounts = useMemo(() => {
+        const counts = { all: properties.length };
+        properties.forEach((p) => {
+            const t = p.property_type;
+            counts[t] = (counts[t] || 0) + 1;
+        });
+        return counts;
+    }, [properties]);
+
     const byFloor = useMemo(() => {
-        const filtered = properties.filter((p) => p.property_type === typeFilter);
+        const filtered = typeFilter === "all"
+            ? properties
+            : properties.filter((p) => p.property_type === typeFilter);
         const groups = {};
         filtered.forEach((p) => {
             const k = p.floor;
             if (!groups[k]) groups[k] = [];
             groups[k].push(p);
         });
+        // Stable sort на обектите в рамките на етажа по code ascending
+        Object.values(groups).forEach((arr) =>
+            arr.sort((a, b) => String(a.code || "").localeCompare(String(b.code || ""), "bg"))
+        );
+        // Етажите сортирани от горе надолу (positive desc → partenter 0 → basement negative)
         return Object.entries(groups).sort((a, b) => Number(b[0]) - Number(a[0]));
     }, [properties, typeFilter]);
 
@@ -173,11 +190,19 @@ export default function ProjectDetail() {
                 <h2 className="font-serif text-4xl sm:text-5xl text-slate-900 mb-8">Избери своя обект</h2>
                 <Tabs value={typeFilter} onValueChange={setTypeFilter} data-testid="property-type-tabs">
                     <TabsList className="bg-stone-100 flex-wrap h-auto">
-                        {PROPERTY_TYPE_FILTERS.map((f) => (
-                            <TabsTrigger key={f.value} value={f.value} data-testid={`tab-${f.value}`}>
-                                {f.label}
-                            </TabsTrigger>
-                        ))}
+                        {PROPERTY_TYPE_FILTERS.map((f) => {
+                            const n = typeCounts[f.value] || 0;
+                            // Крием тип tab-ове, за които няма нито 1 обект
+                            if (f.value !== "all" && n === 0) return null;
+                            return (
+                                <TabsTrigger key={f.value} value={f.value} data-testid={`tab-${f.value}`}>
+                                    {f.label}
+                                    <span className={`ml-2 text-xs ${typeFilter === f.value ? "text-slate-500" : "text-slate-400"}`}>
+                                        ({n})
+                                    </span>
+                                </TabsTrigger>
+                            );
+                        })}
                     </TabsList>
                     <TabsContent value={typeFilter} className="mt-8">
                         {byFloor.length === 0 && (
