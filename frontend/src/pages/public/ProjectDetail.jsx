@@ -14,7 +14,6 @@ import PublicHeader from "../../components/layout/PublicHeader";
 import { StatusBadge } from "../../components/common/StatusBadge";
 import { api, currency, formatDate } from "../../lib/api";
 import {
-    PROPERTY_STATUS,
     PROPERTY_TYPE_FILTERS,
     PROPERTY_TYPE_LABELS,
     PROJECT_STATUS_LABELS,
@@ -259,32 +258,45 @@ function StatCard({ label, value, highlight }) {
 }
 
 function PropertyCell({ p }) {
-    const s = PROPERTY_STATUS[p.status] || PROPERTY_STATUS.available;
-    const disabled = p.status !== "available";
+    const isSold = p.status === "sold";
+    const isReserved = p.status === "reserved_zero_deposit" || p.status === "reserved_paid_deposit";
+    const isAvailable = p.status === "available";
     const displayPrice = p.list_price ?? p.base_price;
+
+    // Visual hierarchy: available = light + interactive, reserved = amber accent,
+    // sold = darkened/desaturated, almost "извън играта"
+    const stateCls = isSold
+        ? "bg-slate-100/60 border-slate-300 [filter:grayscale(0.4)] hover:[filter:grayscale(0.2)] hover:border-slate-400"
+        : isReserved
+            ? "bg-amber-50/40 border-amber-200 hover:border-amber-500"
+            : "bg-white border-slate-200 hover:border-slate-900 hover:shadow-sm";
+
     return (
         <Link
             to={`/properties/${p.id}`}
             data-testid={`property-cell-${p.code}`}
-            className={`block rounded-lg border hairline p-4 transition hover:border-slate-900 ${disabled ? "opacity-85" : ""}`}
+            data-status={p.status}
+            className={`block rounded-lg border hairline p-4 transition ${stateCls}`}
         >
             <div className="flex items-start justify-between mb-3 gap-2">
                 <div>
-                    <div className="overline">{PROPERTY_TYPE_LABELS[p.property_type]}</div>
-                    <div className="font-serif text-2xl text-slate-900">{p.code}</div>
+                    <div className={`overline ${isSold ? "text-slate-400" : ""}`}>{PROPERTY_TYPE_LABELS[p.property_type]}</div>
+                    <div className={`font-serif text-2xl ${isSold ? "text-slate-500" : "text-slate-900"}`}>{p.code}</div>
                 </div>
                 <StatusBadge status={p.status} />
             </div>
-            <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className={`grid grid-cols-2 gap-2 text-sm ${isSold ? "text-slate-400" : "text-slate-600"}`}>
                 {p.rooms != null && (
-                    <div className="text-slate-600"><HomeIcon className="inline h-3.5 w-3.5 mr-1" /> {p.rooms} стаи</div>
+                    <div><HomeIcon className="inline h-3.5 w-3.5 mr-1" /> {p.rooms} стаи</div>
                 )}
                 {p.area_total != null && (
-                    <div className="text-slate-600"><Ruler className="inline h-3.5 w-3.5 mr-1" /> {p.area_total} м²</div>
+                    <div><Ruler className="inline h-3.5 w-3.5 mr-1" /> {p.area_total} м²</div>
                 )}
             </div>
             {displayPrice != null && (
-                <div className="mt-3 text-lg font-medium text-slate-900">{currency(displayPrice)}</div>
+                <div className={`mt-3 text-lg font-medium ${isSold ? "text-slate-400 line-through decoration-slate-300" : isAvailable ? "text-slate-900" : "text-slate-700"}`}>
+                    {currency(displayPrice)}
+                </div>
             )}
         </Link>
     );

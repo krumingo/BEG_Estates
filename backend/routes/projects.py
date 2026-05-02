@@ -12,6 +12,7 @@ from services.snapshots import create_prechange_snapshot
 from constants import (
     PUBLIC_VISIBLE_STATUSES,
     INTERNAL_STATUSES,
+    PUBLIC_STATUS_MAPPING,
     PUBLIC_PROPERTY_FIELDS,
     STAFF_ROLES,
     PropertyStatus,
@@ -34,8 +35,33 @@ router = APIRouter(tags=["projects"])
 
 
 def _public_property(prop: dict) -> dict:
-    """Strip admin-only fields for public consumers."""
-    return {k: v for k, v in prop.items() if k in PUBLIC_PROPERTY_FIELDS}
+    """Маскира и orph-ва полета за публичния read. Прилагаме status mapping (compensation→sold)."""
+    out = {k: v for k, v in prop.items() if k in PUBLIC_PROPERTY_FIELDS}
+    raw = prop.get("status")
+    mapped = PUBLIC_STATUS_MAPPING.get(raw, raw)
+    out["status"] = mapped
+    return out
+
+
+def _public_stats(props: list[dict]) -> dict:
+    """Публично статистики — compensation/unavailable се мърджват в 'sold'."""
+    reserved = {
+        PropertyStatus.RESERVED_ZERO_DEPOSIT.value,
+        PropertyStatus.RESERVED_PAID_DEPOSIT.value,
+    }
+    sold_like = {
+        PropertyStatus.SOLD.value,
+        PropertyStatus.COMPENSATION.value,
+        PropertyStatus.UNAVAILABLE.value,
+    }
+    visible = [p for p in props if p.get("status") != PropertyStatus.HIDDEN.value]
+    return {
+        "total": len(visible),
+        "available": sum(1 for x in visible if x["status"] == PropertyStatus.AVAILABLE.value),
+        "sold": sum(1 for x in visible if x["status"] in sold_like),
+        "reserved": sum(1 for x in visible if x["status"] in reserved),
+        "compensation": 0,  # винаги 0 публично — обединено в sold
+    }
 
 
 _BUYER_PROJECTION = {
@@ -94,9 +120,11 @@ async def list_projects(request: Request, status: Optional[str] = None):
     for p in items:
         filt = {"project_id": p["id"]}
         if not is_staff:
-            filt["status"] = {"$in": list(PUBLIC_VISIBLE_STATUSES)}
+            # На публичен caller: скриваме само "hidden" — compensation/unavailable
+            # се показват като "sold" чрез _public_stats / _public_property.
+            filt["status"] = {"$ne": PropertyStatus.HIDDEN.value}
         props = await db.properties.find(filt, {"_id": 0, "status": 1}).to_list(2000)
-        p["stats"] = _project_stats(props)
+        p["stats"] = _project_stats(props) if is_staff else _public_stats(props)
     return items
 
 
@@ -136,13 +164,20 @@ async def project_properties(
         if status:
             q["status"] = status
     else:
-        # Public caller: status query CANNOT reach internal statuses.
-        # If an allowed public status is supplied, honour it; otherwise
-        # force the full public-safe set.
-        if status and status in PUBLIC_VISIBLE_STATUSES:
+        # Публичен caller: compensation/unavailable се показват (като 'sold'),
+        # само hidden се крие. Ако има подаден status filter:
+        #   - ако е публичен статус → approve
+        #   - ако е 'sold' → включваме compensation/unavailable също (те се маскират като sold)
+        if status == PropertyStatus.SOLD.value:
+            q["status"] = {"$in": [
+                PropertyStatus.SOLD.value,
+                PropertyStatus.COMPENSATION.value,
+                PropertyStatus.UNAVAILABLE.value,
+            ]}
+        elif status and status in PUBLIC_VISIBLE_STATUSES:
             q["status"] = status
         else:
-            q["status"] = {"$in": list(PUBLIC_VISIBLE_STATUSES)}
+            q["status"] = {"$ne": PropertyStatus.HIDDEN.value}
 
     props = (
         await db.properties.find(q, {"_id": 0})
@@ -162,7 +197,7 @@ async def get_property(property_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Имотът не е намерен")
 
     is_staff = await _is_staff(request)
-    if not is_staff and prop.get("status") in INTERNAL_STATUSES:
+    if not is_staff and prop.get("status") == PropertyStatus.HIDDEN.value:
         raise HTTPException(status_code=404, detail="Имотът не е намерен")
 
     project = await db.projects.find_one({"id": prop["project_id"]}, {"_id": 0})
@@ -1049,13 +1084,16 @@ def _public_unit(u: dict, prop_by_id: dict) -> Optional[dict]:
     prop = prop_by_id.get(u.get("property_id"))
     if not prop:
         return None
-    if prop.get("status") in INTERNAL_STATUSES:
+    raw_status = prop.get("status")
+    # Скриваме напълно само 'hidden'; compensation/unavailable се представят като 'sold'.
+    if raw_status == PropertyStatus.HIDDEN.value:
         return None
+    public_status = PUBLIC_STATUS_MAPPING.get(raw_status, raw_status)
     return {
         "property_id": prop["id"],
         "code": prop.get("code"),
         "rooms": prop.get("rooms"),
-        "status": prop.get("status"),
+        "status": public_status,
         "x": u.get("x"),
         "y": u.get("y"),
         "width": u.get("width"),

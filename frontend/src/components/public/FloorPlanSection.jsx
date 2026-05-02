@@ -121,16 +121,27 @@ export default function FloorPlanSection({
                                 })}
                             />
                             {dims.renderW > 0 && plan.units.map((u) => {
-                                const st = PROPERTY_STATUS[u.status] || { label: u.status, dot: "bg-slate-400" };
+                                const st = PROPERTY_STATUS[u.status] || { label: u.status, dot: "bg-slate-500" };
                                 const isCurrent = currentPropertyId && u.property_id === currentPropertyId;
+                                const isSold = u.status === "sold";
                                 const left = u.x * scale;
                                 const top = u.y * scale;
                                 const w = u.width * scale;
                                 const h = u.height * scale;
-                                const baseClasses = `h-full w-full rounded-sm ${st.dot || "bg-slate-500"} ${
+                                // Сменяме доминантния цвят на overlay-я за по-силен contrast
+                                const overlayBg = u.status === "available"
+                                    ? "bg-emerald-500"
+                                    : u.status === "reserved_zero_deposit" || u.status === "reserved_paid_deposit"
+                                        ? "bg-amber-500"
+                                        : isSold
+                                            ? "bg-slate-800"
+                                            : (st.dot || "bg-slate-500");
+                                const baseClasses = `h-full w-full rounded-sm ${overlayBg} ${
                                     isCurrent
                                         ? "border-2 ring-2 ring-amber-500 opacity-90"
-                                        : "border-2 border-white/90 opacity-60 group-hover:opacity-85 transition"
+                                        : isSold
+                                            ? "border-2 border-white/90 opacity-75 group-hover:opacity-90 transition"
+                                            : "border-2 border-white/90 opacity-65 group-hover:opacity-90 transition"
                                 }`;
                                 const inner = (
                                     <>
@@ -182,16 +193,17 @@ export default function FloorPlanSection({
                         </div>
 
                         <div className="flex flex-wrap gap-3 mt-4 text-xs text-slate-600" data-testid="floor-plan-legend">
-                            {["available","reserved_zero_deposit","reserved_paid_deposit","sold"].map((s) => {
-                                const st = PROPERTY_STATUS[s];
-                                if (!st) return null;
-                                return (
-                                    <span key={s} className="inline-flex items-center gap-1.5">
-                                        <span className={`inline-block h-3 w-3 rounded-sm ${st.dot || "bg-slate-400"}`} />
-                                        {st.label}
-                                    </span>
-                                );
-                            })}
+                            {[
+                                { key: "available", color: "bg-emerald-500", label: "Свободен" },
+                                { key: "reserved_zero_deposit", color: "bg-amber-500", label: "Резервиран · Капаро 0" },
+                                { key: "reserved_paid_deposit", color: "bg-amber-500", label: "Резервиран · Капаро" },
+                                { key: "sold", color: "bg-slate-800", label: "Продаден" },
+                            ].map((s) => (
+                                <span key={s.key} className="inline-flex items-center gap-1.5">
+                                    <span className={`inline-block h-3 w-3 rounded-sm ${s.color}`} />
+                                    {s.label}
+                                </span>
+                            ))}
                             {currentPropertyId && (
                                 <span className="inline-flex items-center gap-1.5">
                                     <span className="inline-block h-3 w-3 rounded-sm bg-white border-2 ring-2 ring-amber-500" />
