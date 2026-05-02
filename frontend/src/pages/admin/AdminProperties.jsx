@@ -373,7 +373,7 @@ export default function AdminProperties() {
                                         {buyer ? (
                                             <div>
                                                 <div className="font-medium text-slate-900">{buyer.name}</div>
-                                                <div className="text-xs text-slate-500">{buyer.relation}</div>
+                                                <div className="text-xs text-slate-500">{buyer.email || buyer.source_buyer_relation || buyer.relation || ""}</div>
                                             </div>
                                         ) : (
                                             <span className="text-slate-400">—</span>
@@ -675,9 +675,14 @@ function PropertyFormBody({ form, setField, buyers, mode, projects, buildings })
                         <SelectTrigger data-testid="pf-buyer"><SelectValue /></SelectTrigger>
                         <SelectContent>
                             <SelectItem value="__none__">— без купувач —</SelectItem>
-                            {buyers.map((b) => (
-                                <SelectItem key={b.id} value={b.id}>{b.name} · {b.relation}</SelectItem>
-                            ))}
+                            {buyers.map((b) => {
+                                const subtitle = b.email || b.source_buyer_relation || b.relation || "";
+                                return (
+                                    <SelectItem key={b.id} value={b.id}>
+                                        {b.name}{subtitle ? ` · ${subtitle}` : ""}
+                                    </SelectItem>
+                                );
+                            })}
                         </SelectContent>
                     </Select>
                 </div>
@@ -999,9 +1004,14 @@ function FinanceSection({ propertyId, buyers }) {
                             <SelectTrigger data-testid="plan-buyer"><SelectValue /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="__none__">— без купувач —</SelectItem>
-                                {buyers.map((b) => (
-                                    <SelectItem key={b.id} value={b.id}>{b.name} · {b.relation}</SelectItem>
-                                ))}
+                                {buyers.map((b) => {
+                                    const subtitle = b.email || b.source_buyer_relation || b.relation || "";
+                                    return (
+                                        <SelectItem key={b.id} value={b.id}>
+                                            {b.name}{subtitle ? ` · ${subtitle}` : ""}
+                                        </SelectItem>
+                                    );
+                                })}
                             </SelectContent>
                         </Select>
                     </div>

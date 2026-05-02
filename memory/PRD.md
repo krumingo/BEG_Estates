@@ -66,6 +66,7 @@
 - ✅ "Заяви интерес" inquiry modal вместо "Резервирай с капаро 0" на public property detail
 - ✅ Migration script за legacy клиенти без password_hash → CSV с временни пароли
 - ✅ **Admin CRUD за клиенти** (POST/PATCH/DELETE /api/admin/clients) — създаване с auto temp password reveal, edit, soft delete (super_admin/admin)
+- ✅ **Унификация buyers ↔ clients** (PATCH 9.2): db.buyers легаси колекция мигрирана към db.users(role=client) с idempotent script `migrate_buyers_to_clients.py`. Endpoint `/buyers` сега връща unified списък. property.buyer_id сочи към user.id. Поддържа както стари imported buyers, така и нови admin-създадени клиенти в един и същ dropdown.
 
 ### Public site
 

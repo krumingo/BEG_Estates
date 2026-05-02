@@ -386,8 +386,8 @@ async def apply_diff(session_id: str, _=Depends(require_staff())):
         if not name or name == "(неизвестен)":
             to_skip.append({"kind": "buyer", "code": None, "reason": "липсва име"})
             continue
-        existing = await db.buyers.find_one(
-            {"project_id": project_id, "name": name},
+        existing = await db.users.find_one(
+            {"role": "client", "is_deleted": {"$ne": True}, "name": name, "source_project_id": project_id},
             {"_id": 0, "id": 1, "name": 1, "phone": 1, "email": 1},
         )
         link_note = None
@@ -790,24 +790,62 @@ async def apply_session(session_id: str, user=Depends(require_staff())):
         if not name or name == "(неизвестен)":
             skipped.append("buyer без име")
             continue
-        query = {"project_id": project_id, "name": name}
-        existing = await db.buyers.find_one(query, {"_id": 0, "id": 1})
-        set_fields = {
-            "project_id": project_id,
+        # Match priority: email (global), then (name + source_project_id) within imported clients
+        email = (b.get("email") or "").strip().lower() or None
+        existing = None
+        if email:
+            existing = await db.users.find_one(
+                {"email": email, "role": "client", "is_deleted": {"$ne": True}},
+                {"_id": 0, "id": 1},
+            )
+        if not existing:
+            existing = await db.users.find_one(
+                {
+                    "role": "client",
+                    "is_deleted": {"$ne": True},
+                    "name": name,
+                    "source_project_id": project_id,
+                },
+                {"_id": 0, "id": 1},
+            )
+        update_fields = {
             "name": name,
-            "phone": b.get("phone"),
-            "email": b.get("email"),
-            "relation": b.get("relation") or "Купувач",
+            "phone": b.get("phone") or "",
+            "preferred_contact": "any",
+            "client_note": (b.get("relation") or "Купувач"),
+            "is_imported_buyer": True,
+            "source_project_id": project_id,
+            "source_buyer_relation": b.get("relation"),
         }
-        set_fields = {k: v for k, v in set_fields.items() if v is not None}
+        if email:
+            update_fields["email"] = email
         if existing:
-            await db.buyers.update_one({"id": existing["id"]}, {"$set": set_fields})
+            await db.users.update_one(
+                {"id": existing["id"]},
+                {"$set": {k: v for k, v in update_fields.items() if v is not None}},
+            )
             buyer_id = existing["id"]
         else:
-            set_fields["id"] = str(uuid.uuid4())
-            set_fields["created_at"] = datetime.now(timezone.utc).isoformat()
-            await db.buyers.insert_one(set_fields)
-            buyer_id = set_fields["id"]
+            buyer_id = str(uuid.uuid4())
+            placeholder_email = email or f"imported+{buyer_id.split('-')[0][:8]}@begestates.bg"
+            new_user = {
+                "id": buyer_id,
+                "email": placeholder_email,
+                "role": "client",
+                "two_factor_enabled": False,
+                "is_deleted": False,
+                "must_change_password": True,
+                "password_hash": None,
+                "password_set_at": None,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                **update_fields,
+            }
+            try:
+                await db.users.insert_one(new_user)
+            except Exception:
+                # Конфликт по email → fallback към placeholder с прибавено суфикс
+                new_user["email"] = f"imported+{buyer_id.split('-')[0][:8]}@begestates.bg"
+                await db.users.insert_one(new_user)
             created_buyers += 1
         applied_buyers += 1
 

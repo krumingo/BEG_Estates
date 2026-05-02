@@ -38,6 +38,27 @@ def _public_property(prop: dict) -> dict:
     return {k: v for k, v in prop.items() if k in PUBLIC_PROPERTY_FIELDS}
 
 
+_BUYER_PROJECTION = {
+    "_id": 0,
+    "id": 1,
+    "name": 1,
+    "email": 1,
+    "phone": 1,
+    "preferred_contact": 1,
+    "is_imported_buyer": 1,
+    "source_project_id": 1,
+    "source_buyer_relation": 1,
+}
+
+
+async def _find_client(db, client_id: str) -> Optional[dict]:
+    """Връща client (role=client, не изтрит) или None — единен източник: db.users."""
+    return await db.users.find_one(
+        {"id": client_id, "role": "client", "is_deleted": {"$ne": True}},
+        _BUYER_PROJECTION,
+    )
+
+
 async def _is_staff(request: Request) -> bool:
     """Return True if caller is authenticated as staff; swallow auth errors."""
     try:
@@ -160,7 +181,7 @@ async def get_property(property_id: str, request: Request):
     # Admin extras (buyer info)
     payload: dict = {"property": prop, "project": project, "linked": linked}
     if is_staff and prop.get("buyer_id"):
-        buyer = await db.buyers.find_one({"id": prop["buyer_id"]}, {"_id": 0})
+        buyer = await _find_client(db, prop["buyer_id"])
         payload["buyer"] = buyer
     return payload
 
@@ -260,16 +281,12 @@ async def create_property(payload: PropertyCreate, user=Depends(require_staff())
     if status not in {s.value for s in PropertyStatus}:
         raise HTTPException(status_code=400, detail="Невалиден статус")
 
-    # 5. buyer_id, if provided, must exist and belong to same project
+    # 5. buyer_id, if provided, must exist (унифицирано: client от db.users)
     buyer_id = payload.buyer_id or None
     if buyer_id:
-        buyer = await db.buyers.find_one({"id": buyer_id}, {"_id": 0, "project_id": 1})
+        buyer = await _find_client(db, buyer_id)
         if not buyer:
-            raise HTTPException(status_code=400, detail="Купувачът не е намерен")
-        if buyer.get("project_id") and buyer["project_id"] != payload.project_id:
-            raise HTTPException(
-                status_code=400, detail="Купувачът принадлежи на друг проект"
-            )
+            raise HTTPException(status_code=400, detail="Клиентът не е намерен или е изтрит")
 
     # 6. duplicate code within project
     dup = await db.properties.find_one(
@@ -383,18 +400,13 @@ async def update_property(
     if "property_type" in changes and changes["property_type"] not in {t.value for t in PropertyType}:
         raise HTTPException(status_code=400, detail="Невалиден тип имот")
 
-    # buyer_id validation — allow null to detach; if provided, must exist & same project
+    # buyer_id validation — allow null to detach; ако е подаден → трябва да е валиден client
     if "buyer_id" in changes:
         bid = changes["buyer_id"]
         if bid:
-            buyer = await db.buyers.find_one({"id": bid}, {"_id": 0, "project_id": 1})
+            buyer = await _find_client(db, bid)
             if not buyer:
-                raise HTTPException(status_code=400, detail="Купувачът не е намерен")
-            if buyer.get("project_id") and buyer["project_id"] != existing.get("project_id"):
-                raise HTTPException(
-                    status_code=400,
-                    detail="Купувачът принадлежи на друг проект",
-                )
+                raise HTTPException(status_code=400, detail="Клиентът не е намерен или е изтрит")
 
     old_status = existing.get("status")
     new_status = changes.get("status")
@@ -438,8 +450,22 @@ async def update_property(
 # ---------- Admin helpers ----------
 @router.get("/buyers")
 async def list_buyers(_=Depends(require_staff())):
+    """Връща списък с клиенти за dropdown-и в admin форми (унифициран източник: db.users role=client)."""
     db = get_db()
-    return await db.buyers.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    items = await db.users.find(
+        {"role": "client", "is_deleted": {"$ne": True}},
+        {
+            "_id": 0,
+            "id": 1,
+            "name": 1,
+            "email": 1,
+            "phone": 1,
+            "preferred_contact": 1,
+            "is_imported_buyer": 1,
+            "source_project_id": 1,
+        },
+    ).sort("name", 1).to_list(500)
+    return items
 
 
 @router.get("/property-statuses")
@@ -672,7 +698,7 @@ async def property_finance_summary(
     )
     buyer = None
     if prop.get("buyer_id"):
-        buyer = await db.buyers.find_one({"id": prop["buyer_id"]}, {"_id": 0})
+        buyer = await _find_client(db, prop["buyer_id"])
 
     final_price = float(prop.get("final_contract_price") or 0)
     deposit_amount = float(prop.get("reservation_price") or 0)
@@ -831,16 +857,12 @@ async def update_property_finance_plan(
     if not prop:
         raise HTTPException(status_code=404, detail="Имотът не е намерен")
 
-    # buyer_id validation — optional, but if supplied must exist & same project
+    # buyer_id validation — optional, but if supplied must be valid client
     new_buyer_id = payload.buyer_id
     if new_buyer_id:
-        buyer = await db.buyers.find_one({"id": new_buyer_id}, {"_id": 0, "project_id": 1})
+        buyer = await _find_client(db, new_buyer_id)
         if not buyer:
-            raise HTTPException(status_code=400, detail="Купувачът не е намерен")
-        if buyer.get("project_id") and buyer["project_id"] != prop.get("project_id"):
-            raise HTTPException(
-                status_code=400, detail="Купувачът принадлежи на друг проект"
-            )
+            raise HTTPException(status_code=400, detail="Клиентът не е намерен или е изтрит")
 
     # Mandatory snapshot before destructive replace of the plan + installments.
     try:

@@ -196,21 +196,32 @@ async def seed_all():
         }
     )
 
-    # ---- buyers from source ----
+    # ---- buyers from source — seed-ват се директно като users (role=client) ----
     buyer_id_by_key: dict[str, str] = {}
     for b in src.get("buyers", []):
         bid = str(uuid.uuid4())
         buyer_id_by_key[b["buyer_key"]] = bid
-        await db.buyers.insert_one(
+        email = (b.get("email") or "").strip().lower()
+        if not email:
+            email = f"imported+{bid.split('-')[0][:8]}@begestates.bg"
+        await db.users.insert_one(
             {
                 "id": bid,
-                "project_id": hd_id,
+                "email": email,
                 "name": b["name"],
-                "phone": b.get("phone"),
-                "email": b.get("email"),
-                "relation": b.get("relation"),
-                "notes": b.get("notes", ""),
-                "buyer_key": b["buyer_key"],
+                "role": Role.CLIENT.value,
+                "phone": b.get("phone") or "",
+                "preferred_contact": "any",
+                "client_note": b.get("notes", "") or "",
+                "two_factor_enabled": False,
+                "is_deleted": False,
+                "is_imported_buyer": True,
+                "source_project_id": hd_id,
+                "source_buyer_relation": b.get("relation"),
+                "source_buyer_key": b["buyer_key"],
+                "must_change_password": True,
+                "password_hash": None,
+                "password_set_at": None,
                 "created_at": _utcnow().isoformat(),
             }
         )
