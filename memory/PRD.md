@@ -1,49 +1,122 @@
 # BEG Estates / EstateFlow — PRD
 
-## Problem statement
-Модерен WEB SaaS/CRM за продажба на недвижими имоти — ново строителство. Публичен сайт, Клиентски портал и Админ панел с role-based auth. Включва резервации (zero-deposit и deposit), privacy правила, финансов панел по имот, кореспонденция, AI асистенти (floor plans & PDF import с human review), и строга Pre-change Snapshot / Versioning система с експорт в отделно хранилище.
+> Modern web SaaS / CRM for selling new-construction real-estate. Single-builder
+> deployment (Bulgarian market). Public marketing site + Client portal + Admin backoffice.
 
-**Primary language:** Bulgarian (цялото UI е на български).
+**Working name**: BEG Estates  ·  **Internal**: EstateFlow
+**Primary user language**: Български (UI, errors, comments — all in Bulgarian)
 
-## Core architecture
-- **Backend**: FastAPI + MongoDB (Motor) + Pydantic v2 — routes/, services/, models.py
-- **Frontend**: React + Tailwind + shadcn/ui
-- **AI local pipeline**: OpenCV, PyMuPDF, Tesseract OCR (с bul език) — никакви външни API засега
-- **Versioning**: Pre-change snapshot → export JSON.gz в `/app/exports/beg_estates_snapshots/...`; restore = нова версия, не destructive rollback
-- **Auth**: Staff (email + password + 2FA), Client (email + OTP)
+---
 
-## Implemented (Feb 2026)
-- Admin CRUD проекти/имоти с privacy rules (DONE)
-- Резервации zero-deposit + deposit от имотния списък (DONE)
-- Per-property финансов панел + RZP wallet + forecast margin (DONE)
-- Client profile + чат кореспонденция (DONE)
-- Floor plan mapping (backend + admin UI + public overlay) (DONE)
-- AI contour detection за floor plans (OpenCV + OCR) (DONE)
-- AI PDF import (класификация + extraction + human review) (DONE)
-- Pre-change snapshots + versioning + local export + safe restore (DONE, backend + frontend UI завършен Feb 2026)
+## Original problem statement
 
-## Backlog (prioritized)
+Изграждане на модерен WEB SaaS/CRM за продажба на недвижими имоти ново строителство.
+Системата включва:
+
+- Публичен сайт (проекти, имоти, контакт, запитване).
+- Клиентски портал (read-only — резервации, плащания, документи, кореспонденция).
+- Админ панел с role-based auth, AI Import за PDF, etc.
+- Резервации, privacy правила, AI асистенти за floor plans и PDF документи.
+- Versioning & snapshots за всяка критична операция.
+
+---
+
+## Architecture
+
+```
+/app/
+├── backend/
+│   ├── auth/              # security.py (bcrypt, JWT, TOTP, policy), dependencies.py
+│   ├── routes/            # auth_routes.py, projects.py, reservations.py,
+│   │                      # imports.py, audit.py, profile.py, snapshots.py, dashboard.py
+│   ├── services/          # document_import.py, snapshots.py
+│   ├── scripts/           # migrate_customers_to_password.py
+│   ├── tests/             # pytest regression
+│   ├── seed.py
+│   └── server.py
+└── frontend/
+    ├── src/
+    │   ├── components/    # public/, layout/, common/, ui/ (shadcn)
+    │   ├── lib/           # api.js (axios + 401 refresh), auth.jsx
+    │   ├── pages/auth/    # ClientLogin, StaffLogin, ForgotPassword, ResetPassword, ChangePassword
+    │   ├── pages/admin/   # ...AdminPasswordResets
+    │   ├── pages/client/
+    │   └── pages/public/
+    └── ...
+```
+
+**Tech**: FastAPI + Motor (MongoDB) + React + Tailwind + Shadcn UI + lucide-react.
+**Auth**: bcrypt (12) + PyJWT + pyotp. JWT в HttpOnly cookies. 2-step staff login (password → TOTP).
+
+---
+
+## Implemented features
+
+### Auth & Security (2026-02 refactor)
+
+- ✅ Класически email + password login за клиенти (без OTP)
+- ✅ 2-step staff login: парола → TOTP (5-мин temp_token); 2FA задължително, не може да се изключва
+- ✅ Forgot/reset password flow с admin-shared линкове (без email provider)
+- ✅ Admin UI за pending password resets + ръчно задаване на парола (force_change)
+- ✅ Brute-force lockout: 5 опита / 15 мин → 30 мин lockout (IP:email scope)
+- ✅ Password policy: ≥8 символа, ≥1 буква, ≥1 цифра
+- ✅ Audit log за всички auth събития (login_success, login_failure, password_reset_*, totp_*)
+- ✅ Read-only клиентски портал — POST /api/reservations отхвърля role=client с 403
+- ✅ Forced password change при first login (must_change_password) → ProtectedRoute redirect
+- ✅ "Заяви интерес" inquiry modal вместо "Резервирай с капаро 0" на public property detail
+- ✅ Migration script за legacy клиенти без password_hash → CSV с временни пароли
+
+### Public site
+
+- ✅ Home, Projects, Project detail, Property detail, Contact
+- ✅ Floor plan section with click-to-zoom apartments
+- ✅ Property detail apartment plan lightbox (PDF / image)
+- ✅ Inquiry form (anonymous, persisted to /api/inquiries)
+
+### Admin
+
+- ✅ Projects/Properties CRUD with auto-slug Cyrillic transliteration
+- ✅ Reservations management (zero deposit / paid deposit / convert / extend / release)
+- ✅ Floor plans editor (interactive coords + safe-merge)
+- ✅ AI Import pipeline за PDF (PyMuPDF + Regex), document type overrides, missing units, dry-run apply, bulk approve, manual review filters, auto floor assignment, multi-page PDF, apply-to-floor-plans с safe-merge
+- ✅ Audit log + Versions/Snapshots
+- ✅ Clients enriched list + correspondence
+- ✅ Password resets management (нова страница)
+
+### Client portal
+
+- ✅ Dashboard, Reservations, Payments, Documents, Updates, Profile, Messages, Change Password (всичко read-only с изключение на messages + profile + password)
+
+---
+
+## Backlog / Roadmap
 
 ### P1
-- **Email Provider & Scheduler** — Resend/SendGrid за system emails + auto-release на изтичащи zero-deposit резервации (next task)
-- **Pricing Engine** — автоматични коефициенти (етаж, изложение, отстъпки) + auto payment plans
+- **Pricing Engine**: автоматични цени с коефициенти по етаж/изложение, отстъпки, payment plans
+- **Email Provider integration** (Resend/SendGrid) за password resets, OTP-style notifications, reservation events. *(Currently OFF per user request — admin manually shares reset links.)*
+- **Auto-release scheduler** за изтекли zero-deposit резервации. *(Currently OFF per user request.)*
 
 ### P2
-- Wishlist / „Моят интерес" публичен flow + lead генериране
-- Broker роля + проследяване на комисионни
-- Change-requests flow (клиентски заявки)
+- "Моят интерес / Wishlist" — публичен flow за запазване на имоти
+- Broker роля + комисионни tracking
+- Change-requests flow
+- Force TOTP rotation / disable за загубен телефон (super-admin endpoint)
+
+### Refactoring (по желание)
+- Изнасяне на оставащите routes от server.py
+- Email/SMS templating engine
+
+---
 
 ## Test credentials
-Виж `/app/memory/test_credentials.md`.
 
-## Key endpoints
-- `GET /api/snapshots`, `GET /api/snapshots/{id}`, `POST /api/snapshots/{id}/restore-as-new-version`
-- `POST /api/projects/{id}/floor-plans/{floor}/suggest-contours`
-- `POST /api/import-sessions/{id}/analyze`
-- Reservations, Properties, Projects, Profile, Messages routes
+See `/app/memory/test_credentials.md`.
 
-## Constraints / rules
-- Pre-change snapshot failure ⇒ write операцията НЕ се изпълнява
-- Restore винаги генерира нова версия (pre-restore snapshot + apply)
-- AI никога не пише директно в DB — винаги review screen
-- Privacy: публични ендпойнти никога не връщат buyer_id, цени, административни статуси
+## Auth guide
+
+See `/app/docs/AUTH_GUIDE.md` (Bulgarian end-user guide).
+
+## Changelog highlights
+
+- **2026-02-05** — Auth refactor: removed OTP, added password+TOTP, password resets admin UI, read-only client portal, inquiry modal.
+- **2026-02 (earlier session)** — Versions UI, AI Import enhancements, project slug auto-generate, floor plan section in PropertyDetail, lightbox.
