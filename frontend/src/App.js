@@ -41,6 +41,7 @@ import AdminFloorPlans from "./pages/admin/AdminFloorPlans";
 import AdminImportDocs from "./pages/admin/AdminImportDocs";
 import AdminVersions from "./pages/admin/AdminVersions";
 import AdminPasswordResets from "./pages/admin/AdminPasswordResets";
+import AdminStaffUsers from "./pages/admin/AdminStaffUsers";
 
 import NotFound from "./pages/NotFound";
 
@@ -105,6 +106,7 @@ function App() {
                             <Route path="audit" element={<AdminAudit />} />
                             <Route path="versions" element={<AdminVersions />} />
                             <Route path="password-resets" element={<AdminPasswordResets />} />
+                            <Route path="staff-users" element={<AdminStaffUsers />} />
                             <Route path="change-password" element={<ChangePassword mode="staff" />} />
                         </Route>
 

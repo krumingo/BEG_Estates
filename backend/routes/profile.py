@@ -483,6 +483,15 @@ def _public_staff(u: dict) -> dict:
     }
 
 
+async def _count_active_super_admins(db) -> int:
+    """Колко активни (не soft-изтрити, не деактивирани) super_admin-а има в системата."""
+    return await db.users.count_documents({
+        "role": Role.SUPER_ADMIN.value,
+        "is_deleted": {"$ne": True},
+        "is_active": {"$ne": False},
+    })
+
+
 @router.get("/admin/staff-users")
 async def admin_list_staff(actor: dict = Depends(require_roles(Role.SUPER_ADMIN.value))):
     db = get_db()
@@ -538,7 +547,7 @@ async def admin_update_staff(
 ):
     db = get_db()
     target = await db.users.find_one({"id": staff_id})
-    if not target or target["role"] not in _STAFF_ROLES_VALUES:
+    if not target or target["role"] not in _STAFF_ROLES_VALUES or target.get("is_deleted"):
         raise HTTPException(status_code=404, detail="Служителят не е намерен")
     if target.get("role") == Role.SUPER_ADMIN.value and payload.role and payload.role != Role.SUPER_ADMIN.value:
         raise HTTPException(status_code=400, detail="Super admin ролята не може да се променя оттук")
@@ -558,8 +567,13 @@ async def admin_reset_staff_password(
 ):
     db = get_db()
     target = await db.users.find_one({"id": staff_id})
-    if not target or target["role"] not in _STAFF_ROLES_VALUES:
+    if not target or target["role"] not in _STAFF_ROLES_VALUES or target.get("is_deleted"):
         raise HTTPException(status_code=404, detail="Служителят не е намерен")
+    if target["id"] == actor["id"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Използвайте /admin/change-password за смяна на собствената си парола.",
+        )
     temp_pw = _gen_temp()
     await db.users.update_one(
         {"id": staff_id},
@@ -579,8 +593,13 @@ async def admin_reset_staff_totp(
 ):
     db = get_db()
     target = await db.users.find_one({"id": staff_id})
-    if not target or target["role"] not in _STAFF_ROLES_VALUES:
+    if not target or target["role"] not in _STAFF_ROLES_VALUES or target.get("is_deleted"):
         raise HTTPException(status_code=404, detail="Служителят не е намерен")
+    if target["id"] == actor["id"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Не можете да нулирате собствения си TOTP оттук. Използвайте /admin/change-password или свържете се с друг super admin.",
+        )
     await db.users.update_one(
         {"id": staff_id},
         {"$set": {
@@ -599,10 +618,17 @@ async def admin_deactivate_staff(
 ):
     db = get_db()
     target = await db.users.find_one({"id": staff_id})
-    if not target or target["role"] not in _STAFF_ROLES_VALUES:
+    if not target or target["role"] not in _STAFF_ROLES_VALUES or target.get("is_deleted"):
         raise HTTPException(status_code=404, detail="Служителят не е намерен")
     if target["id"] == actor["id"]:
         raise HTTPException(status_code=400, detail="Не може да деактивирате собствения си акаунт")
+    if target["role"] == Role.SUPER_ADMIN.value and target.get("is_active", True):
+        active = await _count_active_super_admins(db)
+        if active <= 1:
+            raise HTTPException(
+                status_code=400,
+                detail="Не можете да деактивирате последния super_admin. Системата трябва да има поне един.",
+            )
     await db.users.update_one(
         {"id": staff_id}, {"$set": {"is_active": False}},
     )
@@ -616,8 +642,49 @@ async def admin_activate_staff(
 ):
     db = get_db()
     target = await db.users.find_one({"id": staff_id})
-    if not target or target["role"] not in _STAFF_ROLES_VALUES:
+    if not target or target["role"] not in _STAFF_ROLES_VALUES or target.get("is_deleted"):
         raise HTTPException(status_code=404, detail="Служителят не е намерен")
     await db.users.update_one({"id": staff_id}, {"$set": {"is_active": True}})
     await log_action(actor["id"], "staff_activated", "user", staff_id, {})
+    return {"ok": True}
+
+
+@router.delete("/admin/staff-users/{staff_id}")
+async def admin_delete_staff(
+    staff_id: str, actor: dict = Depends(require_roles(Role.SUPER_ADMIN.value)),
+):
+    """Soft delete + clear sessions (username се анонимизира за uniqueness)."""
+    db = get_db()
+    target = await db.users.find_one({"id": staff_id})
+    if not target or target["role"] not in _STAFF_ROLES_VALUES:
+        raise HTTPException(status_code=404, detail="Служителят не е намерен")
+    if target.get("is_deleted"):
+        return {"ok": True, "already_deleted": True}
+    if target["id"] == actor["id"]:
+        raise HTTPException(status_code=400, detail="Не може да изтриете собствения си акаунт")
+    if target["role"] == Role.SUPER_ADMIN.value:
+        active = await _count_active_super_admins(db)
+        if active <= 1:
+            raise HTTPException(
+                status_code=400,
+                detail="Не можете да изтриете последния super_admin. Системата трябва да има поне един.",
+            )
+    await db.users.update_one(
+        {"id": staff_id},
+        {"$set": {
+            "is_deleted": True,
+            "is_active": False,
+            "deleted_at": datetime.now(timezone.utc).isoformat(),
+            "deleted_by": actor["id"],
+            "email": f"deleted+{staff_id}@begestates.bg",
+            "password_hash": None,
+            "totp_secret": None,
+            "totp_setup_completed": False,
+            "two_factor_enabled": False,
+        }},
+    )
+    await log_action(
+        actor["id"], "staff_deleted", "user", staff_id,
+        {"original_email": target.get("email"), "role": target.get("role")},
+    )
     return {"ok": True}

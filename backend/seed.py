@@ -70,18 +70,27 @@ async def seed_all():
 
     # ---- users (idempotent) ----
     admin_email = os.environ["ADMIN_EMAIL"].lower()
-    if not await db.users.find_one({"email": admin_email}):
+    existing_admin = await db.users.find_one({"email": admin_email})
+    if not existing_admin:
         await db.users.insert_one(
             {
                 "id": str(uuid.uuid4()),
                 "email": admin_email,
                 "name": "Administrator",
-                "role": Role.ADMIN.value,
+                "role": Role.SUPER_ADMIN.value,
                 "password_hash": hash_password(os.environ["ADMIN_PASSWORD"]),
                 "two_factor_enabled": False,
+                "is_active": True,
                 "phone": "+359 888 000 001",
                 "created_at": _utcnow().isoformat(),
             }
+        )
+    elif existing_admin.get("role") == Role.ADMIN.value:
+        # Миграция: повишаваме стария seeded admin в super_admin, за да
+        # има поне един super_admin за Staff Management UI.
+        await db.users.update_one(
+            {"id": existing_admin["id"]},
+            {"$set": {"role": Role.SUPER_ADMIN.value, "is_active": True}},
         )
     sales_email = os.environ["SALES_EMAIL"].lower()
     if not await db.users.find_one({"email": sales_email}):

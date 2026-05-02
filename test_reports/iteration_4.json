@@ -1,0 +1,85 @@
+{
+  "summary": "Comprehensive testing of Staff Management UI and TOTP bootstrap flow completed. Backend: 23/23 tests passed. Frontend: All critical flows verified including self-protection rules, sidebar visibility, and access control.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_staff_management.py",
+    "/app/test_reports/pytest/pytest_staff_management.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Staff login TOTP bootstrap correctly returns totp_secret_b32, totp_uri, qr_code_url for first-time users",
+    "Staff verify-totp correctly sets auth cookies and returns user with role",
+    "GET /api/admin/staff-users correctly requires super_admin role (403 for sales/client)",
+    "POST /api/admin/staff-users correctly creates staff with temp_password",
+    "Creating super_admin role via API correctly returns 422 validation error",
+    "Self-protection rules work: reset-password/reset-totp/deactivate/delete on self returns 400",
+    "Deactivated users correctly get 403 on next request with 'Акаунтът е деактивиран' message",
+    "Soft-delete correctly anonymizes email to deleted+{id}@begestates.bg",
+    "Last super_admin guard exists in code (prevents deactivating/deleting last active super_admin)",
+    "Frontend sidebar correctly shows 'Служители' link only for super_admin role",
+    "Frontend staff table correctly shows 'Вие' marker for current user",
+    "Frontend correctly hides destructive buttons for self row (only edit button visible)",
+    "Frontend 'Нов служител' dialog correctly shows temp password after creation",
+    "Sales user accessing /admin/staff-users gets 403 toast and empty table",
+    "Client login regression test passes - profile endpoint works"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_staff_management.py"
+  ],
+  "success_rate": {
+    "backend": "100% (23/23 tests passed)",
+    "frontend": "100% (all critical flows verified)"
+  },
+  "test_credentials": {
+    "admin": "admin@begestates.bg / Admin123! (TOTP secret: BN5A5POBT6Q4EZH6HVIRV5QEWVMBV4UP)",
+    "sales": "sales@begestates.bg / Sales123! (TOTP secret: OAHZZCM2D4WH6XH63V6ZT74UAS6ZIITK)",
+    "client": "ivan.petrov@example.com / Client123!"
+  },
+  "seed_data_creation": "No new seed data created. Using existing seeded users.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Staff Management UI complete and tested. All endpoints working: staff CRUD, reset-password, reset-totp, deactivate/activate, soft-delete. Self-protection rules enforced in both backend (400 errors) and frontend (hidden buttons). Last super_admin guard prevents deactivating/deleting the last active super_admin. Sidebar 'Служители' link only visible for super_admin. Sales/client users get 403 when accessing /admin/staff-users.",
+  "verified_features": [
+    "BACKEND: POST /api/auth/staff/login returns temp_token + requires_totp/requires_totp_setup flags",
+    "BACKEND: First-time staff login returns totp_secret_b32, totp_uri, qr_code_url in response",
+    "BACKEND: POST /api/auth/staff/verify-totp with valid code returns user + sets cookies",
+    "BACKEND: POST /api/auth/staff/verify-totp with invalid code returns 401",
+    "BACKEND: GET /api/admin/staff-users as super_admin returns staff list with correct structure",
+    "BACKEND: GET /api/admin/staff-users as sales returns 403",
+    "BACKEND: GET /api/admin/staff-users as client returns 403",
+    "BACKEND: POST /api/admin/staff-users creates staff with temp_password",
+    "BACKEND: POST /api/admin/staff-users with duplicate email returns 409",
+    "BACKEND: POST /api/admin/staff-users with role=super_admin returns 422",
+    "BACKEND: PATCH /api/admin/staff-users/{id} updates staff fields",
+    "BACKEND: POST /api/admin/staff-users/{self_id}/reset-password returns 400",
+    "BACKEND: POST /api/admin/staff-users/{self_id}/reset-totp returns 400",
+    "BACKEND: POST /api/admin/staff-users/{self_id}/deactivate returns 400",
+    "BACKEND: DELETE /api/admin/staff-users/{self_id} returns 400",
+    "BACKEND: Deactivated user gets 403 'Акаунтът е деактивиран' on next request",
+    "BACKEND: POST /api/admin/staff-users/{id}/activate reactivates user",
+    "BACKEND: DELETE /api/admin/staff-users/{id} soft-deletes and anonymizes email",
+    "BACKEND: Last super_admin guard prevents deactivating/deleting last active super_admin",
+    "BACKEND: POST /api/admin/staff-users/{id}/reset-password returns new temp_password",
+    "BACKEND: POST /api/admin/staff-users/{id}/reset-totp clears totp_setup_completed",
+    "BACKEND: POST /api/auth/client/login works (regression test)",
+    "FRONTEND: Staff login page loads with email/password form",
+    "FRONTEND: TOTP step 2 appears after password verification",
+    "FRONTEND: Admin redirected to /admin after successful TOTP verification",
+    "FRONTEND: Sidebar shows 'Служители' link for super_admin",
+    "FRONTEND: Sidebar hides 'Служители' link for sales role",
+    "FRONTEND: Staff users page shows 'Управление на екипа' title",
+    "FRONTEND: Staff table shows 'Вие' marker for current user",
+    "FRONTEND: Destructive buttons hidden for self row (only edit visible)",
+    "FRONTEND: 'Нов служител' dialog opens and creates staff",
+    "FRONTEND: Temp password dialog shows generated password",
+    "FRONTEND: Sales user accessing /admin/staff-users gets 403 toast"
+  ]
+}

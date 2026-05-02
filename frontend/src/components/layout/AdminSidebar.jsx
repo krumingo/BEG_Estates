@@ -12,6 +12,7 @@ import {
     UploadCloud,
     History,
     KeyRound,
+    ShieldCheck,
     LogOut,
 } from "lucide-react";
 import { useAuth } from "../../lib/auth";
@@ -26,6 +27,7 @@ const NAV = [
     { to: "/admin/reservations", label: "Резервации", icon: CalendarClock, id: "admin-nav-reservations" },
     { to: "/admin/clients", label: "Клиенти", icon: Users, id: "admin-nav-clients" },
     { to: "/admin/password-resets", label: "Пароли", icon: KeyRound, id: "admin-nav-password-resets" },
+    { to: "/admin/staff-users", label: "Служители", icon: ShieldCheck, id: "admin-nav-staff-users", onlySuperAdmin: true },
     { to: "/admin/inquiries", label: "Запитвания", icon: Receipt, id: "admin-nav-inquiries" },
     { to: "/admin/audit", label: "Audit log", icon: ClipboardList, id: "admin-nav-audit" },
     { to: "/admin/versions", label: "Версии / Backups", icon: History, id: "admin-nav-versions" },
@@ -48,7 +50,7 @@ export default function AdminSidebar() {
             </div>
 
             <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-                {NAV.map(({ to, label, icon: Icon, end, id }) => (
+                {NAV.filter((item) => !item.onlySuperAdmin || user?.role === "super_admin").map(({ to, label, icon: Icon, end, id }) => (
                     <NavLink
                         key={to}
                         to={to}
