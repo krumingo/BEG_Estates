@@ -74,7 +74,6 @@ def _public_user(u: dict) -> dict:
         "phone": u.get("phone") or "",
         "preferred_contact": u.get("preferred_contact") or "",
         "client_note": u.get("client_note") or "",
-        "two_factor_enabled": bool(u.get("two_factor_enabled")),
         "created_at": u.get("created_at"),
     }
 
@@ -85,7 +84,7 @@ async def get_profile(user: dict = Depends(get_current_user)):
     db = get_db()
     u = await db.users.find_one(
         {"id": user["id"]},
-        {"_id": 0, "password_hash": 0, "totp_secret": 0},
+        {"_id": 0, "password_hash": 0},
     )
     if not u:
         raise HTTPException(status_code=404, detail="Потребителят не е намерен")
@@ -206,7 +205,7 @@ async def list_clients_enriched(_=Depends(require_staff())):
     db = get_db()
     users = await db.users.find(
         {"role": "client", "is_deleted": {"$ne": True}},
-        {"_id": 0, "totp_secret": 0},
+        {"_id": 0},
     ).to_list(500)
     out = []
     for u in users:
@@ -327,7 +326,6 @@ async def admin_create_client(
         "phone": payload.phone or "",
         "preferred_contact": payload.preferred_contact or "any",
         "client_note": payload.notes or "",
-        "two_factor_enabled": False,
         "must_change_password": True,
         "is_deleted": False,
         "created_at": now,
@@ -348,7 +346,7 @@ async def admin_create_client(
     )
 
     fresh = await db.users.find_one(
-        {"id": new_id}, {"_id": 0, "password_hash": 0, "totp_secret": 0}
+        {"id": new_id}, {"_id": 0, "password_hash": 0}
     )
     return {
         "client": _public_user(fresh),
@@ -383,7 +381,7 @@ async def admin_update_client(
         {"fields": list(changes.keys())},
     )
     fresh = await db.users.find_one(
-        {"id": client_id}, {"_id": 0, "password_hash": 0, "totp_secret": 0}
+        {"id": client_id}, {"_id": 0, "password_hash": 0}
     )
     return _public_user(fresh)
 
@@ -477,8 +475,8 @@ def _public_staff(u: dict) -> dict:
         "phone": u.get("phone", ""),
         "notes": u.get("staff_note") or u.get("client_note") or "",
         "is_active": u.get("is_active", True),
-        "totp_setup_completed": bool(u.get("totp_setup_completed")),
         "must_change_password": bool(u.get("must_change_password")),
+        "password_set_at": u.get("password_set_at"),
         "created_at": u.get("created_at"),
     }
 
@@ -497,7 +495,7 @@ async def admin_list_staff(actor: dict = Depends(require_roles(Role.SUPER_ADMIN.
     db = get_db()
     users = await db.users.find(
         {"role": {"$in": list(_STAFF_ROLES_VALUES)}, "is_deleted": {"$ne": True}},
-        {"_id": 0, "password_hash": 0, "totp_secret": 0},
+        {"_id": 0, "password_hash": 0},
     ).sort("created_at", -1).to_list(200)
     return [_public_staff(u) for u in users]
 
@@ -524,8 +522,6 @@ async def admin_create_staff(
         "password_hash": _hash_pw(temp_pw),
         "password_set_at": now,
         "must_change_password": True,
-        "totp_setup_completed": False,
-        "two_factor_enabled": False,
         "is_active": True,
         "is_deleted": False,
         "created_at": now,
@@ -535,7 +531,7 @@ async def admin_create_staff(
     await log_action(actor["id"], "staff_created", "user", new_id,
                      {"email": email, "role": payload.role})
     fresh = await db.users.find_one(
-        {"id": new_id}, {"_id": 0, "password_hash": 0, "totp_secret": 0}
+        {"id": new_id}, {"_id": 0, "password_hash": 0}
     )
     return {"staff": _public_staff(fresh), "temp_password": temp_pw}
 
@@ -557,7 +553,7 @@ async def admin_update_staff(
         changes["staff_note"] = changes.pop("notes") or ""
     await db.users.update_one({"id": staff_id}, {"$set": changes})
     await log_action(actor["id"], "staff_updated", "user", staff_id, {"fields": list(changes.keys())})
-    fresh = await db.users.find_one({"id": staff_id}, {"_id": 0, "password_hash": 0, "totp_secret": 0})
+    fresh = await db.users.find_one({"id": staff_id}, {"_id": 0, "password_hash": 0})
     return _public_staff(fresh)
 
 
@@ -585,31 +581,6 @@ async def admin_reset_staff_password(
     )
     await log_action(actor["id"], "staff_password_reset", "user", staff_id, {})
     return {"ok": True, "temp_password": temp_pw}
-
-
-@router.post("/admin/staff-users/{staff_id}/reset-totp")
-async def admin_reset_staff_totp(
-    staff_id: str, actor: dict = Depends(require_roles(Role.SUPER_ADMIN.value)),
-):
-    db = get_db()
-    target = await db.users.find_one({"id": staff_id})
-    if not target or target["role"] not in _STAFF_ROLES_VALUES or target.get("is_deleted"):
-        raise HTTPException(status_code=404, detail="Служителят не е намерен")
-    if target["id"] == actor["id"]:
-        raise HTTPException(
-            status_code=400,
-            detail="Не можете да нулирате собствения си TOTP оттук. Използвайте /admin/change-password или свържете се с друг super admin.",
-        )
-    await db.users.update_one(
-        {"id": staff_id},
-        {"$set": {
-            "totp_secret": None,
-            "totp_setup_completed": False,
-            "two_factor_enabled": False,
-        }},
-    )
-    await log_action(actor["id"], "staff_totp_reset", "user", staff_id, {})
-    return {"ok": True, "message": "TOTP е нулиран. При следващ login ще се поиска нов setup."}
 
 
 @router.post("/admin/staff-users/{staff_id}/deactivate")
@@ -678,9 +649,6 @@ async def admin_delete_staff(
             "deleted_by": actor["id"],
             "email": f"deleted+{staff_id}@begestates.bg",
             "password_hash": None,
-            "totp_secret": None,
-            "totp_setup_completed": False,
-            "two_factor_enabled": False,
         }},
     )
     await log_action(

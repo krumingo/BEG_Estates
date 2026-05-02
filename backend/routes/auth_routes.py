@@ -1,6 +1,5 @@
-"""Authentication routes: классически email/password логин за клиенти и staff с TOTP 2FA."""
+"""Authentication routes — email + парола за client и staff (БЕЗ TOTP)."""
 import os
-import urllib.parse
 import uuid
 from datetime import datetime, timezone, timedelta
 
@@ -11,15 +10,11 @@ from auth.dependencies import get_current_user, require_staff
 from auth.security import (
     create_access_token,
     create_refresh_token,
-    create_temp_2fa_token,
     decode_token,
     generate_password_reset_token,
-    generate_totp_secret,
     hash_password,
-    totp_uri,
     validate_password_policy,
     verify_password,
-    verify_totp,
 )
 from constants import STAFF_ROLES, Role
 from db import get_db
@@ -30,8 +25,6 @@ from models import (
     ForgotPasswordRequest,
     ResetPasswordRequest,
     StaffLoginRequest,
-    StaffTotpVerifyRequest,
-    TotpSetupVerify,
 )
 from routes.audit import log_action
 
@@ -39,15 +32,19 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 COOKIE_KW = dict(httponly=True, secure=True, samesite="none", path="/")
 
-# Lockout policy
-LOCKOUT_MAX_ATTEMPTS = 5
-LOCKOUT_WINDOW_MIN = 15
-LOCKOUT_DURATION_MIN = 30
+# Strict lockout (компенсация за липса на 2FA): 3 неуспешни/10мин → 1ч заключване
+LOCKOUT_MAX_ATTEMPTS = 3
+LOCKOUT_WINDOW_MIN = 10
+LOCKOUT_DURATION_MIN = 60
 PASSWORD_RESET_TTL_HOURS = 1
+# Принудителна смяна на парола на staff след 90 дни
+PASSWORD_MAX_AGE_DAYS = 90
+# 8 часа сесия
+ACCESS_TOKEN_MAX_AGE = 8 * 3600
 
 
 def _set_auth_cookies(response: Response, access: str, refresh: str):
-    response.set_cookie("access_token", access, max_age=3600, **COOKIE_KW)
+    response.set_cookie("access_token", access, max_age=ACCESS_TOKEN_MAX_AGE, **COOKIE_KW)
     response.set_cookie("refresh_token", refresh, max_age=604800, **COOKIE_KW)
 
 
@@ -62,8 +59,6 @@ def _public_user(user: dict) -> dict:
         "email": user["email"],
         "name": user.get("name", ""),
         "role": user["role"],
-        "two_factor_enabled": bool(user.get("two_factor_enabled", False)),
-        "totp_setup_required": bool(user.get("totp_setup_required", False)),
         "must_change_password": bool(user.get("must_change_password", False)),
         "phone": user.get("phone", ""),
     }
@@ -73,8 +68,21 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _password_aged_out(user: dict) -> bool:
+    """True ако паролата на staff е по-стара от PASSWORD_MAX_AGE_DAYS."""
+    set_at = user.get("password_set_at")
+    if not set_at:
+        return False
+    try:
+        ts = datetime.fromisoformat(set_at)
+    except ValueError:
+        return False
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return (_now() - ts).days >= PASSWORD_MAX_AGE_DAYS
+
+
 async def _check_lockout(db, key: str) -> None:
-    """Хвърля 429, ако ip:email е заключен."""
     attempt = await db.login_attempts.find_one({"identifier": key})
     if not attempt:
         return
@@ -87,11 +95,9 @@ async def _check_lockout(db, key: str) -> None:
 
 
 async def _record_failed_attempt(db, key: str) -> None:
-    """Брои неуспешни опити; при >= 5 за 15 мин → заключва за 30 мин."""
     now = _now()
     window_start = (now - timedelta(minutes=LOCKOUT_WINDOW_MIN)).isoformat()
     existing = await db.login_attempts.find_one({"identifier": key})
-    # ако последният опит е извън прозореца → reset брояча
     if existing and existing.get("last_attempt", "") < window_start:
         await db.login_attempts.update_one(
             {"identifier": key},
@@ -173,11 +179,6 @@ async def client_login(payload: ClientLoginRequest, request: Request, response: 
 
 @router.post("/client/forgot-password")
 async def client_forgot_password(payload: ForgotPasswordRequest, request: Request):
-    """Винаги връща 200 (за да не разкрива дали имейлът съществува).
-
-    НЕ изпраща email. Admin вижда заявката в /admin/password-resets и ръчно
-    дава линка на клиента (WhatsApp / Viber / телефон).
-    """
     db = get_db()
     email = payload.email.lower().strip()
     user = await db.users.find_one({"email": email, "role": Role.CLIENT.value})
@@ -262,16 +263,11 @@ async def client_change_password(
 
 
 # =============================================================================
-# STAFF — email + password (стъпка 1) → temp_token → TOTP (стъпка 2)
+# STAFF — email + password (БЕЗ TOTP)
 # =============================================================================
 @router.post("/staff/login")
-async def staff_login(payload: StaffLoginRequest, request: Request):
-    """Стъпка 1: проверка на парола → връща temp_token и QR при първи login.
-
-    При първи TOTP setup (totp_setup_completed != True), login response връща
-    директно `qr_code_url` + `totp_secret_b32`, за да може frontend-ът да покаже
-    Setup screen без допълнителен round-trip.
-    """
+async def staff_login(payload: StaffLoginRequest, request: Request, response: Response):
+    """Един-стъпков staff login: email + парола → JWT cookie веднага."""
     db = get_db()
     email = payload.email.lower().strip()
     ip = request.client.host if request.client else "?"
@@ -295,97 +291,34 @@ async def staff_login(payload: StaffLoginRequest, request: Request):
 
     if user.get("is_active") is False:
         raise HTTPException(status_code=403, detail="Акаунтът е деактивиран")
-
-    setup_completed = bool(user.get("totp_setup_completed"))
-    temp_token = create_temp_2fa_token(user["id"], user["email"])
-
-    response: dict = {
-        "temp_token": temp_token,
-        "requires_totp": setup_completed,
-        "requires_totp_setup": not setup_completed,
-        # Legacy флагове за backwards compat с по-стари frontend версии.
-        "totp_setup_required": not setup_completed,
-    }
-
-    if not setup_completed:
-        # Bootstrap: генерираме (или re-use-ваме) secret и връщаме QR директно.
-        secret = user.get("totp_secret") or generate_totp_secret()
-        if secret != user.get("totp_secret"):
-            await db.users.update_one(
-                {"id": user["id"]},
-                {"$set": {"totp_secret": secret, "totp_setup_completed": False}},
-            )
-            await log_action(
-                user["id"], "totp_setup_started", "user", user["id"], {"context": "login_bootstrap"}
-            )
-        uri = totp_uri(secret, user["email"])
-        response.update({
-            "totp_secret_b32": secret,
-            "totp_uri": uri,
-            "qr_code_url": f"https://api.qrserver.com/v1/create-qr-code/?size=240x240&data={urllib.parse.quote(uri, safe='')}",
-            "issuer": "BEG Estates",
-            "account": user["email"],
-        })
-    return response
-
-
-@router.post("/staff/verify-totp")
-async def staff_verify_totp(
-    payload: StaffTotpVerifyRequest,
-    request: Request,
-    response: Response,
-):
-    """Стъпка 2: verify TOTP с temp_token → издава access/refresh cookies."""
-    db = get_db()
-    ip = request.client.host if request.client else "?"
-
-    try:
-        decoded = decode_token(payload.temp_token)
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Сесията за вход е изтекла, моля въведете паролата отново")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Невалиден токен")
-    if decoded.get("type") != "temp_2fa":
-        raise HTTPException(status_code=401, detail="Невалиден тип токен")
-
-    user_id = decoded["sub"]
-    user = await db.users.find_one({"id": user_id})
-    if not user or user["role"] not in STAFF_ROLES:
-        raise HTTPException(status_code=401, detail="Невалидна сесия")
-
-    # 3 неуспешни опита със същия temp_token → invalidate
-    key = f"totp:{user_id}:{ip}"
-    await _check_lockout(db, key)
-
-    secret = user.get("totp_secret")
-    if not secret or not verify_totp(secret, payload.code):
-        await _record_failed_attempt(db, key)
-        await log_action(
-            user["id"], "totp_verify_failure", "user", user["id"],
-            {"ip": ip},
-        )
-        raise HTTPException(status_code=401, detail="Невалиден 2FA код")
-
-    # Успех — активираме 2FA и маркираме setup като completed при първи verify
-    updates = {"totp_setup_completed": True, "two_factor_enabled": True}
-    if user.get("totp_setup_required"):
-        updates["totp_setup_required"] = False
-    await db.users.update_one({"id": user["id"]}, {"$set": updates})
+    if user.get("is_deleted"):
+        raise HTTPException(status_code=403, detail="Акаунтът е изтрит")
 
     await _clear_attempts(db, key)
-    await _clear_attempts(db, f"staff:{ip}:{user['email']}")
+
+    # Принудителна 90-дневна ротация на пароли за staff
+    must_change = bool(user.get("must_change_password", False))
+    if _password_aged_out(user) and not must_change:
+        await db.users.update_one(
+            {"id": user["id"]}, {"$set": {"must_change_password": True}}
+        )
+        must_change = True
+        await log_action(
+            user["id"], "password_aged_out", "user", user["id"],
+            {"max_age_days": PASSWORD_MAX_AGE_DAYS},
+        )
 
     access = create_access_token(user["id"], user["email"], user["role"])
     refresh = create_refresh_token(user["id"])
     _set_auth_cookies(response, access, refresh)
 
     await _record_login_history(db, user["id"], request)
-    await log_action(user["id"], "login_success", "user", user["id"], {"role": "staff", "totp": True})
+    await log_action(user["id"], "login_success", "user", user["id"], {"role": "staff"})
 
     fresh = await db.users.find_one({"id": user["id"]})
     return {
         "user": _public_user(fresh),
-        "must_change_password": bool(fresh.get("must_change_password", False)),
+        "must_change_password": must_change,
     }
 
 
@@ -472,99 +405,10 @@ async def staff_change_password(
     return {"ok": True}
 
 
-@router.post("/staff/setup-totp")
-async def staff_setup_totp_with_temp_token(payload: StaffTotpVerifyRequest):
-    """Bootstrap setup на TOTP при първи staff login (още няма access cookie).
-
-    Използва temp_token като auth — `code` е игнориран в payload-а. Връща secret + QR uri.
-    След това клиентът извиква /auth/staff/verify-totp с temp_token + code от authenticator.
-    """
-    db = get_db()
-    try:
-        decoded = decode_token(payload.temp_token)
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Сесията за вход е изтекла")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Невалиден токен")
-    if decoded.get("type") != "temp_2fa":
-        raise HTTPException(status_code=401, detail="Невалиден тип токен")
-
-    user = await db.users.find_one({"id": decoded["sub"]})
-    if not user or user["role"] not in STAFF_ROLES:
-        raise HTTPException(status_code=401, detail="Невалидна сесия")
-
-    # Ако вече има secret и 2FA е активен — не позволяваме нов setup без re-auth.
-    if user.get("totp_secret") and user.get("two_factor_enabled"):
-        raise HTTPException(
-            status_code=400,
-            detail="2FA вече е настроено. Свържете се с администратор за рестарт.",
-        )
-
-    secret = generate_totp_secret()
-    await db.users.update_one(
-        {"id": user["id"]},
-        {"$set": {
-            "totp_secret": secret,
-            "two_factor_enabled": False,
-            "totp_setup_required": True,
-        }},
-    )
-    await log_action(user["id"], "totp_setup_started", "user", user["id"], {"context": "first_login"})
-    return {
-        "secret": secret,
-        "uri": totp_uri(secret, user["email"]),
-        "issuer": "BEG Estates",
-        "account": user["email"],
-    }
-
-
-# =============================================================================
-# 2FA setup (forced при първи staff login или manual rotation)
-# =============================================================================
-@router.post("/2fa/setup")
-async def totp_setup(user: dict = Depends(get_current_user)):
-    if user["role"] not in STAFF_ROLES:
-        raise HTTPException(status_code=403, detail="2FA е задължително само за служители")
-    db = get_db()
-    secret = generate_totp_secret()
-    # Генерираме нов secret, но НЕ маркираме като enabled преди verify.
-    await db.users.update_one(
-        {"id": user["id"]},
-        {"$set": {
-            "totp_secret": secret,
-            "two_factor_enabled": False,
-            "totp_setup_required": True,
-        }},
-    )
-    await log_action(user["id"], "totp_setup_started", "user", user["id"], {})
-    return {"secret": secret, "uri": totp_uri(secret, user["email"])}
-
-
-@router.post("/2fa/verify")
-async def totp_verify(payload: TotpSetupVerify, user: dict = Depends(get_current_user)):
-    db = get_db()
-    if user["role"] not in STAFF_ROLES:
-        raise HTTPException(status_code=403, detail="2FA е задължително само за служители")
-    full = await db.users.find_one({"id": user["id"]})
-    secret = full.get("totp_secret")
-    if not secret:
-        raise HTTPException(status_code=400, detail="Първо инициирайте 2FA")
-    if not verify_totp(secret, payload.code):
-        await log_action(user["id"], "totp_verify_failure", "user", user["id"], {"context": "setup"})
-        raise HTTPException(status_code=401, detail="Невалиден код")
-    await db.users.update_one(
-        {"id": user["id"]},
-        {"$set": {"two_factor_enabled": True, "totp_setup_required": False}},
-    )
-    await log_action(user["id"], "totp_setup_completed", "user", user["id"], {})
-    return {"two_factor_enabled": True}
-
-
 # =============================================================================
 # ADMIN — pending password resets management
 # =============================================================================
 def _frontend_origin() -> str:
-    """Първият CORS origin = публичният frontend URL."""
     origins = os.environ.get("CORS_ORIGINS", "").split(",")
     for o in origins:
         o = o.strip()
@@ -633,7 +477,7 @@ async def admin_set_client_password(
     payload: AdminSetClientPasswordRequest,
     user: dict = Depends(require_staff()),
 ):
-    """Admin задава директно нова парола на клиент (например при телефонен разговор)."""
+    """Admin задава директно нова парола на клиент."""
     db = get_db()
     target = await db.users.find_one({"id": client_id, "role": Role.CLIENT.value})
     if not target:
@@ -677,12 +521,12 @@ async def refresh_access_token(request: Request, response: Response):
         raise HTTPException(status_code=401, detail="Невалиден тип токен")
     db = get_db()
     user = await db.users.find_one(
-        {"id": payload["sub"]}, {"_id": 0, "password_hash": 0, "totp_secret": 0}
+        {"id": payload["sub"]}, {"_id": 0, "password_hash": 0}
     )
     if not user:
         raise HTTPException(status_code=401, detail="Потребителят не е намерен")
     access = create_access_token(user["id"], user["email"], user["role"])
-    response.set_cookie("access_token", access, max_age=3600, **COOKIE_KW)
+    response.set_cookie("access_token", access, max_age=ACCESS_TOKEN_MAX_AGE, **COOKIE_KW)
     return {"ok": True}
 
 

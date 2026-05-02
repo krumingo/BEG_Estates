@@ -5,15 +5,9 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 
 # ---------- Auth ----------
 class StaffLoginRequest(BaseModel):
-    """Стъпка 1 от staff login: email + парола (без TOTP)."""
+    """Staff login: email + парола (без TOTP)."""
     email: EmailStr
     password: str
-
-
-class StaffTotpVerifyRequest(BaseModel):
-    """Стъпка 2 от staff login: temp_token (от стъпка 1) + 6-цифрен TOTP."""
-    temp_token: str
-    code: str
 
 
 class ClientLoginRequest(BaseModel):
@@ -27,12 +21,12 @@ class ForgotPasswordRequest(BaseModel):
 
 class ResetPasswordRequest(BaseModel):
     token: str = Field(..., min_length=8)
-    new_password: str = Field(..., min_length=8)
+    new_password: str = Field(..., min_length=12)
 
 
 class ChangePasswordRequest(BaseModel):
     current_password: str = Field(..., min_length=1)
-    new_password: str = Field(..., min_length=8)
+    new_password: str = Field(..., min_length=12)
 
 
 class AdminSetClientPasswordRequest(BaseModel):
@@ -41,16 +35,11 @@ class AdminSetClientPasswordRequest(BaseModel):
     force_change: bool = True
 
 
-class TotpSetupVerify(BaseModel):
-    code: str
-
-
 class UserPublic(BaseModel):
     id: str
     email: str
     name: str
     role: str
-    two_factor_enabled: bool = False
 
 
 from constants import ProjectStatus

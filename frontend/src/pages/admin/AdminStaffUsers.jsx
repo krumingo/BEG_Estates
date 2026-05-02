@@ -97,7 +97,7 @@ export default function AdminStaffUsers() {
 
     // destructive confirm
     const [confirmAction, setConfirmAction] = useState(null);
-    // shape: { type: 'reset-totp'|'deactivate'|'activate'|'delete'|'reset-password', target, warnSuperAdmin }
+    // shape: { type: 'deactivate'|'activate'|'delete'|'reset-password', target, warnSuperAdmin }
     const [confirmBusy, setConfirmBusy] = useState(false);
 
     const load = async () => {
@@ -232,11 +232,6 @@ export default function AdminStaffUsers() {
                     });
                 }
                 load();
-            } else if (type === "reset-totp") {
-                await api.post(`/admin/staff-users/${target.id}/reset-totp`);
-                toast.success("TOTP е нулиран. При следващ login ще се поиска нов setup.");
-                setConfirmAction(null);
-                load();
             } else if (type === "deactivate") {
                 await api.post(`/admin/staff-users/${target.id}/deactivate`);
                 toast.success(`${target.email} е деактивиран`);
@@ -280,12 +275,6 @@ export default function AdminStaffUsers() {
                 cta: "Генерирай парола",
                 danger: false,
             },
-            "reset-totp": {
-                title: "Нулиране на TOTP (2FA)",
-                body: `${name} ще трябва да настрои наново 2FA при следващ login. Използвайте при загубен телефон.`,
-                cta: "Нулирай TOTP",
-                danger: true,
-            },
             deactivate: {
                 title: "Деактивиране",
                 body: `${name} няма да може да влиза в системата. Всички активни сесии ще бъдат прекратени.`,
@@ -320,8 +309,8 @@ export default function AdminStaffUsers() {
                     <div className="overline mb-2">Служители</div>
                     <h1 className="font-serif text-4xl text-slate-900">Управление на екипа</h1>
                     <p className="text-sm text-slate-500 mt-2 max-w-xl">
-                        Създавайте нови акаунти, нулирайте пароли или 2FA, активирайте/деактивирайте
-                        достъп. Достъпно само за супер администратор.
+                        Създавайте нови акаунти, нулирайте пароли,
+                        активирайте/деактивирайте достъп. Достъпно само за супер администратор.
                     </p>
                 </div>
                 <Button
@@ -370,7 +359,6 @@ export default function AdminStaffUsers() {
                             <th className="text-left p-3 font-medium">Имейл</th>
                             <th className="text-left p-3 font-medium">Роля</th>
                             <th className="text-left p-3 font-medium">Телефон</th>
-                            <th className="text-left p-3 font-medium">2FA</th>
                             <th className="text-left p-3 font-medium">Статус</th>
                             <th className="text-left p-3 font-medium">Създаден</th>
                             <th className="text-right p-3 font-medium">Действия</th>
@@ -378,10 +366,10 @@ export default function AdminStaffUsers() {
                     </thead>
                     <tbody>
                         {loading && (
-                            <tr><td className="p-5 text-sm text-slate-500" colSpan={8}>Зареждане…</td></tr>
+                            <tr><td className="p-5 text-sm text-slate-500" colSpan={7}>Зареждане…</td></tr>
                         )}
                         {!loading && filtered.length === 0 && (
-                            <tr><td className="p-5 text-sm text-slate-500" colSpan={8}>Няма намерени служители.</td></tr>
+                            <tr><td className="p-5 text-sm text-slate-500" colSpan={7}>Няма намерени служители.</td></tr>
                         )}
                         {filtered.map((u) => {
                             const isSelf = u.id === actor?.id;
@@ -415,17 +403,6 @@ export default function AdminStaffUsers() {
                                     </td>
                                     <td className="p-3"><RoleBadge role={u.role} /></td>
                                     <td className="p-3 text-slate-600">{u.phone || <span className="text-slate-400">—</span>}</td>
-                                    <td className="p-3">
-                                        {u.totp_setup_completed ? (
-                                            <span className="inline-flex items-center gap-1 text-xs text-emerald-700" data-testid={`admin-staff-totp-ok-${u.id}`}>
-                                                <CheckCircle2 className="h-3.5 w-3.5" /> Настроен
-                                            </span>
-                                        ) : (
-                                            <span className="inline-flex items-center gap-1 text-xs text-amber-700">
-                                                <ShieldAlert className="h-3.5 w-3.5" /> Pending
-                                            </span>
-                                        )}
-                                    </td>
                                     <td className="p-3">
                                         {u.is_active ? (
                                             <span className="inline-flex items-center gap-1 text-xs text-emerald-700">
@@ -461,16 +438,6 @@ export default function AdminStaffUsers() {
                                                         title="Нулирай парола"
                                                     >
                                                         <KeyRound className="h-3.5 w-3.5" />
-                                                    </Button>
-                                                    <Button
-                                                        size="sm"
-                                                        variant="ghost"
-                                                        onClick={() => askConfirm("reset-totp", u)}
-                                                        data-testid={`admin-reset-totp-${u.id}`}
-                                                        className="h-8 px-2"
-                                                        title="Нулирай 2FA"
-                                                    >
-                                                        <ShieldAlert className="h-3.5 w-3.5" />
                                                     </Button>
                                                     {u.is_active ? (
                                                         <Button
@@ -525,7 +492,7 @@ export default function AdminStaffUsers() {
                         </DialogTitle>
                         <DialogDescription>
                             {formMode === "create"
-                                ? "Генерира се временна парола, която ще се покаже еднократно. При първи login служителят настройва 2FA и сменя паролата."
+                                ? "Генерира се временна парола, която ще се покаже еднократно. При първи login служителят сменя паролата."
                                 : `Промяна на: ${form.email}`}
                         </DialogDescription>
                     </DialogHeader>
@@ -650,7 +617,7 @@ export default function AdminStaffUsers() {
                     <div className="rounded-md bg-red-50 border border-red-200 p-3 text-xs text-red-800 leading-relaxed">
                         ⚠️ Запишете паролата СЕГА — няма да се покаже отново.
                         <br />
-                        Изпратете я на служителя ръчно. При първи login той ще настрои 2FA и ще смени паролата.
+                        Изпратете я на служителя ръчно. При първи login той ще смени паролата.
                     </div>
                     <DialogFooter className="gap-2">
                         <Button

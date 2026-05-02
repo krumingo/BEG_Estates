@@ -68,6 +68,17 @@ def _unit_from_source(row: dict, *, project_id: str, building_id: str, buyer_id_
 async def seed_all():
     db = get_db()
 
+    # ---- One-time migration: премахваме всички TOTP полета (отказахме се от 2FA) ----
+    await db.users.update_many(
+        {},
+        {"$unset": {
+            "totp_secret": "",
+            "totp_setup_completed": "",
+            "totp_setup_required": "",
+            "two_factor_enabled": "",
+        }},
+    )
+
     # ---- users (idempotent) ----
     admin_email = os.environ["ADMIN_EMAIL"].lower()
     existing_admin = await db.users.find_one({"email": admin_email})
@@ -79,15 +90,15 @@ async def seed_all():
                 "name": "Administrator",
                 "role": Role.SUPER_ADMIN.value,
                 "password_hash": hash_password(os.environ["ADMIN_PASSWORD"]),
-                "two_factor_enabled": False,
                 "is_active": True,
                 "phone": "+359 888 000 001",
+                "password_set_at": _utcnow().isoformat(),
+                "must_change_password": False,
                 "created_at": _utcnow().isoformat(),
             }
         )
     elif existing_admin.get("role") == Role.ADMIN.value:
-        # Миграция: повишаваме стария seeded admin в super_admin, за да
-        # има поне един super_admin за Staff Management UI.
+        # Миграция: повишаваме стария seeded admin в super_admin.
         await db.users.update_one(
             {"id": existing_admin["id"]},
             {"$set": {"role": Role.SUPER_ADMIN.value, "is_active": True}},
@@ -101,14 +112,16 @@ async def seed_all():
                 "name": "Мария Иванова",
                 "role": Role.SALES.value,
                 "password_hash": hash_password(os.environ["SALES_PASSWORD"]),
-                "two_factor_enabled": False,
+                "is_active": True,
                 "phone": "+359 888 000 002",
+                "password_set_at": _utcnow().isoformat(),
+                "must_change_password": False,
                 "created_at": _utcnow().isoformat(),
             }
         )
 
     client_email = os.environ["CLIENT_EMAIL"].lower()
-    client_password = os.environ.get("CLIENT_PASSWORD", "Client123!")
+    client_password = os.environ.get("CLIENT_PASSWORD", "Client2026!Demo")
     client = await db.users.find_one({"email": client_email})
     if not client:
         client = {
@@ -117,7 +130,6 @@ async def seed_all():
             "name": "Иван Петров",
             "role": Role.CLIENT.value,
             "phone": "+359 888 123 456",
-            "two_factor_enabled": False,
             "password_hash": hash_password(client_password),
             "password_set_at": _utcnow().isoformat(),
             "must_change_password": False,
@@ -222,7 +234,6 @@ async def seed_all():
                 "phone": b.get("phone") or "",
                 "preferred_contact": "any",
                 "client_note": b.get("notes", "") or "",
-                "two_factor_enabled": False,
                 "is_deleted": False,
                 "is_imported_buyer": True,
                 "source_project_id": hd_id,

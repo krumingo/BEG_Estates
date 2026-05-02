@@ -14,8 +14,6 @@ let refreshPromise = null;
 const isAuthEndpoint = (url = "") =>
     url.includes("/auth/refresh") ||
     url.includes("/auth/staff/login") ||
-    url.includes("/auth/staff/verify-totp") ||
-    url.includes("/auth/staff/setup-totp") ||
     url.includes("/auth/client/login") ||
     url.includes("/auth/client/forgot-password") ||
     url.includes("/auth/client/reset-password") ||
