@@ -29,13 +29,20 @@ export default function StaffLogin() {
         try {
             const { data } = await api.post("/auth/staff/login", { email, password });
             setTempToken(data.temp_token);
-            setSetupRequired(!!data.totp_setup_required);
-            setStep(2);
-            if (data.totp_setup_required) {
-                // bootstrap TOTP secret
-                const setup = await api.post("/auth/staff/setup-totp", { temp_token: data.temp_token, code: "" });
-                setSetupData(setup.data);
+
+            // Read setup data directly from login response (no second call needed).
+            const needsSetup = !!(data.requires_totp_setup || data.totp_setup_required);
+            setSetupRequired(needsSetup);
+
+            if (needsSetup) {
+                setSetupData({
+                    secret: data.totp_secret_b32,
+                    uri: data.totp_uri,
+                    qr_url: data.qr_code_url,
+                });
             }
+
+            setStep(2);
         } catch (e) {
             setError(formatApiError(e.response?.data?.detail));
         } finally {
@@ -62,10 +69,11 @@ export default function StaffLogin() {
         }
     };
 
-    const otpauthUri = setupData?.uri || "";
-    const qrSrc = otpauthUri
-        ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(otpauthUri)}`
-        : "";
+    // Prefer backend-provided qr_code_url if available, иначе генерираме client-side от URI.
+    const qrSrc = setupData?.qr_url
+        || (setupData?.uri
+            ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(setupData.uri)}`
+            : "");
 
     return (
         <div className="min-h-screen grid grid-cols-1 lg:grid-cols-2 bg-white">

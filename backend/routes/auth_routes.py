@@ -1,5 +1,6 @@
 """Authentication routes: классически email/password логин за клиенти и staff с TOTP 2FA."""
 import os
+import urllib.parse
 import uuid
 from datetime import datetime, timezone, timedelta
 
@@ -321,7 +322,7 @@ async def staff_login(payload: StaffLoginRequest, request: Request):
         response.update({
             "totp_secret_b32": secret,
             "totp_uri": uri,
-            "qr_code_url": f"https://api.qrserver.com/v1/create-qr-code/?size=240x240&data={uri}",
+            "qr_code_url": f"https://api.qrserver.com/v1/create-qr-code/?size=240x240&data={urllib.parse.quote(uri, safe='')}",
             "issuer": "BEG Estates",
             "account": user["email"],
         })
