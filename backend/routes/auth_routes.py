@@ -265,7 +265,12 @@ async def client_change_password(
 # =============================================================================
 @router.post("/staff/login")
 async def staff_login(payload: StaffLoginRequest, request: Request):
-    """Стъпка 1: проверка на парола → връща temp_token + дали е нужно TOTP setup."""
+    """Стъпка 1: проверка на парола → връща temp_token и QR при първи login.
+
+    При първи TOTP setup (totp_setup_completed != True), login response връща
+    директно `qr_code_url` + `totp_secret_b32`, за да може frontend-ът да покаже
+    Setup screen без допълнителен round-trip.
+    """
     db = get_db()
     email = payload.email.lower().strip()
     ip = request.client.host if request.client else "?"
@@ -287,14 +292,40 @@ async def staff_login(payload: StaffLoginRequest, request: Request):
         )
         raise HTTPException(status_code=401, detail="Невалидни данни за вход")
 
-    # Първа стъпка ОК — никога не издаваме access cookie тук.
+    if user.get("is_active") is False:
+        raise HTTPException(status_code=403, detail="Акаунтът е деактивиран")
+
+    setup_completed = bool(user.get("totp_setup_completed"))
     temp_token = create_temp_2fa_token(user["id"], user["email"])
-    needs_setup = not user.get("totp_secret") or not user.get("two_factor_enabled")
-    return {
-        "requires_totp": True,
+
+    response: dict = {
         "temp_token": temp_token,
-        "totp_setup_required": needs_setup,
+        "requires_totp": setup_completed,
+        "requires_totp_setup": not setup_completed,
+        # Legacy флагове за backwards compat с по-стари frontend версии.
+        "totp_setup_required": not setup_completed,
     }
+
+    if not setup_completed:
+        # Bootstrap: генерираме (или re-use-ваме) secret и връщаме QR директно.
+        secret = user.get("totp_secret") or generate_totp_secret()
+        if secret != user.get("totp_secret"):
+            await db.users.update_one(
+                {"id": user["id"]},
+                {"$set": {"totp_secret": secret, "totp_setup_completed": False}},
+            )
+            await log_action(
+                user["id"], "totp_setup_started", "user", user["id"], {"context": "login_bootstrap"}
+            )
+        uri = totp_uri(secret, user["email"])
+        response.update({
+            "totp_secret_b32": secret,
+            "totp_uri": uri,
+            "qr_code_url": f"https://api.qrserver.com/v1/create-qr-code/?size=240x240&data={uri}",
+            "issuer": "BEG Estates",
+            "account": user["email"],
+        })
+    return response
 
 
 @router.post("/staff/verify-totp")
@@ -334,14 +365,11 @@ async def staff_verify_totp(
         )
         raise HTTPException(status_code=401, detail="Невалиден 2FA код")
 
-    # Успех — активираме 2FA, ако е първи verify, и издаваме реални cookies
-    updates = {}
-    if not user.get("two_factor_enabled"):
-        updates["two_factor_enabled"] = True
+    # Успех — активираме 2FA и маркираме setup като completed при първи verify
+    updates = {"totp_setup_completed": True, "two_factor_enabled": True}
     if user.get("totp_setup_required"):
         updates["totp_setup_required"] = False
-    if updates:
-        await db.users.update_one({"id": user["id"]}, {"$set": updates})
+    await db.users.update_one({"id": user["id"]}, {"$set": updates})
 
     await _clear_attempts(db, key)
     await _clear_attempts(db, f"staff:{ip}:{user['email']}")

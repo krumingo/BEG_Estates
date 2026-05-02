@@ -416,3 +416,208 @@ async def admin_delete_client(
         {"original_email": target.get("email")},
     )
     return {"ok": True}
+
+
+# ===========================================================================
+# Admin CRUD за служители (само super_admin)
+# ===========================================================================
+from auth.security import hash_password as _hash_pw, generate_temp_password as _gen_temp  # noqa: E402,F811
+
+_STAFF_ROLES_VALUES = {
+    Role.SUPER_ADMIN.value, Role.ADMIN.value, Role.SALES.value,
+    Role.PROJECT_MANAGER.value, Role.ACCOUNTING.value, Role.BROKER.value,
+}
+
+
+class AdminStaffCreate(BaseModel):
+    email: EmailStr
+    name: str = Field(..., min_length=2, max_length=120)
+    phone: Optional[str] = None
+    role: str = Field(..., description="admin | sales | project_manager | accounting | broker")
+    notes: Optional[str] = None
+
+    @field_validator("name")
+    @classmethod
+    def _name_clean(cls, v: str) -> str:
+        v = (v or "").strip()
+        if len(v) < 2:
+            raise ValueError("Името трябва да е поне 2 символа")
+        return v
+
+    @field_validator("role")
+    @classmethod
+    def _role_clean(cls, v):
+        if v not in _STAFF_ROLES_VALUES - {Role.SUPER_ADMIN.value}:
+            raise ValueError("Невалидна роля (super_admin не може да се създава оттук)")
+        return v
+
+
+class AdminStaffUpdate(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    role: Optional[str] = None
+    notes: Optional[str] = None
+
+    @field_validator("role")
+    @classmethod
+    def _role_clean(cls, v):
+        if v is None:
+            return v
+        if v not in _STAFF_ROLES_VALUES - {Role.SUPER_ADMIN.value}:
+            raise ValueError("Невалидна роля")
+        return v
+
+
+def _public_staff(u: dict) -> dict:
+    return {
+        "id": u["id"],
+        "email": u["email"],
+        "name": u.get("name", ""),
+        "role": u["role"],
+        "phone": u.get("phone", ""),
+        "notes": u.get("staff_note") or u.get("client_note") or "",
+        "is_active": u.get("is_active", True),
+        "totp_setup_completed": bool(u.get("totp_setup_completed")),
+        "must_change_password": bool(u.get("must_change_password")),
+        "created_at": u.get("created_at"),
+    }
+
+
+@router.get("/admin/staff-users")
+async def admin_list_staff(actor: dict = Depends(require_roles(Role.SUPER_ADMIN.value))):
+    db = get_db()
+    users = await db.users.find(
+        {"role": {"$in": list(_STAFF_ROLES_VALUES)}, "is_deleted": {"$ne": True}},
+        {"_id": 0, "password_hash": 0, "totp_secret": 0},
+    ).sort("created_at", -1).to_list(200)
+    return [_public_staff(u) for u in users]
+
+
+@router.post("/admin/staff-users")
+async def admin_create_staff(
+    payload: AdminStaffCreate,
+    actor: dict = Depends(require_roles(Role.SUPER_ADMIN.value)),
+):
+    db = get_db()
+    email = payload.email.lower().strip()
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=409, detail="Потребител с този имейл вече съществува")
+    new_id = str(uuid.uuid4())
+    temp_pw = _gen_temp()
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": new_id,
+        "email": email,
+        "name": payload.name,
+        "role": payload.role,
+        "phone": payload.phone or "",
+        "staff_note": payload.notes or "",
+        "password_hash": _hash_pw(temp_pw),
+        "password_set_at": now,
+        "must_change_password": True,
+        "totp_setup_completed": False,
+        "two_factor_enabled": False,
+        "is_active": True,
+        "is_deleted": False,
+        "created_at": now,
+        "created_by": actor["id"],
+    }
+    await db.users.insert_one(doc)
+    await log_action(actor["id"], "staff_created", "user", new_id,
+                     {"email": email, "role": payload.role})
+    fresh = await db.users.find_one(
+        {"id": new_id}, {"_id": 0, "password_hash": 0, "totp_secret": 0}
+    )
+    return {"staff": _public_staff(fresh), "temp_password": temp_pw}
+
+
+@router.patch("/admin/staff-users/{staff_id}")
+async def admin_update_staff(
+    staff_id: str, payload: AdminStaffUpdate,
+    actor: dict = Depends(require_roles(Role.SUPER_ADMIN.value)),
+):
+    db = get_db()
+    target = await db.users.find_one({"id": staff_id})
+    if not target or target["role"] not in _STAFF_ROLES_VALUES:
+        raise HTTPException(status_code=404, detail="Служителят не е намерен")
+    if target.get("role") == Role.SUPER_ADMIN.value and payload.role and payload.role != Role.SUPER_ADMIN.value:
+        raise HTTPException(status_code=400, detail="Super admin ролята не може да се променя оттук")
+    changes = payload.model_dump(exclude_unset=True)
+    changes.pop("email", None)
+    if "notes" in changes:
+        changes["staff_note"] = changes.pop("notes") or ""
+    await db.users.update_one({"id": staff_id}, {"$set": changes})
+    await log_action(actor["id"], "staff_updated", "user", staff_id, {"fields": list(changes.keys())})
+    fresh = await db.users.find_one({"id": staff_id}, {"_id": 0, "password_hash": 0, "totp_secret": 0})
+    return _public_staff(fresh)
+
+
+@router.post("/admin/staff-users/{staff_id}/reset-password")
+async def admin_reset_staff_password(
+    staff_id: str, actor: dict = Depends(require_roles(Role.SUPER_ADMIN.value)),
+):
+    db = get_db()
+    target = await db.users.find_one({"id": staff_id})
+    if not target or target["role"] not in _STAFF_ROLES_VALUES:
+        raise HTTPException(status_code=404, detail="Служителят не е намерен")
+    temp_pw = _gen_temp()
+    await db.users.update_one(
+        {"id": staff_id},
+        {"$set": {
+            "password_hash": _hash_pw(temp_pw),
+            "password_set_at": datetime.now(timezone.utc).isoformat(),
+            "must_change_password": True,
+        }},
+    )
+    await log_action(actor["id"], "staff_password_reset", "user", staff_id, {})
+    return {"ok": True, "temp_password": temp_pw}
+
+
+@router.post("/admin/staff-users/{staff_id}/reset-totp")
+async def admin_reset_staff_totp(
+    staff_id: str, actor: dict = Depends(require_roles(Role.SUPER_ADMIN.value)),
+):
+    db = get_db()
+    target = await db.users.find_one({"id": staff_id})
+    if not target or target["role"] not in _STAFF_ROLES_VALUES:
+        raise HTTPException(status_code=404, detail="Служителят не е намерен")
+    await db.users.update_one(
+        {"id": staff_id},
+        {"$set": {
+            "totp_secret": None,
+            "totp_setup_completed": False,
+            "two_factor_enabled": False,
+        }},
+    )
+    await log_action(actor["id"], "staff_totp_reset", "user", staff_id, {})
+    return {"ok": True, "message": "TOTP е нулиран. При следващ login ще се поиска нов setup."}
+
+
+@router.post("/admin/staff-users/{staff_id}/deactivate")
+async def admin_deactivate_staff(
+    staff_id: str, actor: dict = Depends(require_roles(Role.SUPER_ADMIN.value)),
+):
+    db = get_db()
+    target = await db.users.find_one({"id": staff_id})
+    if not target or target["role"] not in _STAFF_ROLES_VALUES:
+        raise HTTPException(status_code=404, detail="Служителят не е намерен")
+    if target["id"] == actor["id"]:
+        raise HTTPException(status_code=400, detail="Не може да деактивирате собствения си акаунт")
+    await db.users.update_one(
+        {"id": staff_id}, {"$set": {"is_active": False}},
+    )
+    await log_action(actor["id"], "staff_deactivated", "user", staff_id, {})
+    return {"ok": True}
+
+
+@router.post("/admin/staff-users/{staff_id}/activate")
+async def admin_activate_staff(
+    staff_id: str, actor: dict = Depends(require_roles(Role.SUPER_ADMIN.value)),
+):
+    db = get_db()
+    target = await db.users.find_one({"id": staff_id})
+    if not target or target["role"] not in _STAFF_ROLES_VALUES:
+        raise HTTPException(status_code=404, detail="Служителят не е намерен")
+    await db.users.update_one({"id": staff_id}, {"$set": {"is_active": True}})
+    await log_action(actor["id"], "staff_activated", "user", staff_id, {})
+    return {"ok": True}
