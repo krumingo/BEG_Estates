@@ -65,6 +65,7 @@
 - ✅ Forced password change при first login (must_change_password) → ProtectedRoute redirect
 - ✅ "Заяви интерес" inquiry modal вместо "Резервирай с капаро 0" на public property detail
 - ✅ Migration script за legacy клиенти без password_hash → CSV с временни пароли
+- ✅ **Admin CRUD за клиенти** (POST/PATCH/DELETE /api/admin/clients) — създаване с auto temp password reveal, edit, soft delete (super_admin/admin)
 
 ### Public site
 

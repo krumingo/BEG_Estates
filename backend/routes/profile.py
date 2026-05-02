@@ -4,10 +4,11 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
-from auth.dependencies import get_current_user, require_staff
-from constants import STAFF_ROLES
+from auth.dependencies import get_current_user, require_roles, require_staff
+from auth.security import hash_password, generate_temp_password
+from constants import STAFF_ROLES, Role
 from db import get_db
 from routes.audit import log_action
 
@@ -204,8 +205,8 @@ async def create_message(
 async def list_clients_enriched(_=Depends(require_staff())):
     db = get_db()
     users = await db.users.find(
-        {"role": "client"},
-        {"_id": 0, "password_hash": 0, "totp_secret": 0},
+        {"role": "client", "is_deleted": {"$ne": True}},
+        {"_id": 0, "totp_secret": 0},
     ).to_list(500)
     out = []
     for u in users:
@@ -214,5 +215,204 @@ async def list_clients_enriched(_=Depends(require_staff())):
         enriched["reservation_count"] = await db.reservations.count_documents(
             {"client_id": u["id"], "status": {"$in": ["active", "converted"]}}
         )
+        enriched["has_password"] = bool(u.get("password_hash"))
+        enriched["must_change_password"] = bool(u.get("must_change_password"))
         out.append(enriched)
     return out
+
+
+# ===========================================================================
+# Admin CRUD за клиенти
+# ===========================================================================
+class AdminClientCreate(BaseModel):
+    email: EmailStr
+    name: str = Field(..., min_length=2, max_length=120)
+    phone: Optional[str] = None
+    preferred_contact: Optional[str] = "any"
+    notes: Optional[str] = None
+    send_password: bool = True
+
+    @field_validator("name")
+    @classmethod
+    def _name_clean(cls, v: str) -> str:
+        v = (v or "").strip()
+        if len(v) < 2:
+            raise ValueError("Името трябва да е поне 2 символа")
+        return v
+
+    @field_validator("phone")
+    @classmethod
+    def _phone_clean(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        if v == "":
+            return None
+        if len(v) < 5:
+            raise ValueError("Телефонът трябва да е поне 5 символа")
+        return v
+
+    @field_validator("preferred_contact")
+    @classmethod
+    def _preferred(cls, v):
+        if v is None or v == "":
+            return "any"
+        if v not in PREFERRED_CONTACT_VALUES:
+            raise ValueError(f"preferred_contact must be one of {sorted(PREFERRED_CONTACT_VALUES)}")
+        return v
+
+
+class AdminClientUpdate(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    preferred_contact: Optional[str] = None
+    notes: Optional[str] = None
+
+    @field_validator("name")
+    @classmethod
+    def _name_clean(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        if len(v) < 2:
+            raise ValueError("Името трябва да е поне 2 символа")
+        return v
+
+    @field_validator("phone")
+    @classmethod
+    def _phone_clean(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        if v == "":
+            return None
+        if len(v) < 5:
+            raise ValueError("Телефонът трябва да е поне 5 символа")
+        return v
+
+    @field_validator("preferred_contact")
+    @classmethod
+    def _preferred(cls, v):
+        if v is None or v == "":
+            return v
+        if v not in PREFERRED_CONTACT_VALUES:
+            raise ValueError(f"preferred_contact must be one of {sorted(PREFERRED_CONTACT_VALUES)}")
+        return v
+
+
+@router.post("/admin/clients")
+async def admin_create_client(
+    payload: AdminClientCreate,
+    actor: dict = Depends(require_staff()),
+):
+    db = get_db()
+    email = payload.email.lower().strip()
+
+    # Unique check (включваме и soft-deleted, за да не дублираме email-а)
+    existing = await db.users.find_one({"email": email})
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail="Клиент с този имейл вече съществува",
+        )
+
+    now = datetime.now(timezone.utc).isoformat()
+    new_id = str(uuid.uuid4())
+    temp_password: Optional[str] = None
+    update_fields = {
+        "id": new_id,
+        "email": email,
+        "name": payload.name,
+        "role": Role.CLIENT.value,
+        "phone": payload.phone or "",
+        "preferred_contact": payload.preferred_contact or "any",
+        "client_note": payload.notes or "",
+        "two_factor_enabled": False,
+        "must_change_password": True,
+        "is_deleted": False,
+        "created_at": now,
+        "created_by": actor["id"],
+    }
+    if payload.send_password:
+        temp_password = generate_temp_password()
+        update_fields["password_hash"] = hash_password(temp_password)
+        update_fields["password_set_at"] = now
+    else:
+        update_fields["password_hash"] = None
+        update_fields["password_set_at"] = None
+
+    await db.users.insert_one(update_fields)
+    await log_action(
+        actor["id"], "client_created", "user", new_id,
+        {"email": email, "with_password": payload.send_password},
+    )
+
+    fresh = await db.users.find_one(
+        {"id": new_id}, {"_id": 0, "password_hash": 0, "totp_secret": 0}
+    )
+    return {
+        "client": _public_user(fresh),
+        "temp_password": temp_password,
+        "must_change_password": True,
+    }
+
+
+@router.patch("/admin/clients/{client_id}")
+async def admin_update_client(
+    client_id: str,
+    payload: AdminClientUpdate,
+    actor: dict = Depends(require_staff()),
+):
+    db = get_db()
+    target = await db.users.find_one({"id": client_id, "role": Role.CLIENT.value})
+    if not target or target.get("is_deleted"):
+        raise HTTPException(status_code=404, detail="Клиентът не е намерен")
+
+    changes = payload.model_dump(exclude_unset=True)
+    # Никога през тоя endpoint: email, role, password
+    for forbidden in ("email", "role", "password_hash", "id"):
+        changes.pop(forbidden, None)
+    # Map "notes" → "client_note" (вътрешният field name)
+    if "notes" in changes:
+        changes["client_note"] = changes.pop("notes") or ""
+    if not changes:
+        return _public_user(target)
+    await db.users.update_one({"id": client_id}, {"$set": changes})
+    await log_action(
+        actor["id"], "client_updated", "user", client_id,
+        {"fields": list(changes.keys())},
+    )
+    fresh = await db.users.find_one(
+        {"id": client_id}, {"_id": 0, "password_hash": 0, "totp_secret": 0}
+    )
+    return _public_user(fresh)
+
+
+@router.delete("/admin/clients/{client_id}")
+async def admin_delete_client(
+    client_id: str,
+    actor: dict = Depends(require_roles(Role.SUPER_ADMIN.value, Role.ADMIN.value)),
+):
+    """Soft delete (запазваме reservation history)."""
+    db = get_db()
+    target = await db.users.find_one({"id": client_id, "role": Role.CLIENT.value})
+    if not target:
+        raise HTTPException(status_code=404, detail="Клиентът не е намерен")
+    if target.get("is_deleted"):
+        return {"ok": True, "already_deleted": True}
+    await db.users.update_one(
+        {"id": client_id},
+        {"$set": {
+            "is_deleted": True,
+            "deleted_at": datetime.now(timezone.utc).isoformat(),
+            "deleted_by": actor["id"],
+            # Анонимизираме email, за да освободим uniqueness без да губим връзка с резервациите
+            "email": f"deleted+{client_id}@begestates.bg",
+            "password_hash": None,
+        }},
+    )
+    await log_action(
+        actor["id"], "client_deleted", "user", client_id,
+        {"original_email": target.get("email")},
+    )
+    return {"ok": True}
