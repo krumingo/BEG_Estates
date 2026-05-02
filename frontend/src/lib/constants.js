@@ -7,6 +7,13 @@ export const PROPERTY_STATUS = {
         border: "border-emerald-200",
         dot: "bg-emerald-500",
     },
+    reserved: {
+        label: "Резервиран",
+        bg: "bg-amber-500",
+        text: "text-white",
+        border: "border-amber-500",
+        dot: "bg-amber-200",
+    },
     reserved_zero_deposit: {
         label: "Резервиран · Капаро 0",
         bg: "bg-amber-50",

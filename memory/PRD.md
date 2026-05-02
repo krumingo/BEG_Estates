@@ -68,16 +68,23 @@
 - ✅ **Admin CRUD за клиенти** (POST/PATCH/DELETE /api/admin/clients) — създаване с auto temp password reveal, edit, soft delete (super_admin/admin)
 - ✅ **Унификация buyers ↔ clients** (PATCH 9.2): db.buyers легаси колекция мигрирана към db.users(role=client) с idempotent script `migrate_buyers_to_clients.py`. Endpoint `/buyers` сега връща unified списък. property.buyer_id сочи към user.id. Поддържа както стари imported buyers, така и нови admin-създадени клиенти в един и същ dropdown.
 
-### Public status visibility & visual polish (PATCH 9.3)
+### Public status visibility & visual polish (PATCH 9.3 + 9.4)
 
-- ✅ **PUBLIC_STATUS_MAPPING** в `constants.py`: `compensation`/`unavailable` → `sold` (маскиране); `hidden` → пълно скриване.
-- ✅ Backend response transformation на ниво `_public_property` и `_public_unit` — данните в DB остават непокътнати; само response се ремапва.
-- ✅ Стат каунтерите на проекта обединяват compensation + unavailable + sold в "Продадени" за public; staff виждат raw split.
-- ✅ "Продаден" badge пресилнен — `bg-slate-800 text-white` вместо слаб slate-100/500.
-- ✅ "Обезщетение" badge → ярко лилаво `bg-violet-600 text-white` (само admin).
-- ✅ PropertyCell — sold карти с `[filter:grayscale]`, отслабени надписи и `line-through` цена.
-- ✅ FloorPlanSection — overlay-ите за sold вече са `bg-slate-800`, opacity-75; публично compensation се показва като sold; admin вижда отделни статуси.
-- ✅ Filter dropdowns: public users не виждат "Обезщетение" опция.
+- ✅ **PUBLIC_STATUS_MAPPING** в `constants.py`:
+  - `reserved_zero_deposit` / `reserved_paid_deposit` → `reserved` (един бадж за публика, без да издава типа капаро)
+  - `compensation` / `unavailable` → `sold` (маскиране)
+  - `hidden` → пълно скриване
+- ✅ `PUBLIC_STATUS_LABELS` + `PUBLIC_STATUS_VALUES` → 3 публични статуса: Свободен / Резервиран / Продаден
+- ✅ `/property-statuses` endpoint връща 3 опции за public, 7 за staff
+- ✅ Backend response transformation на ниво `_public_property`, `_public_unit` и `_public_stats`
+- ✅ Status filter в `/projects/{id}/properties` mapped: `reserved` → raw pair, `sold` → raw triple, hidden скрит
+- ✅ Стат каунтерите на проекта: Общо / Свободни / Резервирани / Продадени
+- ✅ Frontend PROPERTY_STATUS добавен ключ `reserved` с amber-500 bg
+- ✅ "Продаден" badge → `bg-slate-800 text-white` (силен contrast)
+- ✅ "Обезщетение" badge → `bg-violet-600 text-white` (само в admin)
+- ✅ PropertyCell в ProjectDetail: sold карти с grayscale/line-through; reserved → amber accent; available → vibrant
+- ✅ FloorPlanSection: overlay-ите за available=emerald / reserved=amber / sold=slate-800
+- ✅ `isAdminContext` prop за FloorPlanSection (бъдещо admin преюзване — compensation→violet)
 
 ### Public site
 

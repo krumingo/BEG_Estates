@@ -59,9 +59,14 @@ export default function ProjectDetail() {
     }
 
     const totalAvailable = properties.filter((p) => p.status === "available").length;
+    // Публичното API връща merged "reserved" (zero+paid). Staff view (ако някога се ползва)
+    // продължава да работи с raw status pair-а.
     const totalReserved = properties.filter(
-        (p) => p.status === "reserved_zero_deposit" || p.status === "reserved_paid_deposit"
+        (p) => p.status === "reserved"
+            || p.status === "reserved_zero_deposit"
+            || p.status === "reserved_paid_deposit"
     ).length;
+    const totalSold = properties.filter((p) => p.status === "sold").length;
 
     return (
         <div className="min-h-screen bg-white">
@@ -99,7 +104,7 @@ export default function ProjectDetail() {
                         <StatCard label="Общо обекти" value={properties.length} />
                         <StatCard label="Свободни" value={totalAvailable} highlight />
                         <StatCard label="Резервирани" value={totalReserved} />
-                        <StatCard label="Прогрес" value={`${project.progress_percent ?? 0}%`} />
+                        <StatCard label="Продадени" value={totalSold} />
                     </div>
                 </div>
             </section>
@@ -259,7 +264,9 @@ function StatCard({ label, value, highlight }) {
 
 function PropertyCell({ p }) {
     const isSold = p.status === "sold";
-    const isReserved = p.status === "reserved_zero_deposit" || p.status === "reserved_paid_deposit";
+    const isReserved = p.status === "reserved"
+        || p.status === "reserved_zero_deposit"
+        || p.status === "reserved_paid_deposit";
     const isAvailable = p.status === "available";
     const displayPrice = p.list_price ?? p.base_price;
 

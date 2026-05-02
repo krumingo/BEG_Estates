@@ -60,17 +60,28 @@ INTERNAL_STATUSES = frozenset({
 
 # Mapping raw internal/private status → маскиран публичен статус.
 # Приложим при public response transformation (НЕ в DB).
+# - reserved_zero_deposit и reserved_paid_deposit → представят се като "reserved"
+#   (крайният купувач не трябва да различава типа капаро).
 # - compensation/unavailable → представят се като "sold" (продаден);
 #   крайният купувач не трябва да различава обезщетителни апартаменти.
 # - hidden → маха се от всички публични списъци и връща 404 на detail.
 PUBLIC_STATUS_MAPPING = {
     PropertyStatus.AVAILABLE.value: PropertyStatus.AVAILABLE.value,
-    PropertyStatus.RESERVED_ZERO_DEPOSIT.value: PropertyStatus.RESERVED_ZERO_DEPOSIT.value,
-    PropertyStatus.RESERVED_PAID_DEPOSIT.value: PropertyStatus.RESERVED_PAID_DEPOSIT.value,
+    PropertyStatus.RESERVED_ZERO_DEPOSIT.value: "reserved",
+    PropertyStatus.RESERVED_PAID_DEPOSIT.value: "reserved",
     PropertyStatus.SOLD.value: PropertyStatus.SOLD.value,
     PropertyStatus.COMPENSATION.value: PropertyStatus.SOLD.value,
     PropertyStatus.UNAVAILABLE.value: PropertyStatus.SOLD.value,
     PropertyStatus.HIDDEN.value: None,
+}
+
+# Публични публично видими статуси — използва се за /property-statuses dropdown-а.
+PUBLIC_STATUS_VALUES = frozenset({"available", "reserved", "sold"})
+
+PUBLIC_STATUS_LABELS = {
+    "available": "Свободен",
+    "reserved": "Резервиран",
+    "sold": "Продаден",
 }
 
 # Statuses that allow zero-deposit reservation

@@ -13,6 +13,9 @@ import { PROPERTY_STATUS } from "../../lib/constants";
  *  - title: string — заглавие (default „Планировка по етажи")
  *  - eyebrow: string — overline над заглавието
  *  - className: container override
+ *  - isAdminContext: boolean — ако true, показва compensation като отделен violet overlay.
+ *    В public view-а backend-ът вече мапва compensation→sold, така че този prop е
+ *    полезен само когато компонентът се ползва в бъдещ admin pre-view с raw statuses.
  */
 export default function FloorPlanSection({
     projectId,
@@ -21,6 +24,7 @@ export default function FloorPlanSection({
     title = "Планировка по етажи",
     eyebrow = "Избери по етаж",
     className = "bg-white py-20",
+    isAdminContext = false,
 }) {
     const [plans, setPlans] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -129,13 +133,19 @@ export default function FloorPlanSection({
                                 const w = u.width * scale;
                                 const h = u.height * scale;
                                 // Сменяме доминантния цвят на overlay-я за по-силен contrast
+                                const isReservedUnit = u.status === "reserved"
+                                    || u.status === "reserved_zero_deposit"
+                                    || u.status === "reserved_paid_deposit";
+                                const isCompensationUnit = u.status === "compensation";
                                 const overlayBg = u.status === "available"
                                     ? "bg-emerald-500"
-                                    : u.status === "reserved_zero_deposit" || u.status === "reserved_paid_deposit"
+                                    : isReservedUnit
                                         ? "bg-amber-500"
-                                        : isSold
-                                            ? "bg-slate-800"
-                                            : (st.dot || "bg-slate-500");
+                                        : (isCompensationUnit && isAdminContext)
+                                            ? "bg-violet-600"
+                                            : isSold
+                                                ? "bg-slate-800"
+                                                : (st.dot || "bg-slate-500");
                                 const baseClasses = `h-full w-full rounded-sm ${overlayBg} ${
                                     isCurrent
                                         ? "border-2 ring-2 ring-amber-500 opacity-90"
@@ -195,9 +205,11 @@ export default function FloorPlanSection({
                         <div className="flex flex-wrap gap-3 mt-4 text-xs text-slate-600" data-testid="floor-plan-legend">
                             {[
                                 { key: "available", color: "bg-emerald-500", label: "Свободен" },
-                                { key: "reserved_zero_deposit", color: "bg-amber-500", label: "Резервиран · Капаро 0" },
-                                { key: "reserved_paid_deposit", color: "bg-amber-500", label: "Резервиран · Капаро" },
+                                { key: "reserved", color: "bg-amber-500", label: "Резервиран" },
                                 { key: "sold", color: "bg-slate-800", label: "Продаден" },
+                                ...(isAdminContext
+                                    ? [{ key: "compensation", color: "bg-violet-600", label: "Обезщетение" }]
+                                    : []),
                             ].map((s) => (
                                 <span key={s.key} className="inline-flex items-center gap-1.5">
                                     <span className={`inline-block h-3 w-3 rounded-sm ${s.color}`} />

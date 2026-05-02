@@ -13,6 +13,8 @@ from constants import (
     PUBLIC_VISIBLE_STATUSES,
     INTERNAL_STATUSES,
     PUBLIC_STATUS_MAPPING,
+    PUBLIC_STATUS_LABELS,
+    PUBLIC_STATUS_VALUES,
     PUBLIC_PROPERTY_FIELDS,
     STAFF_ROLES,
     PropertyStatus,
@@ -44,8 +46,9 @@ def _public_property(prop: dict) -> dict:
 
 
 def _public_stats(props: list[dict]) -> dict:
-    """Публично статистики — compensation/unavailable се мърджват в 'sold'."""
-    reserved = {
+    """Публично статистики — compensation/unavailable мърджват в 'sold';
+    reserved_zero/paid мърджват в 'reserved'."""
+    reserved_raw = {
         PropertyStatus.RESERVED_ZERO_DEPOSIT.value,
         PropertyStatus.RESERVED_PAID_DEPOSIT.value,
     }
@@ -59,7 +62,7 @@ def _public_stats(props: list[dict]) -> dict:
         "total": len(visible),
         "available": sum(1 for x in visible if x["status"] == PropertyStatus.AVAILABLE.value),
         "sold": sum(1 for x in visible if x["status"] in sold_like),
-        "reserved": sum(1 for x in visible if x["status"] in reserved),
+        "reserved": sum(1 for x in visible if x["status"] in reserved_raw),
         "compensation": 0,  # винаги 0 публично — обединено в sold
     }
 
@@ -164,18 +167,23 @@ async def project_properties(
         if status:
             q["status"] = status
     else:
-        # Публичен caller: compensation/unavailable се показват (като 'sold'),
-        # само hidden се крие. Ако има подаден status filter:
-        #   - ако е публичен статус → approve
-        #   - ако е 'sold' → включваме compensation/unavailable също (те се маскират като sold)
-        if status == PropertyStatus.SOLD.value:
+        # Public caller: status филтър е на mapped values.
+        #   reserved → raw reserved_zero_deposit + reserved_paid_deposit
+        #   sold → raw sold + compensation + unavailable
+        #   available → raw available
+        if status == "reserved":
+            q["status"] = {"$in": [
+                PropertyStatus.RESERVED_ZERO_DEPOSIT.value,
+                PropertyStatus.RESERVED_PAID_DEPOSIT.value,
+            ]}
+        elif status == PropertyStatus.SOLD.value:
             q["status"] = {"$in": [
                 PropertyStatus.SOLD.value,
                 PropertyStatus.COMPENSATION.value,
                 PropertyStatus.UNAVAILABLE.value,
             ]}
-        elif status and status in PUBLIC_VISIBLE_STATUSES:
-            q["status"] = status
+        elif status == PropertyStatus.AVAILABLE.value:
+            q["status"] = PropertyStatus.AVAILABLE.value
         else:
             q["status"] = {"$ne": PropertyStatus.HIDDEN.value}
 
@@ -505,13 +513,12 @@ async def list_buyers(_=Depends(require_staff())):
 
 @router.get("/property-statuses")
 async def list_statuses(request: Request):
-    """Helper — public callers see only public-safe statuses; staff see all."""
+    """Helper — public callers see only 3 mapped statuses; staff see all."""
     from constants import PROPERTY_STATUS_LABELS
     is_staff = await _is_staff(request)
-    items = [{"value": k, "label": v} for k, v in PROPERTY_STATUS_LABELS.items()]
-    if not is_staff:
-        items = [x for x in items if x["value"] in PUBLIC_VISIBLE_STATUSES]
-    return items
+    if is_staff:
+        return [{"value": k, "label": v} for k, v in PROPERTY_STATUS_LABELS.items()]
+    return [{"value": k, "label": v} for k, v in PUBLIC_STATUS_LABELS.items()]
 
 
 # ---------- Property finance (deal view) ----------
