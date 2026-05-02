@@ -69,8 +69,40 @@
 - ✅ **Унификация buyers ↔ clients** (PATCH 9.2): db.buyers легаси колекция мигрирана към db.users(role=client) с idempotent script `migrate_buyers_to_clients.py`. Endpoint `/buyers` сега връща unified списък. property.buyer_id сочи към user.id. Поддържа както стари imported buyers, така и нови admin-създадени клиенти в един и същ dropdown.
 
 ### Public status visibility & visual polish (PATCH 9.3 + 9.4)
-
 - ✅ **PUBLIC_STATUS_MAPPING** в `constants.py`:
+  - `reserved_zero_deposit` / `reserved_paid_deposit` → `reserved` (един бадж за публика, без да издава типа капаро)
+  - `compensation` / `unavailable` → `sold` (маскиране)
+  - `hidden` → пълно скриване
+- ✅ `PUBLIC_STATUS_LABELS` + `PUBLIC_STATUS_VALUES` → 3 публични статуса: Свободен / Резервиран / Продаден
+- ✅ `/property-statuses` endpoint връща 3 опции за public, 7 за staff
+- ✅ Backend response transformation на ниво `_public_property`, `_public_unit` и `_public_stats`
+- ✅ Status filter в `/projects/{id}/properties` mapped: `reserved` → raw pair, `sold` → raw triple, hidden скрит
+- ✅ Стат каунтерите на проекта: Общо / Свободни / Резервирани / Продадени
+- ✅ Frontend PROPERTY_STATUS добавен ключ `reserved` с amber-500 bg
+- ✅ "Продаден" badge → `bg-slate-800 text-white` (силен contrast)
+- ✅ "Обезщетение" badge → `bg-violet-600 text-white` (само в admin)
+- ✅ PropertyCell в ProjectDetail: sold карти с grayscale/line-through; reserved → amber accent; available → vibrant
+- ✅ FloorPlanSection: overlay-ите за available=emerald / reserved=amber / sold=slate-800
+- ✅ `isAdminContext` prop за FloorPlanSection (бъдещо admin преюзване — compensation→violet)
+
+### Public tab "Всички" (PATCH 9.5)
+- ✅ Нов tab "Всички" (selected по подразбиране) в ProjectDetail
+- ✅ Counter badges per tab: `Всички (N) · Апартаменти (X) · Магазин (Y) · ...`
+- ✅ Auto-hide tab-ове с 0 обекта
+- ✅ Групиране по етаж отгоре надолу (Етаж 6→1, Партер, Сутерен)
+- ⚠️ **Open issue**: source data `hadzhi_dimitar_units.json` има само 29 обекта вместо очакваните 52 (липсват 13 ПМ, 1 гараж, 9 склада). Чакам решение от собственика — re-import / ръчно допълване / seed update.
+
+### Smart Import protected fields (PATCH 13)
+- ✅ **Защита от случайно презаписване** при re-import: обекти с купувач / не-free status / активна резервация запазват статус, buyer_id, reservation_id, deposit_amount и notes
+- ✅ Neutral полета (`raw_area`, `list_price`, `area_total`, и т.н.) се обновяват винаги
+- ✅ `exposure`/`description` — fill-if-empty (не overwrite-ват попълнени стойности)
+- ✅ **Greenfield detection** — за нов проект (count==0) протекция не се прилага
+- ✅ Разширен **`apply-diff` response**: `details.protected / free_updates / new_units / in_db_not_in_pdf` + summary
+- ✅ **Warnings** за обекти в DB, които не са в PDF — не се трият автоматично
+- ✅ **Per-property audit log entries**: `import_create / import_apply_neutral / import_apply_protected` с `changes` и `skipped_fields`
+- ✅ **Buyer linking** също уважава protection: не пренасочва `buyer_id` на защитен обект към друг купувач
+- ✅ Frontend UI: 4 цветно-групирани секции в preview (🔒 Защитени / ✏️ Стандартни / ➕ Нови / ⚠️ Внимание) с neutral_changes + skipped_fields visualization
+- ✅ Регресия — 18/18 pytest passes; Hadji Dimitar и greenfield test PASS
   - `reserved_zero_deposit` / `reserved_paid_deposit` → `reserved` (един бадж за публика, без да издава типа капаро)
   - `compensation` / `unavailable` → `sold` (маскиране)
   - `hidden` → пълно скриване

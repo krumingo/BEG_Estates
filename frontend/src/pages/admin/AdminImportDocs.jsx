@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { api, currency, formatApiError } from "../../lib/api";
+import { PROPERTY_STATUS } from "../../lib/constants";
+
+const statusLabel = (s) => (PROPERTY_STATUS[s]?.label) || s;
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -745,13 +748,19 @@ function ApplyDiffPanel({ diff, loading, onLoad }) {
 
             {diff && (
                 <>
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3" data-testid="imp-diff-summary">
-                        <Card label="Нови имоти" value={diff.summary.create_properties} />
-                        <Card label="Update имоти" value={diff.summary.update_properties} />
-                        <Card label="Нови купувачи" value={diff.summary.create_buyers} />
-                        <Card label="Update купувачи" value={diff.summary.update_buyers} />
-                        <Card label="Пропуснати" value={diff.summary.skip_total} />
+                    <div className="grid grid-cols-2 sm:grid-cols-6 gap-3" data-testid="imp-diff-summary">
+                        <Card label="Общо в PDF" value={diff.summary.total_in_pdf ?? 0} />
+                        <Card label="Защитени" value={diff.summary.protected_units ?? 0} hint="Купувач / не-free status" />
+                        <Card label="Стандартни update" value={diff.summary.neutral_updates ?? 0} />
+                        <Card label="Нови обекти" value={diff.summary.new_units ?? 0} />
+                        <Card label="В DB, не в PDF" value={diff.summary.warnings_count ?? 0} hint="Оставят се" />
+                        <Card label="Пропуснати" value={diff.summary.skip_total ?? 0} />
                     </div>
+                    {diff.is_greenfield && (
+                        <div className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-3 py-2" data-testid="imp-diff-greenfield">
+                            <strong>Първоначален import</strong> — проектът няма записани обекти. Защитна логика е изключена; всички items ще бъдат създадени.
+                        </div>
+                    )}
                     <button
                         className="text-xs text-slate-600 underline"
                         onClick={() => setOpen((v) => !v)}
@@ -761,41 +770,73 @@ function ApplyDiffPanel({ diff, loading, onLoad }) {
                     </button>
                     {open && (
                         <div className="space-y-4" data-testid="imp-diff-details">
+                            {/* 1. ЗАЩИТЕНИ ОБЕКТИ */}
                             <DiffSection
-                                title={`Нови имоти (${diff.to_create.properties.length})`}
+                                title={`🔒 Защитени обекти (${(diff.details?.protected || []).length})`}
                                 tone="emerald"
+                                subtitle="Купувач / не-free статус / активна резервация. Само цена/площ се обновяват; статус и buyer НЕ се пипат."
                             >
-                                {diff.to_create.properties.length === 0 ? (
+                                {(diff.details?.protected || []).length === 0 ? (
                                     <div className="text-xs text-slate-500 italic">—</div>
                                 ) : (
-                                    <ul className="text-xs space-y-0.5">
-                                        {diff.to_create.properties.map((p, i) => (
-                                            <li key={i} className="flex gap-2 items-baseline">
-                                                <span className="font-mono w-20">{p.code}</span>
-                                                <span className="text-slate-500">{PROP_TYPE_LABELS[p.property_type] || p.property_type || "?"}</span>
-                                                {p.area_total && <span className="text-slate-500">{p.area_total} м²</span>}
-                                                {p.list_price && <span className="text-slate-500">{p.list_price} EUR</span>}
+                                    <ul className="text-xs space-y-2">
+                                        {diff.details.protected.map((p, i) => (
+                                            <li key={i} className="border-b border-emerald-100 pb-2 last:border-0">
+                                                <div className="flex items-baseline gap-2 flex-wrap">
+                                                    <span className="font-mono font-semibold">{p.code}</span>
+                                                    {p.buyer_name && (
+                                                        <span className="text-slate-600">→ {p.buyer_name}</span>
+                                                    )}
+                                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700 text-white">
+                                                        {statusLabel(p.current_status)}
+                                                    </span>
+                                                    {p.has_active_reservation && (
+                                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">активна резервация</span>
+                                                    )}
+                                                </div>
+                                                {p.neutral_changes?.length > 0 && (
+                                                    <ul className="ml-4 mt-1 text-[11px] text-slate-600">
+                                                        {p.neutral_changes.map((f, j) => (
+                                                            <li key={j}>
+                                                                <span className="font-mono">{f.field}:</span>{" "}
+                                                                <span className="line-through text-rose-600">{String(f.from ?? "—")}</span>{" → "}
+                                                                <span className="text-emerald-700">{String(f.to ?? "—")}</span>
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                )}
+                                                {p.skipped_fields?.length > 0 && (
+                                                    <div className="ml-4 mt-1 text-[10px] text-emerald-700">
+                                                        ✓ запазват се: {p.skipped_fields.join(", ")}
+                                                    </div>
+                                                )}
+                                                {!p.neutral_changes?.length && !p.skipped_fields?.length && (
+                                                    <div className="ml-4 mt-1 text-[10px] text-slate-500 italic">без промени</div>
+                                                )}
                                             </li>
                                         ))}
                                     </ul>
                                 )}
                             </DiffSection>
+
+                            {/* 2. СТАНДАРТНИ UPDATE (СВОБОДНИ) */}
                             <DiffSection
-                                title={`Update имоти (${diff.to_update.properties.length})`}
+                                title={`✏️ Стандартни обновявания (${(diff.details?.free_updates || []).length})`}
                                 tone="amber"
+                                subtitle="Свободни обекти — всички полета ще се обновят."
                             >
-                                {diff.to_update.properties.length === 0 ? (
+                                {(diff.details?.free_updates || []).length === 0 ? (
                                     <div className="text-xs text-slate-500 italic">—</div>
                                 ) : (
                                     <ul className="text-xs space-y-1">
-                                        {diff.to_update.properties.map((p, i) => (
+                                        {diff.details.free_updates.map((p, i) => (
                                             <li key={i}>
                                                 <div className="flex gap-2 items-baseline">
                                                     <span className="font-mono w-20">{p.code}</span>
                                                     <span className="text-slate-500">{PROP_TYPE_LABELS[p.property_type] || p.property_type || "?"}</span>
                                                 </div>
                                                 <ul className="ml-6 text-[11px] text-slate-600">
-                                                    {p.changed_fields.map((f, j) => (
+                                                    {p.changes.map((f, j) => (
                                                         <li key={j}>
                                                             <span className="font-mono">{f.field}:</span>{" "}
                                                             <span className="line-through text-rose-600">{String(f.from ?? "—")}</span>{" → "}
@@ -808,6 +849,54 @@ function ApplyDiffPanel({ diff, loading, onLoad }) {
                                     </ul>
                                 )}
                             </DiffSection>
+
+                            {/* 3. НОВИ ОБЕКТИ */}
+                            <DiffSection
+                                title={`➕ Нови обекти (${(diff.details?.new_units || diff.to_create?.properties || []).length})`}
+                                tone="blue"
+                                subtitle="Ще бъдат създадени в DB."
+                            >
+                                {(diff.details?.new_units || []).length === 0 ? (
+                                    <div className="text-xs text-slate-500 italic">—</div>
+                                ) : (
+                                    <ul className="text-xs space-y-0.5">
+                                        {diff.details.new_units.map((p, i) => (
+                                            <li key={i} className="flex gap-2 items-baseline">
+                                                <span className="font-mono w-20">{p.code}</span>
+                                                <span className="text-slate-500">{PROP_TYPE_LABELS[p.property_type] || p.property_type || "?"}</span>
+                                                {p.area_total && <span className="text-slate-500">{p.area_total} м²</span>}
+                                                {p.list_price && <span className="text-slate-500">{p.list_price} EUR</span>}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </DiffSection>
+
+                            {/* 4. WARNINGS — В DB, НЕ В PDF */}
+                            {(diff.details?.in_db_not_in_pdf || []).length > 0 && (
+                                <DiffSection
+                                    title={`⚠️ Внимание: в DB, не в PDF (${diff.details.in_db_not_in_pdf.length})`}
+                                    tone="warning"
+                                    subtitle="Системата НЯМА да ги трие — запазват се непокътнати."
+                                >
+                                    <ul className="text-xs space-y-1">
+                                        {diff.details.in_db_not_in_pdf.map((w, i) => (
+                                            <li key={i}>
+                                                <span className="font-mono font-semibold">{w.code}</span>
+                                                {" · "}
+                                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700 text-white">
+                                                    {statusLabel(w.status)}
+                                                </span>
+                                                {w.buyer_name && (
+                                                    <span className="text-slate-600"> → {w.buyer_name}</span>
+                                                )}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </DiffSection>
+                            )}
+
+                            {/* Buyers (kept from legacy layout) */}
                             <DiffSection
                                 title={`Нови купувачи (${diff.to_create.buyers.length})`}
                                 tone="emerald"
@@ -879,15 +968,18 @@ function ApplyDiffPanel({ diff, loading, onLoad }) {
     );
 }
 
-function DiffSection({ title, tone = "slate", children }) {
+function DiffSection({ title, tone = "slate", subtitle, children }) {
     const toneBorder = {
         emerald: "border-emerald-200 bg-emerald-50/40",
         amber: "border-amber-200 bg-amber-50/40",
+        blue: "border-blue-200 bg-blue-50/40",
+        warning: "border-amber-400 bg-amber-100/60",
         slate: "border-slate-200 bg-stone-50",
     }[tone];
     return (
         <div className={`rounded-md border ${toneBorder} p-3`}>
-            <div className="text-xs font-semibold text-slate-800 mb-1.5">{title}</div>
+            <div className="text-xs font-semibold text-slate-800">{title}</div>
+            {subtitle && <div className="text-[10px] text-slate-500 mt-0.5 mb-2">{subtitle}</div>}
             {children}
         </div>
     );

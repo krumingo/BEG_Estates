@@ -30,6 +30,80 @@ UPLOAD_ROOT = Path(os.environ.get("IMPORTS_DIR", "/app/backend/uploads/import_se
 UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
 MAX_FILE_BYTES = 25 * 1024 * 1024  # 25 MB per PDF
 
+# ---------------------------------------------------------------------------
+# Smart Import — защитени полета при re-import
+# ---------------------------------------------------------------------------
+# NEUTRAL_IMPORT_FIELDS: полета, които винаги могат да се обновят от PDF
+# (цена, площ, идеални части). PROTECTED_IMPORT_FIELDS: полета, които НЕ се
+# пипат при re-import, ако обектът е "защитен" — т.е. има купувач, активна
+# резервация или не-available статус.
+NEUTRAL_IMPORT_FIELDS = (
+    "raw_area",
+    "area_pure",
+    "area_common",
+    "area_total",
+    "list_price",
+    "final_contract_price",
+    "ideal_parts",
+    "rooms",
+    "floor",
+    "property_type",
+)
+
+# Полета, които се попълват само ако в DB още не са зададени (не overwrite).
+FILL_IF_EMPTY_FIELDS = ("exposure", "description")
+
+# Полета, които за защитени обекти НЕ се пипат в никакъв случай.
+PROTECTED_FIELDS = ("status", "buyer_id", "reservation_id", "deposit_amount", "notes")
+
+
+def _is_property_protected(prop: dict, has_active_reservation: bool) -> bool:
+    """Обектът е защитен, ако не е чисто 'available' или има купувач/резервация."""
+    if has_active_reservation:
+        return True
+    if prop.get("buyer_id"):
+        return True
+    status = prop.get("status") or "available"
+    return status != "available"
+
+
+async def _active_reservation_map(db, project_id: str) -> dict:
+    """Връща {property_id: True} за обекти с активна резервация в проекта."""
+    cursor = db.reservations.find(
+        {"project_id": project_id, "status": "active"},
+        {"_id": 0, "property_id": 1},
+    )
+    out: dict[str, bool] = {}
+    async for r in cursor:
+        pid = r.get("property_id")
+        if pid:
+            out[pid] = True
+    return out
+
+
+def _neutral_changes(existing: dict, desired: dict) -> list[dict]:
+    """Сравнява existing/desired само по NEUTRAL_IMPORT_FIELDS; връща diff list."""
+    diffs: list[dict] = []
+    for k in NEUTRAL_IMPORT_FIELDS:
+        if k not in desired:
+            continue
+        new_val = desired[k]
+        old_val = existing.get(k)
+        if old_val != new_val:
+            diffs.append({"field": k, "from": old_val, "to": new_val})
+    return diffs
+
+
+def _full_changes(existing: dict, desired: dict) -> list[dict]:
+    """Пълен diff — за не-защитени обекти обновяваме всички подадени полета."""
+    diffs: list[dict] = []
+    for k, new_val in desired.items():
+        old_val = existing.get(k)
+        if old_val != new_val:
+            diffs.append({"field": k, "from": old_val, "to": new_val})
+    return diffs
+
+
 
 class CreateSessionIn(BaseModel):
     project_id: str
@@ -297,7 +371,9 @@ async def update_review_payload(
 async def apply_diff(session_id: str, _=Depends(require_staff())):
     """Dry-run preview: какво ще се създаде / update-не / skip-не, БЕЗ write.
 
-    Същата логика на matching както `apply`, но не пише в базата.
+    Protected-aware: обекти с buyer / non-available статус / активна резервация
+    получават само NEUTRAL_IMPORT_FIELDS промени; защитените полета (status,
+    buyer_id и пр.) се маркират като skipped.
     """
     db = get_db()
     sess = await db.import_sessions.find_one({"id": session_id}, {"_id": 0})
@@ -309,8 +385,15 @@ async def apply_diff(session_id: str, _=Depends(require_staff())):
     if not project:
         raise HTTPException(status_code=404, detail="Проектът не е намерен")
 
+    # Greenfield detection — ако проектът няма никакви properties, цялата
+    # protection логика се изключва (всичко е "ново").
+    existing_count = await db.properties.count_documents({"project_id": project_id})
+    is_greenfield = existing_count == 0
+    reservation_map = await _active_reservation_map(db, project_id) if not is_greenfield else {}
+
     to_create_props: list[dict] = []
-    to_update_props: list[dict] = []
+    to_update_free: list[dict] = []
+    to_update_protected: list[dict] = []
     to_skip: list[dict] = []
     to_create_buyers: list[dict] = []
     to_update_buyers: list[dict] = []
@@ -318,11 +401,7 @@ async def apply_diff(session_id: str, _=Depends(require_staff())):
     approved_codes: set[str] = set()
     for u in extracted.get("candidate_units", []) or []:
         if not u.get("approved"):
-            to_skip.append({
-                "kind": "unit",
-                "code": u.get("code"),
-                "reason": "не е одобрен",
-            })
+            to_skip.append({"kind": "unit", "code": u.get("code"), "reason": "не е одобрен"})
             continue
         code = (u.get("code") or "").strip()
         if not code:
@@ -333,54 +412,110 @@ async def apply_diff(session_id: str, _=Depends(require_staff())):
         existing = await db.properties.find_one(
             {"project_id": project_id, "code": code},
             {"_id": 0, "id": 1, "code": 1, "property_type": 1, "floor": 1,
-             "rooms": 1, "area_total": 1, "list_price": 1, "status": 1},
+             "rooms": 1, "raw_area": 1, "area_pure": 1, "area_common": 1,
+             "area_total": 1, "list_price": 1, "final_contract_price": 1,
+             "ideal_parts": 1, "status": 1, "buyer_id": 1, "exposure": 1,
+             "description": 1},
         )
         desired = {
             "code": code,
             "property_type": u.get("property_type"),
             "floor": u.get("floor"),
             "rooms": u.get("rooms"),
+            "raw_area": u.get("raw_area"),
+            "area_pure": u.get("area_pure"),
+            "area_common": u.get("area_common"),
             "area_total": u.get("area_total"),
             "list_price": u.get("start_price_basis"),
+            "final_contract_price": u.get("final_price_basis"),
             "status": u.get("status_guess") or "available",
         }
         desired = {k: v for k, v in desired.items() if v is not None}
-        if existing:
-            changed_fields: list[dict] = []
-            for k, new_val in desired.items():
-                old_val = existing.get(k)
-                if old_val != new_val:
-                    changed_fields.append({"field": k, "from": old_val, "to": new_val})
-            if changed_fields:
-                to_update_props.append({
-                    "code": code,
-                    "existing_id": existing["id"],
-                    "property_type": u.get("property_type"),
-                    "changed_fields": changed_fields,
-                })
-            else:
-                to_skip.append({
-                    "kind": "unit",
-                    "code": code,
-                    "reason": "вече съществува, без промени",
-                })
-        else:
+
+        if not existing:
             to_create_props.append({
                 "code": code,
                 "property_type": u.get("property_type"),
+                "raw_area": u.get("raw_area"),
                 "area_total": u.get("area_total"),
                 "list_price": u.get("start_price_basis"),
                 "floor": u.get("floor"),
                 "rooms": u.get("rooms"),
             })
+            continue
+
+        # Съществуващ обект — определяме защитен ли е
+        has_reservation = reservation_map.get(existing["id"], False)
+        protected = (not is_greenfield) and _is_property_protected(existing, has_reservation)
+
+        if protected:
+            # Само NEUTRAL обновявания
+            neutral = _neutral_changes(existing, desired)
+            # Полетата, които iмат нови стойности, но ще бъдат skip-нати защото са protected
+            skipped_fields = [f for f in PROTECTED_FIELDS if f in desired and desired[f] != existing.get(f)]
+            # Buyer info (ако имаме)
+            buyer_name = None
+            if existing.get("buyer_id"):
+                buyer = await db.users.find_one(
+                    {"id": existing["buyer_id"]}, {"_id": 0, "name": 1}
+                )
+                buyer_name = buyer.get("name") if buyer else None
+            row = {
+                "code": code,
+                "existing_id": existing["id"],
+                "property_type": existing.get("property_type"),
+                "current_status": existing.get("status"),
+                "buyer_name": buyer_name,
+                "has_active_reservation": has_reservation,
+                "neutral_changes": neutral,
+                "skipped_fields": skipped_fields,
+            }
+            if neutral or skipped_fields:
+                to_update_protected.append(row)
+            else:
+                to_skip.append({"kind": "unit", "code": code, "reason": "защитен, без релевантни промени"})
+        else:
+            # Свободен обект — всичко разрешено (без buyer_id, което import няма)
+            changes = _full_changes(existing, desired)
+            if changes:
+                to_update_free.append({
+                    "code": code,
+                    "existing_id": existing["id"],
+                    "property_type": existing.get("property_type"),
+                    "current_status": existing.get("status") or "available",
+                    "changes": changes,
+                })
+            else:
+                to_skip.append({"kind": "unit", "code": code, "reason": "вече съществува, без промени"})
+
+    # WARNINGS — обекти в DB, които не са в PDF
+    warnings: list[dict] = []
+    if not is_greenfield:
+        db_props = await db.properties.find(
+            {"project_id": project_id},
+            {"_id": 0, "id": 1, "code": 1, "status": 1, "buyer_id": 1},
+        ).to_list(2000)
+        for p in db_props:
+            if p.get("code") in approved_codes:
+                continue
+            # Само предупреждаваме за защитените — свободни могат да са ръчно създадени
+            has_reservation = reservation_map.get(p["id"], False)
+            if _is_property_protected(p, has_reservation):
+                buyer_name = None
+                if p.get("buyer_id"):
+                    b = await db.users.find_one({"id": p["buyer_id"]}, {"_id": 0, "name": 1})
+                    buyer_name = b.get("name") if b else None
+                warnings.append({
+                    "type": "in_db_not_in_pdf",
+                    "code": p.get("code"),
+                    "status": p.get("status"),
+                    "buyer_name": buyer_name,
+                    "message": "Обектът съществува в DB (защитен), но не е в новия PDF. Оставен непокътнат.",
+                })
 
     for b in extracted.get("candidate_buyers", []) or []:
         if not b.get("approved"):
-            to_skip.append({
-                "kind": "buyer",
-                "code": b.get("name"),
-                "reason": "не е одобрен",
-            })
+            to_skip.append({"kind": "buyer", "code": b.get("name"), "reason": "не е одобрен"})
             continue
         name = (b.get("name") or "").strip()
         if not name or name == "(неизвестен)":
@@ -406,13 +541,9 @@ async def apply_diff(session_id: str, _=Depends(require_staff())):
         if existing:
             changed_fields = []
             if b.get("phone") and b["phone"] != existing.get("phone"):
-                changed_fields.append(
-                    {"field": "phone", "from": existing.get("phone"), "to": b["phone"]}
-                )
+                changed_fields.append({"field": "phone", "from": existing.get("phone"), "to": b["phone"]})
             if b.get("email") and b["email"] != existing.get("email"):
-                changed_fields.append(
-                    {"field": "email", "from": existing.get("email"), "to": b["email"]}
-                )
+                changed_fields.append({"field": "email", "from": existing.get("email"), "to": b["email"]})
             if changed_fields or link_note:
                 to_update_buyers.append({
                     "name": name,
@@ -421,10 +552,7 @@ async def apply_diff(session_id: str, _=Depends(require_staff())):
                     "link_note": link_note,
                 })
             else:
-                to_skip.append({
-                    "kind": "buyer", "code": name,
-                    "reason": "вече съществува, без промени",
-                })
+                to_skip.append({"kind": "buyer", "code": name, "reason": "вече съществува, без промени"})
         else:
             to_create_buyers.append({
                 "name": name,
@@ -433,25 +561,41 @@ async def apply_diff(session_id: str, _=Depends(require_staff())):
                 "link_note": link_note,
             })
 
+    total_in_pdf = sum(1 for u in (extracted.get("candidate_units") or []) if u.get("approved"))
     return {
         "project_id": project_id,
         "project_name": project.get("name"),
+        "is_greenfield": is_greenfield,
         "summary": {
+            "total_in_pdf": total_in_pdf,
+            "matched_existing": len(to_update_free) + len(to_update_protected),
+            "new_units": len(to_create_props),
+            "protected_units": len(to_update_protected),
+            "neutral_updates": len(to_update_free),
+            "warnings_count": len(warnings),
             "create_properties": len(to_create_props),
-            "update_properties": len(to_update_props),
+            "update_properties": len(to_update_free) + len(to_update_protected),
             "create_buyers": len(to_create_buyers),
             "update_buyers": len(to_update_buyers),
             "skip_total": len(to_skip),
         },
+        "details": {
+            "protected": to_update_protected,
+            "free_updates": to_update_free,
+            "new_units": to_create_props,
+            "in_db_not_in_pdf": warnings,
+        },
+        # Backwards-compatible legacy keys (UI старият flow продължава да работи)
         "to_create": {
             "properties": to_create_props,
             "buyers": to_create_buyers,
         },
         "to_update": {
-            "properties": to_update_props,
+            "properties": to_update_free + to_update_protected,
             "buyers": to_update_buyers,
         },
         "to_skip": to_skip,
+        "warnings": warnings,
     }
 
 
@@ -738,9 +882,20 @@ async def apply_session(session_id: str, user=Depends(require_staff())):
 
     applied_units = 0
     created_units = 0
+    protected_updates = 0
     applied_buyers = 0
     created_buyers = 0
     skipped: list[str] = []
+
+    # Greenfield detection и активни резервации (за protection logic)
+    existing_count = await db.properties.count_documents({"project_id": project_id})
+    is_greenfield = existing_count == 0
+    reservation_map = await _active_reservation_map(db, project_id) if not is_greenfield else {}
+
+    audit_rows: list[dict] = []
+
+    def code_of_buyer_for_log(b: dict) -> str:
+        return (b.get("name") or b.get("email") or "?").strip() or "?"
 
     for u in extracted.get("candidate_units", []) or []:
         if not u.get("approved"):
@@ -750,9 +905,9 @@ async def apply_session(session_id: str, user=Depends(require_staff())):
             skipped.append("unit без код")
             continue
         existing = await db.properties.find_one(
-            {"project_id": project_id, "code": code}, {"_id": 0, "id": 1}
+            {"project_id": project_id, "code": code}, {"_id": 0}
         )
-        set_fields = {
+        desired_all = {
             "code": code,
             "property_type": u.get("property_type"),
             "floor": u.get("floor"),
@@ -771,17 +926,80 @@ async def apply_session(session_id: str, user=Depends(require_staff())):
                 "source_ref": u.get("source_ref"),
             },
         }
-        # Strip None values to avoid nuking existing data
-        set_fields = {k: v for k, v in set_fields.items() if v is not None}
-        if existing:
-            await db.properties.update_one({"id": existing["id"]}, {"$set": set_fields})
-            applied_units += 1
-        else:
-            set_fields["id"] = str(uuid.uuid4())
-            set_fields["created_at"] = datetime.now(timezone.utc).isoformat()
-            await db.properties.insert_one(set_fields)
+        # Strip None to avoid overwrite с празно
+        desired_all = {k: v for k, v in desired_all.items() if v is not None}
+
+        if not existing:
+            # CREATE
+            desired_all["id"] = str(uuid.uuid4())
+            desired_all["created_at"] = datetime.now(timezone.utc).isoformat()
+            await db.properties.insert_one(desired_all)
             applied_units += 1
             created_units += 1
+            audit_rows.append({
+                "action": "import_create",
+                "property_id": desired_all["id"],
+                "code": code,
+                "changes": [
+                    {"field": k, "from": None, "to": v}
+                    for k, v in desired_all.items()
+                    if k not in ("id", "created_at", "import_source", "project_id", "_id")
+                ],
+            })
+            continue
+
+        # UPDATE — protection logic
+        has_reservation = reservation_map.get(existing["id"], False)
+        protected = (not is_greenfield) and _is_property_protected(existing, has_reservation)
+
+        if protected:
+            # Само neutral полета + fill-if-empty
+            set_fields: dict = {}
+            changes: list[dict] = []
+            for k in NEUTRAL_IMPORT_FIELDS:
+                if k not in desired_all:
+                    continue
+                new_val = desired_all[k]
+                old_val = existing.get(k)
+                if old_val != new_val:
+                    set_fields[k] = new_val
+                    changes.append({"field": k, "from": old_val, "to": new_val})
+            for k in FILL_IF_EMPTY_FIELDS:
+                if k in desired_all and not existing.get(k):
+                    set_fields[k] = desired_all[k]
+                    changes.append({"field": k, "from": None, "to": desired_all[k]})
+            # Always update import_source traceability
+            set_fields["import_source"] = desired_all["import_source"]
+            skipped_fields = [
+                f for f in PROTECTED_FIELDS
+                if f in desired_all and desired_all.get(f) != existing.get(f)
+            ]
+            if set_fields or skipped_fields:
+                await db.properties.update_one({"id": existing["id"]}, {"$set": set_fields})
+                applied_units += 1
+                protected_updates += 1
+            audit_rows.append({
+                "action": "import_apply_protected",
+                "property_id": existing["id"],
+                "code": code,
+                "current_status": existing.get("status"),
+                "buyer_id": existing.get("buyer_id"),
+                "changes": changes,
+                "skipped_fields": skipped_fields,
+            })
+        else:
+            # Свободен обект — update всички подадени полета
+            changes = _full_changes(existing, desired_all)
+            # Не пипай id/created_at/project_id
+            set_fields = {k: v for k, v in desired_all.items() if k not in ("id", "created_at", "project_id")}
+            await db.properties.update_one({"id": existing["id"]}, {"$set": set_fields})
+            applied_units += 1
+            audit_rows.append({
+                "action": "import_apply_neutral",
+                "property_id": existing["id"],
+                "code": code,
+                "changes": changes,
+            })
 
     for b in extracted.get("candidate_buyers", []) or []:
         if not b.get("approved"):
@@ -849,19 +1067,33 @@ async def apply_session(session_id: str, user=Depends(require_staff())):
             created_buyers += 1
         applied_buyers += 1
 
-        # Link buyer to unit if possible
+        # Link buyer to unit if possible — НО не пипаме защитени обекти,
+        # които вече имат buyer_id. Това запазва ръчно настроените връзки.
         if b.get("linked_unit_code"):
             prop = await db.properties.find_one(
-                {"project_id": project_id, "code": b["linked_unit_code"]}, {"_id": 0, "id": 1}
+                {"project_id": project_id, "code": b["linked_unit_code"]},
+                {"_id": 0, "id": 1, "status": 1, "buyer_id": 1},
             )
             if prop:
-                await db.properties.update_one(
-                    {"id": prop["id"]}, {"$set": {"buyer_id": buyer_id}}
-                )
+                has_res = reservation_map.get(prop["id"], False)
+                is_protected = (not is_greenfield) and _is_property_protected(prop, has_res)
+                already_linked_to_other = prop.get("buyer_id") and prop.get("buyer_id") != buyer_id
+                if is_protected and already_linked_to_other:
+                    skipped.append(
+                        f"buyer link {code_of_buyer_for_log(b)} → {b['linked_unit_code']}: "
+                        "защитен обект с друг купувач"
+                    )
+                else:
+                    await db.properties.update_one(
+                        {"id": prop["id"]}, {"$set": {"buyer_id": buyer_id}}
+                    )
 
     report = {
         "applied_units": applied_units,
         "created_units": created_units,
+        "protected_updates": protected_updates,
+        "neutral_updates": applied_units - created_units - protected_updates,
+        "is_greenfield": is_greenfield,
         "applied_buyers": applied_buyers,
         "created_buyers": created_buyers,
         "skipped": skipped,
@@ -875,6 +1107,22 @@ async def apply_session(session_id: str, user=Depends(require_staff())):
             "apply_report": report,
         }},
     )
+    # Per-property audit entries (accountability)
+    for row in audit_rows:
+        await log_action(
+            user["id"],
+            row["action"],
+            "property",
+            row["property_id"],
+            {
+                "code": row.get("code"),
+                "changes": row.get("changes") or [],
+                "skipped_fields": row.get("skipped_fields") or [],
+                "current_status": row.get("current_status"),
+                "buyer_id": row.get("buyer_id"),
+                "import_session_id": session_id,
+            },
+        )
     await log_action(
         user["id"], "import_session_apply", "import_session", session_id, report
     )
