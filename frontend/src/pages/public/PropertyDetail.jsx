@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { MapPin, Ruler, ArrowLeft, Clock } from "lucide-react";
+import { MapPin, Ruler, ArrowLeft, Clock, FileText, Download, ExternalLink, X } from "lucide-react";
 import PublicHeader from "../../components/layout/PublicHeader";
 import { StatusBadge } from "../../components/common/StatusBadge";
 import { api, currency, formatApiError } from "../../lib/api";
 import { PROPERTY_TYPE_LABELS } from "../../lib/constants";
 import { Button } from "../../components/ui/button";
+import { Dialog, DialogContent } from "../../components/ui/dialog";
+import FloorPlanSection from "../../components/public/FloorPlanSection";
 import { useAuth } from "../../lib/auth";
 import { toast } from "sonner";
 
@@ -121,6 +123,23 @@ export default function PropertyDetail() {
                     </div>
                 </div>
             </div>
+
+            {/* Floor plan section: pre-selects текущ етаж и маркира текущия имот */}
+            {project?.id && (
+                <div className="border-t hairline">
+                    <FloorPlanSection
+                        projectId={project.id}
+                        currentFloor={p.floor}
+                        currentPropertyId={p.id}
+                        title="Планировка на етажа"
+                        eyebrow="Огледай съседните обекти"
+                        className="bg-stone-50 py-16"
+                    />
+                </div>
+            )}
+
+            {/* Разпределение — чертеж на апартамента */}
+            <PropertyPlanSection plan_url={p.plan_url || p.floor_plan_url} code={p.code} />
         </div>
     );
 }
@@ -131,5 +150,114 @@ function Spec({ label, value, highlight }) {
             <div className={`overline ${highlight ? "text-white/60" : ""}`}>{label}</div>
             <div className={`mt-1 text-lg font-medium ${highlight ? "text-white" : "text-slate-900"}`}>{value}</div>
         </div>
+    );
+}
+
+function PropertyPlanSection({ plan_url, code }) {
+    const [open, setOpen] = useState(false);
+    if (!plan_url) return null;
+
+    const isPdf = /\.pdf(\?|#|$)/i.test(plan_url);
+    // Image: явен extension ИЛИ unknown URL без PDF (нека default-ваме на image rendering за хостнати картинки)
+    const hasImageExt = /\.(jpe?g|png|webp|gif|svg)(\?|#|$)/i.test(plan_url);
+    const isImage = hasImageExt || (!isPdf && /^https?:\/\//i.test(plan_url));
+
+    return (
+        <section
+            className="mx-auto max-w-7xl px-6 lg:px-10 py-16 border-t hairline"
+            data-testid="property-plan-section"
+        >
+            <div className="overline mb-3">Чертеж на апартамента</div>
+            <h2 className="font-serif text-4xl sm:text-5xl text-slate-900 mb-8">Разпределение</h2>
+
+            {isPdf && (
+                <div
+                    className="rounded-xl border hairline bg-stone-50 p-8 flex flex-col sm:flex-row items-center gap-6"
+                    data-testid="property-plan-pdf"
+                >
+                    <div className="h-16 w-16 rounded-full bg-white border hairline flex items-center justify-center flex-shrink-0">
+                        <FileText className="h-7 w-7 text-slate-700" strokeWidth={1.5} />
+                    </div>
+                    <div className="flex-1 text-center sm:text-left">
+                        <div className="font-serif text-2xl text-slate-900 mb-1">Чертеж · {code}</div>
+                        <div className="text-sm text-slate-600">PDF документ с детайлно разпределение</div>
+                    </div>
+                    <div className="flex gap-2 flex-wrap justify-center">
+                        <a
+                            href={plan_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            data-testid="property-plan-view"
+                        >
+                            <Button variant="outline">
+                                <ExternalLink className="h-4 w-4 mr-2" /> Виж в браузъра
+                            </Button>
+                        </a>
+                        <a href={plan_url} download data-testid="property-plan-download">
+                            <Button>
+                                <Download className="h-4 w-4 mr-2" /> Изтегли PDF
+                            </Button>
+                        </a>
+                    </div>
+                </div>
+            )}
+
+            {isImage && (
+                <>
+                    <button
+                        type="button"
+                        onClick={() => setOpen(true)}
+                        className="block w-full rounded-xl border hairline bg-stone-50 overflow-hidden group focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        data-testid="property-plan-image"
+                        aria-label="Уголеми чертежа"
+                    >
+                        <img
+                            src={plan_url}
+                            alt={`Разпределение · ${code}`}
+                            className="w-full h-auto object-contain max-h-[700px] mx-auto group-hover:opacity-95 transition"
+                        />
+                        <div className="px-5 py-3 text-xs text-slate-500 text-left">
+                            Кликнете за уголемен изглед
+                        </div>
+                    </button>
+                    <Dialog open={open} onOpenChange={setOpen}>
+                        <DialogContent
+                            className="max-w-screen-lg w-[95vw] p-0 bg-black/95 border-none"
+                            data-testid="property-plan-lightbox"
+                        >
+                            <button
+                                type="button"
+                                onClick={() => setOpen(false)}
+                                className="absolute top-3 right-3 z-10 h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center"
+                                aria-label="Затвори"
+                                data-testid="property-plan-lightbox-close"
+                            >
+                                <X className="h-5 w-5" />
+                            </button>
+                            <img
+                                src={plan_url}
+                                alt={`Разпределение · ${code}`}
+                                className="w-full h-auto object-contain max-h-[90vh]"
+                            />
+                        </DialogContent>
+                    </Dialog>
+                </>
+            )}
+
+            {!isPdf && !isImage && (
+                <div className="rounded-xl border hairline bg-stone-50 p-6 flex items-center gap-3">
+                    <ExternalLink className="h-5 w-5 text-slate-600" />
+                    <a
+                        href={plan_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-slate-900 underline"
+                        data-testid="property-plan-link"
+                    >
+                        Отвори чертежа
+                    </a>
+                </div>
+            )}
+        </section>
     );
 }
