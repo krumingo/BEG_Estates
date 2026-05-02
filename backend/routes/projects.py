@@ -1,6 +1,8 @@
 """Projects + properties + buildings routes (public listing + admin CRUD)."""
+import json
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -1305,4 +1307,54 @@ async def suggest_floor_plan_contours(
         "floor": int(floor),
         "plan_image_url": image_url,
         **result,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Площообразуване (Area Formation) — отделен read-only canonical view
+# ---------------------------------------------------------------------------
+_AREA_FORMATION_FIXTURES_DIR = Path(__file__).resolve().parent.parent / "data"
+_AREA_FORMATION_FIXTURES = {
+    "hadzhi-dimitar": "hadzhi_dimitar_area_formation.json",
+}
+
+
+@router.get("/projects/{project_id_or_slug}/area-formation")
+async def get_area_formation(project_id_or_slug: str):
+    """Връща секционната структура на площообразуването за проект.
+
+    Източник: canonical JSON fixture в `backend/data/`. Тази endpoint НЕ чете
+    и НЕ пише `properties` — тя е независим source-of-truth за PDF таблицата.
+    """
+    db = get_db()
+    project = await db.projects.find_one({"id": project_id_or_slug}, {"_id": 0, "id": 1, "slug": 1, "name": 1})
+    if not project:
+        project = await db.projects.find_one({"slug": project_id_or_slug}, {"_id": 0, "id": 1, "slug": 1, "name": 1})
+    if not project:
+        raise HTTPException(status_code=404, detail="Проектът не е намерен")
+
+    fname = _AREA_FORMATION_FIXTURES.get(project.get("slug"))
+    if not fname:
+        raise HTTPException(
+            status_code=404,
+            detail="За този проект все още няма налично площообразуване.",
+        )
+    path = _AREA_FORMATION_FIXTURES_DIR / fname
+    if not path.exists():
+        raise HTTPException(
+            status_code=500,
+            detail=f"Fixture файлът липсва: {fname}",
+        )
+    try:
+        with path.open(encoding="utf-8") as fp:
+            data = json.load(fp)
+    except (OSError, ValueError) as ex:
+        raise HTTPException(
+            status_code=500, detail=f"Грешка при четене на fixture: {ex}"
+        ) from ex
+    return {
+        "project_id": project["id"],
+        "project_slug": project.get("slug"),
+        "project_name": project.get("name"),
+        **data,
     }

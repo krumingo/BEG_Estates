@@ -40,6 +40,7 @@ import AdminAudit from "./pages/admin/AdminAudit";
 import AdminFloorPlans from "./pages/admin/AdminFloorPlans";
 import AdminImportDocs from "./pages/admin/AdminImportDocs";
 import AdminBulkImport from "./pages/admin/AdminBulkImport";
+import AdminAreaFormation from "./pages/admin/AdminAreaFormation";
 import AdminVersions from "./pages/admin/AdminVersions";
 import AdminPasswordResets from "./pages/admin/AdminPasswordResets";
 import AdminStaffUsers from "./pages/admin/AdminStaffUsers";
@@ -102,6 +103,7 @@ function App() {
                             <Route path="floor-plans" element={<AdminFloorPlans />} />
                             <Route path="import-docs" element={<AdminImportDocs />} />
                             <Route path="bulk-import" element={<AdminBulkImport />} />
+                            <Route path="area-formation" element={<AdminAreaFormation />} />
                             <Route path="reservations" element={<AdminReservations />} />
                             <Route path="clients" element={<AdminClients />} />
                             <Route path="inquiries" element={<AdminInquiries />} />
