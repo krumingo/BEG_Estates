@@ -99,6 +99,7 @@ async def seed_all():
         )
 
     client_email = os.environ["CLIENT_EMAIL"].lower()
+    client_password = os.environ.get("CLIENT_PASSWORD", "Client123!")
     client = await db.users.find_one({"email": client_email})
     if not client:
         client = {
@@ -108,9 +109,23 @@ async def seed_all():
             "role": Role.CLIENT.value,
             "phone": "+359 888 123 456",
             "two_factor_enabled": False,
+            "password_hash": hash_password(client_password),
+            "password_set_at": _utcnow().isoformat(),
+            "must_change_password": False,
             "created_at": _utcnow().isoformat(),
         }
         await db.users.insert_one(client)
+    elif not client.get("password_hash"):
+        # Backfill: existing seeded клиент без password (legacy OTP-only) → задаваме password от env.
+        await db.users.update_one(
+            {"id": client["id"]},
+            {"$set": {
+                "password_hash": hash_password(client_password),
+                "password_set_at": _utcnow().isoformat(),
+                "must_change_password": False,
+            }},
+        )
+        client = await db.users.find_one({"email": client_email})
 
     # ---- migration / seed gate ----
     meta = await db.system_meta.find_one({"id": "seed"}) or {}

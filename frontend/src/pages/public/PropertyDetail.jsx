@@ -1,45 +1,22 @@
 import React, { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { MapPin, Ruler, ArrowLeft, Clock, FileText, Download, ExternalLink, X } from "lucide-react";
+import { Link, useParams } from "react-router-dom";
+import { MapPin, ArrowLeft, FileText, Download, ExternalLink, X, MessageCircle } from "lucide-react";
 import PublicHeader from "../../components/layout/PublicHeader";
 import { StatusBadge } from "../../components/common/StatusBadge";
-import { api, currency, formatApiError } from "../../lib/api";
+import { api, currency } from "../../lib/api";
 import { PROPERTY_TYPE_LABELS } from "../../lib/constants";
 import { Button } from "../../components/ui/button";
-import { Dialog, DialogContent } from "../../components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../../components/ui/dialog";
 import FloorPlanSection from "../../components/public/FloorPlanSection";
-import { useAuth } from "../../lib/auth";
-import { toast } from "sonner";
+import InquiryForm from "./InquiryForm";
 
 export default function PropertyDetail() {
     const { id } = useParams();
     const [data, setData] = useState(null);
-    const [submitting, setSubmitting] = useState(false);
-    const { user } = useAuth();
-    const navigate = useNavigate();
+    const [inquiryOpen, setInquiryOpen] = useState(false);
 
     const load = () => api.get(`/properties/${id}`).then((r) => setData(r.data)).catch(() => {});
     useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [id]);
-
-    const reserveZero = async () => {
-        if (!user) {
-            navigate(`/login/client?next=/properties/${id}`);
-            return;
-        }
-        setSubmitting(true);
-        try {
-            await api.post("/reservations", {
-                property_id: id,
-                reservation_type: "zero_deposit",
-            });
-            toast.success("Резервацията с капаро 0 е създадена!");
-            navigate("/portal/reservations");
-        } catch (e) {
-            toast.error(formatApiError(e.response?.data?.detail));
-        } finally {
-            setSubmitting(false);
-        }
-    };
 
     if (!data) return <div className="min-h-screen pt-24 text-center text-slate-500">Зареждане…</div>;
 
@@ -94,23 +71,23 @@ export default function PropertyDetail() {
                         {p.status === "available" && (
                             <div className="rounded-xl border hairline p-6 bg-amber-50/60">
                                 <div className="flex items-center gap-2 mb-2">
-                                    <Clock className="h-4 w-4 text-amber-700" />
-                                    <div className="overline text-amber-700">Капаро 0</div>
+                                    <MessageCircle className="h-4 w-4 text-amber-700" />
+                                    <div className="overline text-amber-700">Заявка към екипа</div>
                                 </div>
                                 <div className="font-serif text-2xl text-slate-900 mb-1">
-                                    Запази обекта без плащане
+                                    Свържете се с нас за този имот
                                 </div>
                                 <p className="text-sm text-slate-600 mb-4">
-                                    Резервацията е безплатна и валидна 7 дни. Без задължения, само спокойствие да решите.
+                                    Резервациите се правят от нашия екип. Оставете контакт и ще ви помогнем
+                                    с резервация, договор и индивидуален план на плащане.
                                 </p>
                                 <Button
                                     size="lg"
-                                    onClick={reserveZero}
-                                    disabled={submitting}
-                                    data-testid="reserve-zero-deposit-btn"
+                                    onClick={() => setInquiryOpen(true)}
+                                    data-testid="inquiry-cta-btn"
                                     className="bg-slate-900 hover:bg-slate-800 text-white w-full"
                                 >
-                                    {submitting ? "Резервиране…" : "Резервирай с капаро 0"}
+                                    <MessageCircle className="h-4 w-4 mr-2" /> Заяви интерес
                                 </Button>
                             </div>
                         )}
@@ -123,6 +100,18 @@ export default function PropertyDetail() {
                     </div>
                 </div>
             </div>
+
+            <Dialog open={inquiryOpen} onOpenChange={setInquiryOpen}>
+                <DialogContent className="max-w-lg" data-testid="inquiry-modal">
+                    <DialogHeader>
+                        <DialogTitle className="font-serif text-2xl">Заяви интерес · {p.code}</DialogTitle>
+                        <DialogDescription>
+                            Оставете контакт. Наш консултант ще се свърже с вас в рамките на работния ден.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <InquiryForm projectId={project?.id} propertyId={p.id} />
+                </DialogContent>
+            </Dialog>
 
             {/* Floor plan section: pre-selects текущ етаж и маркира текущия имот */}
             {project?.id && (

@@ -58,6 +58,9 @@ async def on_startup():
     await db.audit_logs.create_index("at")
     await db.messages.create_index("client_id")
     await db.messages.create_index("created_at")
+    await db.password_reset_tokens.create_index("token", unique=True)
+    await db.password_reset_tokens.create_index("user_id")
+    await db.login_attempts.create_index("identifier", unique=True)
     await seed_all()
     logger.info("BEG Estates API ready (seed complete)")
 

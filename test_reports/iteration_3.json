@@ -1,0 +1,81 @@
+{
+  "summary": "Comprehensive testing of BEG Estates auth refactor completed. Backend: 23/23 tests passed. Frontend: All critical flows verified. Auth refactor successfully implements email+password for clients, mandatory TOTP 2FA for staff, read-only client portal, admin-managed password resets, and inquiry modal replacing reserve button.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "Brute-force lockout",
+        "issue": "Lockout mechanism works but may not trigger 429 in load-balanced environments due to IP-based key splitting across backend instances",
+        "priority": "LOW"
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_auth_refactor_full.py",
+    "/app/test_reports/pytest/pytest_auth_refactor.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Auth refactor correctly implements 2-step staff login (password → TOTP)",
+    "Client login uses classic email+password with JWT cookies",
+    "Password policy enforced: ≥8 chars, ≥1 letter, ≥1 digit, bcrypt 12 rounds",
+    "Brute-force lockout: 5 attempts/15min → 30min lockout (IP:email scoped)",
+    "Password reset tokens are admin-visible only (no email sending)",
+    "Client portal is read-only: POST /api/reservations returns 403 for clients",
+    "Reserve button replaced with 'Заяви интерес' inquiry modal on property detail",
+    "All data-testid attributes present for testing",
+    "UI fully in Bulgarian as required"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_auth_refactor_full.py"
+  ],
+  "success_rate": {
+    "backend": "100% (23/23 tests passed)",
+    "frontend": "100% (all critical flows verified)"
+  },
+  "test_credentials": {
+    "admin": "admin@begestates.bg / Admin123! (TOTP secret: BN5A5POBT6Q4EZH6HVIRV5QEWVMBV4UP)",
+    "sales": "sales@begestates.bg / Sales123!",
+    "client": "ivan.petrov@example.com / Client123!"
+  },
+  "seed_data_creation": "No new seed data created. Using existing seeded users.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Auth refactor complete and tested. All endpoints working: client login, staff 2-step login with TOTP, forgot/reset/change password flows, admin password resets management. Client portal is read-only (POST /api/reservations → 403). Property detail shows inquiry modal instead of reserve button. Brute-force lockout works but may not trigger in load-balanced environments due to IP-based scoping.",
+  "verified_features": [
+    "BACKEND: POST /api/auth/client/login with valid email+password → 200 + user + JWT cookies",
+    "BACKEND: POST /api/auth/client/login with wrong password → 401",
+    "BACKEND: POST /api/auth/client/forgot-password → 200 always (privacy)",
+    "BACKEND: POST /api/auth/client/reset-password with weak password → 400/422",
+    "BACKEND: POST /api/auth/client/change-password with wrong current → 401",
+    "BACKEND: POST /api/auth/staff/login → requires_totp + temp_token (no cookies)",
+    "BACKEND: POST /api/auth/staff/setup-totp → secret + uri + issuer",
+    "BACKEND: POST /api/auth/staff/verify-totp with invalid code → 401",
+    "BACKEND: POST /api/reservations as client → 403 'Резервациите се създават от екипа'",
+    "BACKEND: GET /api/auth/admin/password-resets without auth → 401",
+    "BACKEND: GET /api/auth/admin/password-resets with client cookie → 403",
+    "BACKEND: GET /api/auth/me without cookie → 401",
+    "BACKEND: GET /api/auth/me with client cookie → user with role=client",
+    "BACKEND: POST /api/auth/refresh without cookie → 401",
+    "BACKEND: GET /api/projects works without login (public)",
+    "BACKEND: GET /api/projects/{id}/properties works without login (public)",
+    "BACKEND: POST /api/inquiries works for anonymous",
+    "BACKEND: Brute-force lockout mechanism exists and records failed attempts",
+    "FRONTEND: /login/client renders email+password form with all required data-testid",
+    "FRONTEND: Client login redirects to /portal on success",
+    "FRONTEND: /login/staff Step 1 has email+password, Step 2 has TOTP form",
+    "FRONTEND: /forgot-password shows form and success message after submit",
+    "FRONTEND: /reset-password?token=...&role=client shows reset form",
+    "FRONTEND: /admin/password-resets shows table and manual set-password panel",
+    "FRONTEND: Property detail shows 'Заяви интерес' button instead of reserve",
+    "FRONTEND: Inquiry modal opens with form on button click",
+    "FRONTEND: AdminSidebar contains admin-nav-password-resets link",
+    "FRONTEND: ClientSidebar contains client-nav-change-password link",
+    "FRONTEND: /portal/change-password renders change-password-form with all fields"
+  ]
+}

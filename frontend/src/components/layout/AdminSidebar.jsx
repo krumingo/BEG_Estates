@@ -11,6 +11,7 @@ import {
     Map,
     UploadCloud,
     History,
+    KeyRound,
     LogOut,
 } from "lucide-react";
 import { useAuth } from "../../lib/auth";
@@ -24,6 +25,7 @@ const NAV = [
     { to: "/admin/import-docs", label: "AI Import", icon: UploadCloud, id: "admin-nav-import" },
     { to: "/admin/reservations", label: "Резервации", icon: CalendarClock, id: "admin-nav-reservations" },
     { to: "/admin/clients", label: "Клиенти", icon: Users, id: "admin-nav-clients" },
+    { to: "/admin/password-resets", label: "Пароли", icon: KeyRound, id: "admin-nav-password-resets" },
     { to: "/admin/inquiries", label: "Запитвания", icon: Receipt, id: "admin-nav-inquiries" },
     { to: "/admin/audit", label: "Audit log", icon: ClipboardList, id: "admin-nav-audit" },
     { to: "/admin/versions", label: "Версии / Backups", icon: History, id: "admin-nav-versions" },

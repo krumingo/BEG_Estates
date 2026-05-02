@@ -5,18 +5,40 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 
 # ---------- Auth ----------
 class StaffLoginRequest(BaseModel):
+    """Стъпка 1 от staff login: email + парола (без TOTP)."""
     email: EmailStr
     password: str
-    totp_code: Optional[str] = None
 
 
-class ClientOtpRequest(BaseModel):
-    email: EmailStr
-
-
-class ClientOtpVerify(BaseModel):
-    email: EmailStr
+class StaffTotpVerifyRequest(BaseModel):
+    """Стъпка 2 от staff login: temp_token (от стъпка 1) + 6-цифрен TOTP."""
+    temp_token: str
     code: str
+
+
+class ClientLoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(..., min_length=8)
+    new_password: str = Field(..., min_length=8)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8)
+
+
+class AdminSetClientPasswordRequest(BaseModel):
+    """Admin задава директно парола на клиент (без reset flow)."""
+    new_password: str = Field(..., min_length=8)
+    force_change: bool = True
 
 
 class TotpSetupVerify(BaseModel):

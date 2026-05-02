@@ -65,19 +65,23 @@ async def create_reservation(payload: ReservationCreate, user: dict = Depends(ge
     db = get_db()
     await _expire_stale(db)
 
+    # Read-only клиенти: само admin/staff могат да създават резервации.
+    if user["role"] not in STAFF_ROLES:
+        raise HTTPException(
+            status_code=403,
+            detail="Резервациите се създават от екипа. Свържете се с нас за заявка.",
+        )
+
     # allowed types in this package: zero_deposit or deposit (preliminary NOT allowed here)
     if payload.reservation_type not in ("zero_deposit", "deposit"):
         raise HTTPException(status_code=400, detail="Невалиден тип резервация")
 
-    if user["role"] in STAFF_ROLES:
-        client_id = payload.client_id
-        if not client_id:
-            raise HTTPException(status_code=400, detail="Изберете клиент")
-        client = await db.users.find_one({"id": client_id, "role": "client"})
-        if not client:
-            raise HTTPException(status_code=404, detail="Клиентът не е намерен")
-    else:
-        client_id = user["id"]
+    client_id = payload.client_id
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Изберете клиент")
+    client = await db.users.find_one({"id": client_id, "role": "client"})
+    if not client:
+        raise HTTPException(status_code=404, detail="Клиентът не е намерен")
 
     prop = await db.properties.find_one({"id": payload.property_id})
     if not prop:

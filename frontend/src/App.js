@@ -16,6 +16,9 @@ import Contact from "./pages/public/Contact";
 // Auth
 import StaffLogin from "./pages/auth/StaffLogin";
 import ClientLogin from "./pages/auth/ClientLogin";
+import ForgotPassword from "./pages/auth/ForgotPassword";
+import ResetPassword from "./pages/auth/ResetPassword";
+import ChangePassword from "./pages/auth/ChangePassword";
 
 // Client
 import ClientDashboard, { ClientLayout } from "./pages/client/ClientDashboard";
@@ -37,6 +40,7 @@ import AdminAudit from "./pages/admin/AdminAudit";
 import AdminFloorPlans from "./pages/admin/AdminFloorPlans";
 import AdminImportDocs from "./pages/admin/AdminImportDocs";
 import AdminVersions from "./pages/admin/AdminVersions";
+import AdminPasswordResets from "./pages/admin/AdminPasswordResets";
 
 import NotFound from "./pages/NotFound";
 
@@ -58,6 +62,9 @@ function App() {
                         <Route path="/login/staff" element={<StaffLogin />} />
                         <Route path="/login/client" element={<ClientLogin />} />
                         <Route path="/login" element={<Navigate to="/login/staff" replace />} />
+                        <Route path="/forgot-password" element={<ForgotPassword mode="client" />} />
+                        <Route path="/staff/forgot-password" element={<ForgotPassword mode="staff" />} />
+                        <Route path="/reset-password" element={<ResetPassword />} />
 
                         {/* Client portal */}
                         <Route
@@ -75,6 +82,7 @@ function App() {
                             <Route path="updates" element={<ClientUpdates />} />
                             <Route path="profile" element={<ClientProfile />} />
                             <Route path="messages" element={<ClientMessages />} />
+                            <Route path="change-password" element={<ChangePassword mode="client" />} />
                         </Route>
 
                         {/* Admin */}
@@ -96,6 +104,8 @@ function App() {
                             <Route path="inquiries" element={<AdminInquiries />} />
                             <Route path="audit" element={<AdminAudit />} />
                             <Route path="versions" element={<AdminVersions />} />
+                            <Route path="password-resets" element={<AdminPasswordResets />} />
+                            <Route path="change-password" element={<ChangePassword mode="staff" />} />
                         </Route>
 
                         <Route path="*" element={<NotFound />} />
