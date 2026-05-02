@@ -145,7 +145,7 @@
 
 ### P1
 - **Pricing Engine**: автоматични цени с коефициенти по етаж/изложение, отстъпки, payment plans
-- **Email Provider integration** (Resend/SendGrid) за password resets, OTP-style notifications, reservation events. *(Currently OFF per user request — admin manually shares reset links.)*
+- **Email Provider integration** (Resend/SendGrid) за password resets, reservation events. *(Currently OFF per user request — admin manually shares reset links.)*
 - **Auto-release scheduler** за изтекли zero-deposit резервации. *(Currently OFF per user request.)*
 
 ### P2
@@ -169,6 +169,7 @@ See `/app/docs/AUTH_GUIDE.md` (Bulgarian end-user guide).
 
 ## Changelog highlights
 
-- **2026-02-05** — Auth refactor: removed OTP, added password+TOTP, password resets admin UI, read-only client portal, inquiry modal.
-- **2026-02-05** — **Staff Management UI (super_admin only)**: пълен CRUD (create/edit/reset-password/reset-totp/deactivate/activate/delete) с self-protection, last-super-admin guard, session invalidation on deactivate, conditional sidebar. Admin promoted to super_admin for UI access. Backend: 23/23 tests passed, frontend flows verified.
+- **2026-02-05** — **TOTP REMOVED**. Auth опростен до email + парола за всички роли. Компенсация: 12+ char policy с спец. символ, 3 опита/10мин → 1ч lockout, 8h session, 90-дневна ротация. Backend endpoints `/auth/staff/setup-totp`, `/auth/staff/verify-totp`, `/auth/2fa/*`, `/admin/staff-users/{id}/reset-totp` премахнати. User полета `totp_secret`, `totp_setup_completed`, `two_factor_enabled` unset чрез idempotent migration в seed.py. Default seeded credentials обновени до `BegEstates2026!Admin/Sales/Client` (16 chars). Tests: 18/19 backend + 100% frontend pass.
+- **2026-02-05** — Staff Management UI (super_admin only): пълен CRUD с self-protection, last-super-admin guard, session invalidation on deactivate, conditional sidebar.
+- **2026-02-05** — Auth refactor: removed OTP, added password (+TOTP, later removed), password resets admin UI, read-only client portal, inquiry modal.
 - **2026-02 (earlier session)** — Versions UI, AI Import enhancements, project slug auto-generate, floor plan section in PropertyDetail, lightbox.
