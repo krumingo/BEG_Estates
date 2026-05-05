@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api, formatApiError, formatDate, daysRemaining } from "../../lib/api";
 import { StatusBadge } from "../../components/common/StatusBadge";
 import { RESERVATION_STATUS_LABELS, RESERVATION_TYPE_LABELS } from "../../lib/constants";
@@ -6,6 +7,7 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Textarea } from "../../components/ui/textarea";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "../../components/ui/tabs";
 import {
     Dialog,
     DialogContent,
@@ -18,7 +20,19 @@ import { toast } from "sonner";
 
 export default function AdminReservations() {
     const [items, setItems] = useState([]);
+    const [inquiries, setInquiries] = useState([]);
     const [busyId, setBusyId] = useState(null);
+
+    const [searchParams, setSearchParams] = useSearchParams();
+    const initialTab = searchParams.get("tab") === "inquiries" ? "inquiries" : "reservations";
+    const [activeTab, setActiveTab] = useState(initialTab);
+
+    const onTabChange = (v) => {
+        setActiveTab(v);
+        const next = new URLSearchParams(searchParams);
+        if (v === "inquiries") next.set("tab", "inquiries"); else next.delete("tab");
+        setSearchParams(next, { replace: true });
+    };
 
     const [convertDialog, setConvertDialog] = useState(false);
     const [convertTarget, setConvertTarget] = useState(null);
@@ -27,7 +41,8 @@ export default function AdminReservations() {
     const [saving, setSaving] = useState(false);
 
     const load = () => api.get("/reservations").then((r) => setItems(r.data)).catch(() => {});
-    useEffect(() => { load(); }, []);
+    const loadInquiries = () => api.get("/inquiries").then((r) => setInquiries(r.data)).catch(() => {});
+    useEffect(() => { load(); loadInquiries(); }, []);
 
     const release = async (id) => {
         setBusyId(id);
@@ -87,11 +102,28 @@ export default function AdminReservations() {
     return (
         <div className="space-y-8">
             <div>
-                <div className="overline mb-2">Резервации</div>
-                <h1 className="font-serif text-4xl text-slate-900">Активни и предишни</h1>
+                <div className="overline mb-2">Операции</div>
+                <h1 className="font-serif text-4xl text-slate-900">Резервации & Запитвания</h1>
             </div>
 
-            <div className="rounded-xl border hairline bg-white overflow-x-auto">
+            <Tabs value={activeTab} onValueChange={onTabChange} className="w-full">
+                <TabsList className="grid grid-cols-2 w-full max-w-md" data-testid="reservations-tabs">
+                    <TabsTrigger value="reservations" data-testid="tab-reservations">
+                        Резервации
+                        <span className="ml-2 inline-flex items-center justify-center rounded-full bg-slate-100 text-slate-600 text-[11px] px-1.5 min-w-[18px] h-[18px]">
+                            {items.length}
+                        </span>
+                    </TabsTrigger>
+                    <TabsTrigger value="inquiries" data-testid="tab-inquiries">
+                        Запитвания
+                        <span className="ml-2 inline-flex items-center justify-center rounded-full bg-slate-100 text-slate-600 text-[11px] px-1.5 min-w-[18px] h-[18px]">
+                            {inquiries.length}
+                        </span>
+                    </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="reservations" className="pt-6">
+                    <div className="rounded-xl border hairline bg-white overflow-x-auto">
                 <table className="w-full text-sm">
                     <thead className="bg-stone-50 text-slate-600">
                         <tr>
@@ -170,6 +202,38 @@ export default function AdminReservations() {
                     </tbody>
                 </table>
             </div>
+                </TabsContent>
+
+                <TabsContent value="inquiries" className="pt-6">
+                    <div className="rounded-xl border hairline bg-white overflow-x-auto" data-testid="inquiries-table">
+                        <table className="w-full text-sm">
+                            <thead className="bg-stone-50 text-slate-600">
+                                <tr>
+                                    <th className="text-left p-3 font-medium">Име</th>
+                                    <th className="text-left p-3 font-medium">Имейл</th>
+                                    <th className="text-left p-3 font-medium">Телефон</th>
+                                    <th className="text-left p-3 font-medium">Съобщение</th>
+                                    <th className="text-left p-3 font-medium">Дата</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {inquiries.map((i) => (
+                                    <tr key={i.id} className="border-t hairline" data-testid={`inquiry-${i.id}`}>
+                                        <td className="p-3 font-medium">{i.name}</td>
+                                        <td className="p-3 text-slate-600">{i.email}</td>
+                                        <td className="p-3 text-slate-600">{i.phone || "—"}</td>
+                                        <td className="p-3 text-slate-600 max-w-md">{i.message}</td>
+                                        <td className="p-3 text-slate-600">{formatDate(i.created_at)}</td>
+                                    </tr>
+                                ))}
+                                {inquiries.length === 0 && (
+                                    <tr><td className="p-5 text-sm text-slate-500" colSpan={5}>Няма запитвания.</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </TabsContent>
+            </Tabs>
 
             <Dialog open={convertDialog} onOpenChange={setConvertDialog}>
                 <DialogContent className="max-w-md" data-testid="convert-deposit-dialog">

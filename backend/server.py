@@ -12,7 +12,7 @@ from fastapi import FastAPI, APIRouter
 from starlette.middleware.cors import CORSMiddleware
 
 from db import close_db, get_db
-from routes import auth_routes, projects, reservations, dashboard, audit, profile
+from routes import auth_routes, projects, reservations, dashboard, audit, profile, imports
 from seed import seed_all
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -34,6 +34,7 @@ api_router.include_router(reservations.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(audit.router)
 api_router.include_router(profile.router)
+api_router.include_router(imports.router)
 
 app.include_router(api_router)
 

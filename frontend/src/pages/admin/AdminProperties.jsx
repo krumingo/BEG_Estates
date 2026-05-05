@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Pencil, Plus, CalendarPlus, Trash2, AlertTriangle } from "lucide-react";
+import { Pencil, Plus, CalendarPlus, Trash2, AlertTriangle, Upload } from "lucide-react";
 import { api, currency, formatApiError } from "../../lib/api";
 import { StatusBadge } from "../../components/common/StatusBadge";
 import {
@@ -99,6 +99,7 @@ export default function AdminProperties() {
     const [statusFilter, setStatusFilter] = useState("all");
     const [floorFilter, setFloorFilter] = useState("all");
     const [props, setProps] = useState([]);
+    const [importOpen, setImportOpen] = useState(false);
 
     const [dialogOpen, setDialogOpen] = useState(false);
     const [mode, setMode] = useState("edit"); // "edit" | "create"
@@ -282,13 +283,22 @@ export default function AdminProperties() {
                         Купувачите и ownership данните са видими само в админ панела — никога публично.
                     </p>
                 </div>
-                <Button
-                    onClick={openCreate}
-                    data-testid="admin-new-property-btn"
-                    className="bg-slate-900 hover:bg-slate-800 text-white"
-                >
-                    <Plus className="h-4 w-4 mr-2" /> Нов обект
-                </Button>
+                <div className="flex gap-2">
+                    <Button
+                        variant="outline"
+                        onClick={() => setImportOpen(true)}
+                        data-testid="admin-import-json-btn"
+                    >
+                        <Upload className="h-4 w-4 mr-2" /> Импорт от JSON
+                    </Button>
+                    <Button
+                        onClick={openCreate}
+                        data-testid="admin-new-property-btn"
+                        className="bg-slate-900 hover:bg-slate-800 text-white"
+                    >
+                        <Plus className="h-4 w-4 mr-2" /> Нов обект
+                    </Button>
+                </div>
             </div>
 
             <div className="flex flex-wrap gap-3 items-center">
@@ -547,6 +557,14 @@ export default function AdminProperties() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <BulkImportDialog
+                open={importOpen}
+                onOpenChange={setImportOpen}
+                projects={projects}
+                defaultProjectId={projectId}
+                onApplied={() => load(projectId)}
+            />
         </div>
     );
 }
@@ -1370,5 +1388,181 @@ function PortfolioMetricsBlock({ projectId }) {
                 </>
             )}
         </div>
+    );
+}
+
+const SAMPLE_JSON = `[
+  {"code":"101","property_type":"apartment","floor":2,"rooms":2,"raw_area":44.96,"area_total":55.24,"list_price":53078,"base_price":53078,"ideal_parts":10.28,"exposure":"изток"}
+]`;
+
+function BulkImportDialog({ open, onOpenChange, projects, defaultProjectId, onApplied }) {
+    const [projectId, setProjectId] = useState("");
+    const [mode, setMode] = useState("smart_diff");
+    const [text, setText] = useState("");
+    const [parsedError, setParsedError] = useState("");
+    const [preview, setPreview] = useState(null);
+    const [busy, setBusy] = useState(false);
+
+    useEffect(() => {
+        if (open) {
+            setProjectId(defaultProjectId || projects[0]?.id || "");
+            setMode("smart_diff");
+            setText("");
+            setParsedError("");
+            setPreview(null);
+        }
+    }, [open, defaultProjectId, projects]);
+
+    const onTextChange = (v) => {
+        setText(v);
+        setPreview(null);
+        if (!v.trim()) { setParsedError(""); return; }
+        try {
+            const j = JSON.parse(v);
+            if (!Array.isArray(j)) throw new Error("Очаква се масив от обекти");
+            setParsedError("");
+        } catch (e) {
+            setParsedError(`Невалиден JSON: ${e.message}`);
+        }
+    };
+
+    const buildPayload = () => {
+        const arr = JSON.parse(text);
+        return { project_id: projectId, properties: arr, mode };
+    };
+
+    const analyze = async () => {
+        if (!projectId) return toast.error("Изберете проект");
+        if (parsedError) return toast.error(parsedError);
+        if (!text.trim()) return toast.error("Поставете JSON");
+        setBusy(true);
+        try {
+            const payload = { ...buildPayload(), dry_run: true };
+            const { data } = await api.post("/admin/import/bulk-properties", payload);
+            setPreview(data);
+        } catch (e) {
+            toast.error(formatApiError(e.response?.data?.detail));
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const apply = async () => {
+        if (!preview) return toast.error("Първо анализирайте");
+        setBusy(true);
+        try {
+            const payload = { ...buildPayload(), dry_run: false };
+            const { data } = await api.post("/admin/import/bulk-properties", payload);
+            const s = data.summary;
+            toast.success(`Готово: създадени ${s.created}, обновени ${s.updated_neutral + s.updated_protected}, пропуснати ${s.skipped}`);
+            onApplied?.();
+            onOpenChange(false);
+        } catch (e) {
+            toast.error(formatApiError(e.response?.data?.detail));
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="max-w-3xl" data-testid="bulk-import-dialog">
+                <DialogHeader>
+                    <DialogTitle className="font-serif text-2xl">Импорт на обекти от JSON</DialogTitle>
+                    <DialogDescription>
+                        Smart Diff пази продадените и резервираните — обновява само neutral полета.
+                        Force Create създава само нови (skip-ва съществуващи).
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4 py-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <Label>Проект</Label>
+                            <Select value={projectId} onValueChange={setProjectId}>
+                                <SelectTrigger data-testid="import-project"><SelectValue placeholder="Изберете проект" /></SelectTrigger>
+                                <SelectContent>
+                                    {projects.map((p) => (
+                                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div>
+                            <Label>Режим</Label>
+                            <div className="flex gap-4 pt-2 text-sm">
+                                <label className="inline-flex items-center gap-2">
+                                    <input type="radio" name="import-mode" value="smart_diff" checked={mode === "smart_diff"} onChange={() => setMode("smart_diff")} data-testid="import-mode-smart" />
+                                    Smart Diff <span className="text-xs text-slate-500">(защитава продадените)</span>
+                                </label>
+                                <label className="inline-flex items-center gap-2">
+                                    <input type="radio" name="import-mode" value="force_create" checked={mode === "force_create"} onChange={() => setMode("force_create")} data-testid="import-mode-force" />
+                                    Force Create <span className="text-xs text-slate-500">(само нови)</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div className="flex items-center justify-between">
+                            <Label>JSON payload (масив от обекти)</Label>
+                            <Button size="sm" variant="ghost" onClick={() => onTextChange(SAMPLE_JSON)} data-testid="import-load-sample">
+                                Зареди sample
+                            </Button>
+                        </div>
+                        <Textarea
+                            rows={12}
+                            value={text}
+                            onChange={(e) => onTextChange(e.target.value)}
+                            placeholder='[{"code":"101","property_type":"apartment","floor":2,...}]'
+                            className={`font-mono text-xs ${parsedError ? "border-rose-400 focus:border-rose-500" : ""}`}
+                            data-testid="import-textarea"
+                        />
+                        {parsedError && <div className="text-xs text-rose-600 mt-1" data-testid="import-error">{parsedError}</div>}
+                    </div>
+
+                    <div className="flex justify-end">
+                        <Button onClick={analyze} disabled={busy || !!parsedError || !text.trim()} variant="outline" data-testid="import-analyze">
+                            {busy ? "Анализирам…" : "Анализирай"}
+                        </Button>
+                    </div>
+
+                    {preview && (
+                        <div className="space-y-3 rounded-lg border hairline bg-stone-50 p-4 text-sm" data-testid="import-preview">
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                                <div data-testid="import-stat-protected" className="rounded-md bg-amber-50 border border-amber-200 p-2">
+                                    <div className="text-[11px] text-amber-700">🔒 Защитени</div>
+                                    <div className="font-semibold text-amber-900">{preview.details.protected.length}</div>
+                                </div>
+                                <div data-testid="import-stat-free" className="rounded-md bg-emerald-50 border border-emerald-200 p-2">
+                                    <div className="text-[11px] text-emerald-700">✏️ Стандартни</div>
+                                    <div className="font-semibold text-emerald-900">{preview.details.free_updates.length}</div>
+                                </div>
+                                <div data-testid="import-stat-new" className="rounded-md bg-sky-50 border border-sky-200 p-2">
+                                    <div className="text-[11px] text-sky-700">➕ Нови</div>
+                                    <div className="font-semibold text-sky-900">{preview.details.new_units.length}</div>
+                                </div>
+                                <div data-testid="import-stat-orphan" className="rounded-md bg-stone-100 border border-stone-300 p-2">
+                                    <div className="text-[11px] text-slate-600">⚠️ Не са в payload</div>
+                                    <div className="font-semibold text-slate-900">{preview.details.in_db_not_in_payload.length}</div>
+                                </div>
+                            </div>
+                            <div className="text-xs text-slate-600">
+                                Total: {preview.summary.total_in_payload} · created: {preview.summary.created} · updated: {preview.summary.updated_neutral + preview.summary.updated_protected} · skipped: {preview.summary.skipped}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy} data-testid="import-cancel">
+                        Отказ
+                    </Button>
+                    <Button onClick={apply} disabled={busy || !preview} className="bg-slate-900 hover:bg-slate-800 text-white" data-testid="import-apply">
+                        {busy ? "Прилагам…" : "Прилагам всичко"}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     );
 }
