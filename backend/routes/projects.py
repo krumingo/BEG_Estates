@@ -12,6 +12,7 @@ from constants import (
     PUBLIC_VISIBLE_STATUSES,
     INTERNAL_STATUSES,
     PUBLIC_PROPERTY_FIELDS,
+    PUBLIC_SOLD_MASK_STATUSES,
     STAFF_ROLES,
     PropertyStatus,
     PropertyType,
@@ -33,8 +34,11 @@ router = APIRouter(tags=["projects"])
 
 
 def _public_property(prop: dict) -> dict:
-    """Strip admin-only fields for public consumers."""
-    return {k: v for k, v in prop.items() if k in PUBLIC_PROPERTY_FIELDS}
+    """Strip admin-only fields for public consumers and mask sensitive statuses as 'sold'."""
+    out = {k: v for k, v in prop.items() if k in PUBLIC_PROPERTY_FIELDS}
+    if out.get("status") in PUBLIC_SOLD_MASK_STATUSES:
+        out["status"] = PropertyStatus.SOLD.value
+    return out
 
 
 async def _is_staff(request: Request) -> bool:

@@ -34,17 +34,30 @@ export default function ProjectDetail() {
     const { id } = useParams();
     const [data, setData] = useState(null);
     const [properties, setProperties] = useState([]);
-    const [typeFilter, setTypeFilter] = useState("apartment");
+    const [typeFilter, setTypeFilter] = useState("all");
 
     useEffect(() => {
         api.get(`/projects/${id}`).then((r) => setData(r.data)).catch(() => {});
         api.get(`/projects/${id}/properties`).then((r) => setProperties(r.data)).catch(() => {});
     }, [id]);
 
+    // Restore scroll position when returning from a property detail page
+    useEffect(() => {
+        const key = `pd-scroll-${id}`;
+        const saved = sessionStorage.getItem(key);
+        if (saved && properties.length) {
+            const y = parseInt(saved, 10);
+            requestAnimationFrame(() => window.scrollTo({ top: y, behavior: "instant" }));
+            sessionStorage.removeItem(key);
+        }
+    }, [id, properties.length]);
+
     const project = data?.project;
 
     const byFloor = useMemo(() => {
-        const filtered = properties.filter((p) => p.property_type === typeFilter);
+        const filtered = typeFilter === "all"
+            ? properties
+            : properties.filter((p) => p.property_type === typeFilter);
         const groups = {};
         filtered.forEach((p) => {
             const k = p.floor;
@@ -53,6 +66,14 @@ export default function ProjectDetail() {
         });
         return Object.entries(groups).sort((a, b) => Number(b[0]) - Number(a[0]));
     }, [properties, typeFilter]);
+
+    const typeCounts = useMemo(() => {
+        const counts = { all: properties.length };
+        PROPERTY_TYPE_FILTERS.forEach((f) => {
+            counts[f.value] = properties.filter((p) => p.property_type === f.value).length;
+        });
+        return counts;
+    }, [properties]);
 
     if (!project) {
         return <div className="min-h-screen pt-24 text-center text-slate-500">Зареждане…</div>;
@@ -165,9 +186,12 @@ export default function ProjectDetail() {
                 <h2 className="font-serif text-4xl sm:text-5xl text-slate-900 mb-8">Избери своя обект</h2>
                 <Tabs value={typeFilter} onValueChange={setTypeFilter} data-testid="property-type-tabs">
                     <TabsList className="bg-stone-100 flex-wrap h-auto">
+                        <TabsTrigger value="all" data-testid="tab-all">
+                            Всички ({typeCounts.all})
+                        </TabsTrigger>
                         {PROPERTY_TYPE_FILTERS.map((f) => (
                             <TabsTrigger key={f.value} value={f.value} data-testid={`tab-${f.value}`}>
-                                {f.label}
+                                {f.label} ({typeCounts[f.value] || 0})
                             </TabsTrigger>
                         ))}
                     </TabsList>
@@ -253,21 +277,31 @@ function StatCard({ label, value, highlight }) {
 }
 
 function PropertyCell({ p }) {
-    const s = PROPERTY_STATUS[p.status] || PROPERTY_STATUS.available;
-    const disabled = p.status !== "available";
+    // Public masking: compensation units appear as "sold" to buyers (no purple badge).
+    const publicStatus = p.status === "compensation" ? "sold" : p.status;
+    const isSold = publicStatus === "sold";
+    const disabled = publicStatus !== "available";
     const displayPrice = p.list_price ?? p.base_price;
+
+    const onClick = () => {
+        try { sessionStorage.setItem(`pd-scroll-${p.project_id || ""}`, String(window.scrollY)); } catch {}
+    };
+
     return (
         <Link
             to={`/properties/${p.id}`}
             data-testid={`property-cell-${p.code}`}
-            className={`block rounded-lg border hairline p-4 transition hover:border-slate-900 ${disabled ? "opacity-85" : ""}`}
+            onClick={onClick}
+            className={`block rounded-lg border hairline p-4 transition hover:border-slate-900 ${
+                isSold ? "bg-stone-100 opacity-70" : disabled ? "opacity-85" : ""
+            }`}
         >
             <div className="flex items-start justify-between mb-3 gap-2">
                 <div>
                     <div className="overline">{PROPERTY_TYPE_LABELS[p.property_type]}</div>
-                    <div className="font-serif text-2xl text-slate-900">{p.code}</div>
+                    <div className={`font-serif text-2xl ${isSold ? "text-slate-500" : "text-slate-900"}`}>{p.code}</div>
                 </div>
-                <StatusBadge status={p.status} />
+                <StatusBadge status={publicStatus} />
             </div>
             <div className="grid grid-cols-2 gap-2 text-sm">
                 {p.rooms != null && (
@@ -277,7 +311,7 @@ function PropertyCell({ p }) {
                     <div className="text-slate-600"><Ruler className="inline h-3.5 w-3.5 mr-1" /> {p.area_total} м²</div>
                 )}
             </div>
-            {displayPrice != null && (
+            {displayPrice != null && !isSold && (
                 <div className="mt-3 text-lg font-medium text-slate-900">{currency(displayPrice)}</div>
             )}
         </Link>

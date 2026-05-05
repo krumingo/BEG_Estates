@@ -71,7 +71,7 @@ export default function PropertyDetail() {
                         <div className="overline mb-2">{PROPERTY_TYPE_LABELS[p.property_type]} · {project?.name}</div>
                         <div className="flex items-start justify-between mb-4">
                             <h1 className="font-serif text-5xl text-slate-900 leading-none">{p.code}</h1>
-                            <StatusBadge status={p.status} />
+                            <StatusBadge status={p.status === "compensation" ? "sold" : p.status} />
                         </div>
                         <div className="text-sm text-slate-500 flex items-center gap-1 mb-6"><MapPin className="h-3.5 w-3.5" /> {project?.city} · {project?.address}</div>
                         <p className="text-slate-700 leading-relaxed mb-8">{p.description}</p>

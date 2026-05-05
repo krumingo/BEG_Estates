@@ -44,18 +44,23 @@ PROPERTY_STATUS_LABELS = {
 }
 
 # Public-visible statuses — ONLY these may ever reach a public caller.
-# `compensation`, `unavailable`, and `hidden` are internal-only.
+# `compensation` is masked as "sold" publicly. `unavailable` and `hidden` stay internal-only.
 PUBLIC_VISIBLE_STATUSES = frozenset({
     PropertyStatus.AVAILABLE.value,
     PropertyStatus.RESERVED_ZERO_DEPOSIT.value,
     PropertyStatus.RESERVED_PAID_DEPOSIT.value,
     PropertyStatus.SOLD.value,
+    PropertyStatus.COMPENSATION.value,
 })
 
 INTERNAL_STATUSES = frozenset({
-    PropertyStatus.COMPENSATION.value,
     PropertyStatus.UNAVAILABLE.value,
     PropertyStatus.HIDDEN.value,
+})
+
+# Statuses that get masked as "sold" when leaving the public boundary.
+PUBLIC_SOLD_MASK_STATUSES = frozenset({
+    PropertyStatus.COMPENSATION.value,
 })
 
 # Statuses that allow zero-deposit reservation

@@ -23,10 +23,10 @@ export const PROPERTY_STATUS = {
     },
     sold: {
         label: "Продаден",
-        bg: "bg-slate-100",
-        text: "text-slate-500",
-        border: "border-slate-200",
-        dot: "bg-slate-400",
+        bg: "bg-slate-800",
+        text: "text-white",
+        border: "border-slate-800",
+        dot: "bg-slate-300",
     },
     compensation: {
         label: "Обезщетение",

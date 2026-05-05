@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
 import AdminSidebar from "../../components/layout/AdminSidebar";
-import { api, currency, formatDate } from "../../lib/api";
+import { api, formatDate } from "../../lib/api";
 import { StatusBadge } from "../../components/common/StatusBadge";
-import { Building2, Clock, Home, Users, Wallet, AlertCircle } from "lucide-react";
+import { Building2, Clock, Home, Users, AlertCircle } from "lucide-react";
 
 export function AdminLayout() {
     return (
@@ -36,7 +36,6 @@ export default function AdminDashboard() {
         { label: "Активни капаро 0", value: k.active_zero_deposit, icon: AlertCircle, accent: "text-amber-600" },
         { label: "Изтичат до 48ч", value: k.expiring_soon, icon: Clock, accent: "text-red-600" },
         { label: "Клиенти", value: k.total_clients, icon: Users },
-        { label: "Събрани средства", value: currency(k.total_collected), icon: Wallet, wide: true },
     ];
 
     return (

@@ -348,8 +348,6 @@ export default function AdminProperties() {
                 <div className="ml-auto text-sm text-slate-500">{filtered.length} от {props.length}</div>
             </div>
 
-            <PortfolioMetricsBlock projectId={projectId} />
-
             <div className="rounded-xl border hairline bg-white overflow-x-auto">
                 <table className="w-full text-sm">
                     <thead className="bg-stone-50 text-slate-600">
