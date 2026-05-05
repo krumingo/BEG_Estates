@@ -74,6 +74,40 @@ export const matchesTypeFilter = (filter, propertyType) => {
     return propertyType === filter.value;
 };
 
+// Statuses an admin can pick from in the property editor.
+// "hidden" intentionally excluded — feature removed (legacy badges stay renderable).
+export const EDITABLE_STATUSES = [
+    "available",
+    "reserved_zero_deposit",
+    "reserved_paid_deposit",
+    "sold",
+    "compensation",
+    "unavailable",
+];
+
+// Floor → kote label mapping for Хаджи Димитър (per-project config later).
+export const FLOOR_INFO = {
+    "-1": { label: "СУТЕРЕН", kote: "-3.48" },
+    "0":  { label: "ПАРТЕР",  kote: "0.00"  },
+    "1":  { label: "1 ЕТАЖ",  kote: "+3.40" },
+    "2":  { label: "2 ЕТАЖ",  kote: "+6.29" },
+    "3":  { label: "3 ЕТАЖ",  kote: "+9.18" },
+    "4":  { label: "4 ЕТАЖ",  kote: "+12.07" },
+    "5":  { label: "5 ЕТАЖ",  kote: "+14.96" },
+    "6":  { label: "6 ЕТАЖ",  kote: "+17.85" },
+    "7":  { label: "7 ЕТАЖ",  kote: "+20.74" },
+};
+
+export const floorLabel = (floor) => {
+    const info = FLOOR_INFO[String(floor)];
+    return info ? info.label : `Етаж ${floor}`;
+};
+
+export const floorKote = (floor) => {
+    const info = FLOOR_INFO[String(floor)];
+    return info ? info.kote : "—";
+};
+
 export const PROJECT_STATUS_LABELS = {
     planned: "Планиран",
     under_construction: "В строеж",

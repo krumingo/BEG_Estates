@@ -1,11 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Pencil, Plus, CalendarPlus, Trash2, AlertTriangle, Upload } from "lucide-react";
+import { Pencil, Plus, CalendarPlus, Trash2, AlertTriangle, Upload, Download, RotateCcw } from "lucide-react";
 import { api, currency, formatApiError } from "../../lib/api";
 import { StatusBadge } from "../../components/common/StatusBadge";
 import {
     PROPERTY_TYPE_LABELS,
     PROPERTY_TYPE_FILTERS,
     PROPERTY_STATUS,
+    EDITABLE_STATUSES,
+    FLOOR_INFO,
+    floorLabel,
+    floorKote,
+    matchesTypeFilter,
 } from "../../lib/constants";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Button } from "../../components/ui/button";
@@ -98,8 +103,12 @@ export default function AdminProperties() {
     const [typeFilter, setTypeFilter] = useState("all");
     const [statusFilter, setStatusFilter] = useState("all");
     const [floorFilter, setFloorFilter] = useState("all");
+    const [koteFilter, setKoteFilter] = useState("all");
+    const [exposureFilter, setExposureFilter] = useState("all");
+    const [roomsFilter, setRoomsFilter] = useState("all");
     const [props, setProps] = useState([]);
     const [importOpen, setImportOpen] = useState(false);
+    const [exporting, setExporting] = useState(false);
 
     const [dialogOpen, setDialogOpen] = useState(false);
     const [mode, setMode] = useState("edit"); // "edit" | "create"
@@ -147,16 +156,79 @@ export default function AdminProperties() {
 
     const floors = useMemo(() => {
         const set = new Set(props.map((p) => p.floor));
-        return [...set].sort((a, b) => b - a);
+        return [...set].sort((a, b) => a - b);
+    }, [props]);
+
+    const exposures = useMemo(() => {
+        const set = new Set(props.map((p) => (p.exposure || "").trim()).filter(Boolean));
+        return [...set].sort();
     }, [props]);
 
     const filtered = useMemo(() => {
-        return props.filter((p) =>
-            (typeFilter === "all" || p.property_type === typeFilter) &&
-            (statusFilter === "all" || p.status === statusFilter) &&
-            (floorFilter === "all" || String(p.floor) === floorFilter)
-        );
-    }, [props, typeFilter, statusFilter, floorFilter]);
+        return props.filter((p) => {
+            if (typeFilter !== "all") {
+                const tf = PROPERTY_TYPE_FILTERS.find((x) => x.value === typeFilter);
+                if (tf ? !matchesTypeFilter(tf, p.property_type) : p.property_type !== typeFilter) return false;
+            }
+            if (statusFilter !== "all" && p.status !== statusFilter) return false;
+            if (floorFilter !== "all" && String(p.floor) !== floorFilter) return false;
+            if (koteFilter !== "all" && floorKote(p.floor) !== koteFilter) return false;
+            if (exposureFilter !== "all" && (p.exposure || "") !== exposureFilter) return false;
+            if (roomsFilter !== "all") {
+                if (p.property_type !== "apartment") return false;
+                if (roomsFilter === "4+") { if ((p.rooms || 0) < 4) return false; }
+                else if (Number(p.rooms) !== Number(roomsFilter)) return false;
+            }
+            return true;
+        });
+    }, [props, typeFilter, statusFilter, floorFilter, koteFilter, exposureFilter, roomsFilter]);
+
+    const groupedByFloor = useMemo(() => {
+        const groups = {};
+        filtered.forEach((p) => {
+            const k = String(p.floor);
+            if (!groups[k]) groups[k] = [];
+            groups[k].push(p);
+        });
+        const codeSort = (a, b) => {
+            const an = parseInt(a.code, 10);
+            const bn = parseInt(b.code, 10);
+            if (!Number.isNaN(an) && !Number.isNaN(bn)) return an - bn;
+            return String(a.code).localeCompare(String(b.code), "bg");
+        };
+        Object.values(groups).forEach((arr) => arr.sort(codeSort));
+        return Object.keys(groups)
+            .sort((a, b) => Number(a) - Number(b))
+            .map((k) => ({ floor: Number(k), units: groups[k] }));
+    }, [filtered]);
+
+    const resetFilters = () => {
+        setTypeFilter("all"); setStatusFilter("all"); setFloorFilter("all");
+        setKoteFilter("all"); setExposureFilter("all"); setRoomsFilter("all");
+    };
+
+    const exportXlsx = async () => {
+        if (!projectId) return;
+        setExporting(true);
+        try {
+            const resp = await api.get(`/admin/projects/${projectId}/properties/export`, {
+                responseType: "blob",
+                params: { format: "xlsx" },
+            });
+            const proj = projects.find((p) => p.id === projectId);
+            const slug = proj?.slug || proj?.id || "inventory";
+            const date = new Date().toISOString().slice(0, 10);
+            const url = window.URL.createObjectURL(new Blob([resp.data]));
+            const a = document.createElement("a");
+            a.href = url; a.download = `${slug}-inventar-${date}.xlsx`;
+            document.body.appendChild(a); a.click(); a.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (e) {
+            toast.error(formatApiError(e.response?.data?.detail) || "Експортът се провали");
+        } finally {
+            setExporting(false);
+        }
+    };
 
     const buyerById = useMemo(() => {
         const m = {};
@@ -286,6 +358,14 @@ export default function AdminProperties() {
                 <div className="flex gap-2">
                     <Button
                         variant="outline"
+                        onClick={exportXlsx}
+                        disabled={!projectId || exporting}
+                        data-testid="admin-export-xlsx-btn"
+                    >
+                        <Download className="h-4 w-4 mr-2" /> {exporting ? "Експорт…" : "Експорт Excel"}
+                    </Button>
+                    <Button
+                        variant="outline"
                         onClick={() => setImportOpen(true)}
                         data-testid="admin-import-json-btn"
                     >
@@ -301,132 +381,194 @@ export default function AdminProperties() {
                 </div>
             </div>
 
-            <div className="flex flex-wrap gap-3 items-center">
-                <Select value={projectId} onValueChange={setProjectId}>
-                    <SelectTrigger className="w-72" data-testid="admin-select-project">
-                        <SelectValue placeholder="Проект" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {projects.map((p) => (
-                            <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+            <div className="space-y-3">
+                <div className="flex flex-wrap gap-3 items-center">
+                    <Select value={projectId} onValueChange={setProjectId}>
+                        <SelectTrigger className="w-72" data-testid="admin-select-project">
+                            <SelectValue placeholder="Проект" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {projects.map((p) => (
+                                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
 
-                <Select value={typeFilter} onValueChange={setTypeFilter}>
-                    <SelectTrigger className="w-48" data-testid="admin-filter-type"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="all">Всички типове</SelectItem>
-                        {PROPERTY_TYPE_FILTERS.map((t) => (
-                            <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+                    <Select value={typeFilter} onValueChange={setTypeFilter}>
+                        <SelectTrigger className="w-44" data-testid="admin-filter-type"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Всички типове</SelectItem>
+                            {PROPERTY_TYPE_FILTERS.map((t) => (
+                                <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
 
-                <Select value={floorFilter} onValueChange={setFloorFilter}>
-                    <SelectTrigger className="w-40" data-testid="admin-filter-floor"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="all">Всички етажи</SelectItem>
-                        {floors.map((f) => (
-                            <SelectItem key={f} value={String(f)}>
-                                {Number(f) > 0 ? `Етаж ${f}` : Number(f) === 0 ? "Партер" : "Сутерен"}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+                    <Select value={floorFilter} onValueChange={setFloorFilter}>
+                        <SelectTrigger className="w-40" data-testid="admin-filter-floor"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Всички етажи</SelectItem>
+                            {floors.map((f) => (
+                                <SelectItem key={f} value={String(f)}>{floorLabel(f)}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
 
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-56" data-testid="admin-filter-status"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="all">Всички статуси</SelectItem>
-                        {Object.keys(PROPERTY_STATUS).map((s) => (
-                            <SelectItem key={s} value={s}>{PROPERTY_STATUS[s].label}</SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                        <SelectTrigger className="w-52" data-testid="admin-filter-status"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Всички статуси</SelectItem>
+                            {Object.keys(PROPERTY_STATUS).map((s) => (
+                                <SelectItem key={s} value={s}>{PROPERTY_STATUS[s].label}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
 
-                <div className="ml-auto text-sm text-slate-500">{filtered.length} от {props.length}</div>
+                    <div className="ml-auto text-sm text-slate-500">{filtered.length} от {props.length}</div>
+                </div>
+
+                <div className="flex flex-wrap gap-3 items-center">
+                    <Select value={koteFilter} onValueChange={setKoteFilter}>
+                        <SelectTrigger className="w-44" data-testid="admin-filter-kote"><SelectValue placeholder="Кота" /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Всички коти</SelectItem>
+                            {floors.map((f) => {
+                                const k = floorKote(f);
+                                if (k === "—") return null;
+                                return <SelectItem key={f} value={k}>{k} ({floorLabel(f)})</SelectItem>;
+                            })}
+                        </SelectContent>
+                    </Select>
+
+                    <Select value={exposureFilter} onValueChange={setExposureFilter}>
+                        <SelectTrigger className="w-44" data-testid="admin-filter-exposure"><SelectValue placeholder="Изложение" /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Всички изложения</SelectItem>
+                            {exposures.map((e) => (
+                                <SelectItem key={e} value={e}>{e}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+
+                    <Select value={roomsFilter} onValueChange={setRoomsFilter}>
+                        <SelectTrigger className="w-40" data-testid="admin-filter-rooms"><SelectValue placeholder="Стаи" /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Всички стаи</SelectItem>
+                            <SelectItem value="1">1 стая</SelectItem>
+                            <SelectItem value="2">2 стаи</SelectItem>
+                            <SelectItem value="3">3 стаи</SelectItem>
+                            <SelectItem value="4+">4+ стаи</SelectItem>
+                        </SelectContent>
+                    </Select>
+
+                    <Button variant="ghost" size="sm" onClick={resetFilters} data-testid="admin-filter-reset">
+                        <RotateCcw className="h-3.5 w-3.5 mr-1.5" /> Reset filters
+                    </Button>
+                </div>
             </div>
 
             <div className="rounded-xl border hairline bg-white overflow-x-auto">
-                <table className="w-full text-sm">
-                    <thead className="bg-stone-50 text-slate-600">
+                <table className="w-full text-sm" data-testid="admin-properties-grouped">
+                    <thead className="bg-stone-50 text-slate-600 sticky top-0 z-10">
                         <tr>
                             <th className="text-left p-3 font-medium">Код</th>
                             <th className="text-left p-3 font-medium">Тип</th>
                             <th className="text-left p-3 font-medium">Етаж</th>
-                            <th className="text-right p-3 font-medium">Площ</th>
+                            <th className="text-right p-3 font-medium">Стаи</th>
+                            <th className="text-right p-3 font-medium">F1 м²</th>
+                            <th className="text-right p-3 font-medium hidden md:table-cell">F2 м²</th>
+                            <th className="text-right p-3 font-medium hidden md:table-cell">F1+F2 м²</th>
+                            <th className="text-left p-3 font-medium">Изложение</th>
                             <th className="text-right p-3 font-medium">Базова</th>
                             <th className="text-right p-3 font-medium">Листова</th>
                             <th className="text-left p-3 font-medium">Статус</th>
-                            <th className="text-left p-3 font-medium">Купувач (admin)</th>
+                            <th className="text-left p-3 font-medium">Купувач</th>
                             <th className="text-left p-3 font-medium">Бележки</th>
-                            <th className="text-left p-3 font-medium">Inline status</th>
+                            <th className="text-left p-3 font-medium">Промяна статус</th>
                             <th className="text-right p-3 font-medium">Действие</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {filtered.map((p) => {
-                            const buyer = p.buyer_id ? buyerById[p.buyer_id] : null;
-                            return (
-                                <tr key={p.id} className="border-t hairline align-top" data-testid={`admin-property-row-${p.code}`}>
-                                    <td className="p-3 font-mono font-medium whitespace-nowrap">{p.code}</td>
-                                    <td className="p-3 text-slate-600 whitespace-nowrap">{PROPERTY_TYPE_LABELS[p.property_type]}</td>
-                                    <td className="p-3 text-slate-600">{p.floor}</td>
-                                    <td className="p-3 text-right whitespace-nowrap">{p.area_total ? `${p.area_total} м²` : "—"}</td>
-                                    <td className="p-3 text-right whitespace-nowrap">{p.base_price ? currency(p.base_price) : "—"}</td>
-                                    <td className="p-3 text-right font-medium whitespace-nowrap">{p.list_price ? currency(p.list_price) : "—"}</td>
-                                    <td className="p-3"><StatusBadge status={p.status} /></td>
-                                    <td className="p-3 text-slate-700 whitespace-nowrap">
-                                        {buyer ? (
-                                            <div>
-                                                <div className="font-medium text-slate-900">{buyer.name}</div>
-                                                <div className="text-xs text-slate-500">{buyer.relation}</div>
+                        {groupedByFloor.map((g) => (
+                            <React.Fragment key={g.floor}>
+                                <tr className="bg-slate-900 text-white" data-testid={`floor-group-${g.floor}`}>
+                                    <td colSpan={15} className="px-4 py-2">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div className="flex items-center gap-3">
+                                                <span className="font-mono text-xs opacity-70">{floorKote(g.floor)}</span>
+                                                <span className="font-medium tracking-wider text-sm">{floorLabel(g.floor)}</span>
                                             </div>
-                                        ) : (
-                                            <span className="text-slate-400">—</span>
-                                        )}
-                                    </td>
-                                    <td className="p-3 text-xs text-slate-500 max-w-xs">
-                                        {p.admin_notes || <span className="text-slate-400">—</span>}
-                                    </td>
-                                    <td className="p-3">
-                                        <Select value={p.status} onValueChange={(v) => changeStatus(p, v)}>
-                                            <SelectTrigger className="h-8 w-40" data-testid={`admin-set-status-${p.code}`}><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                                {Object.keys(PROPERTY_STATUS).map((s) => (
-                                                    <SelectItem key={s} value={s}>{PROPERTY_STATUS[s].label}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </td>
-                                    <td className="p-3 text-right">
-                                        <div className="flex justify-end gap-2">
-                                            {p.status === "available" && (
-                                                <Button
-                                                    size="sm"
-                                                    onClick={() => openReserve(p)}
-                                                    data-testid={`admin-reserve-property-${p.code}`}
-                                                    className="bg-slate-900 hover:bg-slate-800 text-white"
-                                                >
-                                                    <CalendarPlus className="h-3.5 w-3.5 mr-1.5" /> Резервирай
-                                                </Button>
-                                            )}
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                onClick={() => openEdit(p)}
-                                                data-testid={`admin-edit-property-${p.code}`}
-                                            >
-                                                <Pencil className="h-3.5 w-3.5 mr-1.5" /> Редакция
-                                            </Button>
+                                            <span className="text-xs opacity-80">{g.units.length} {g.units.length === 1 ? "обект" : "обекта"}</span>
                                         </div>
                                     </td>
                                 </tr>
-                            );
-                        })}
+                                {g.units.map((p) => {
+                                    const buyer = p.buyer_id ? buyerById[p.buyer_id] : null;
+                                    return (
+                                        <tr key={p.id} className="border-t hairline align-top" data-testid={`admin-property-row-${p.code}`}>
+                                            <td className="p-3 font-mono font-medium whitespace-nowrap">{p.code}</td>
+                                            <td className="p-3 text-slate-600 whitespace-nowrap">{PROPERTY_TYPE_LABELS[p.property_type]}</td>
+                                            <td className="p-3 text-slate-600 whitespace-nowrap">{floorLabel(p.floor)}</td>
+                                            <td className="p-3 text-right text-slate-600">{p.property_type === "apartment" ? (p.rooms ?? "—") : "—"}</td>
+                                            <td className="p-3 text-right whitespace-nowrap">{p.raw_area != null ? `${p.raw_area} м²` : "—"}</td>
+                                            <td className="p-3 text-right whitespace-nowrap hidden md:table-cell">{p.ideal_parts_area != null ? p.ideal_parts_area : "—"}</td>
+                                            <td className="p-3 text-right whitespace-nowrap hidden md:table-cell">{p.area_total != null ? `${p.area_total} м²` : "—"}</td>
+                                            <td className="p-3 text-slate-600 whitespace-nowrap">{p.exposure || "—"}</td>
+                                            <td className="p-3 text-right whitespace-nowrap">{p.base_price ? currency(p.base_price) : "—"}</td>
+                                            <td className="p-3 text-right font-medium whitespace-nowrap">{p.list_price ? currency(p.list_price) : "—"}</td>
+                                            <td className="p-3"><StatusBadge status={p.status} /></td>
+                                            <td className="p-3 text-slate-700 whitespace-nowrap">
+                                                {buyer ? (
+                                                    <div>
+                                                        <div className="font-medium text-slate-900">{buyer.name}</div>
+                                                        <div className="text-xs text-slate-500">{buyer.relation}</div>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-slate-400">—</span>
+                                                )}
+                                            </td>
+                                            <td className="p-3 text-xs text-slate-500 max-w-xs">
+                                                {p.admin_notes || <span className="text-slate-400">—</span>}
+                                            </td>
+                                            <td className="p-3">
+                                                <Select value={p.status} onValueChange={(v) => changeStatus(p, v)}>
+                                                    <SelectTrigger className="h-8 w-40" data-testid={`admin-set-status-${p.code}`}><SelectValue /></SelectTrigger>
+                                                    <SelectContent>
+                                                        {EDITABLE_STATUSES.map((s) => (
+                                                            <SelectItem key={s} value={s}>{PROPERTY_STATUS[s].label}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </td>
+                                            <td className="p-3 text-right">
+                                                <div className="flex justify-end gap-2">
+                                                    {p.status === "available" && (
+                                                        <Button
+                                                            size="sm"
+                                                            onClick={() => openReserve(p)}
+                                                            data-testid={`admin-reserve-property-${p.code}`}
+                                                            className="bg-slate-900 hover:bg-slate-800 text-white"
+                                                        >
+                                                            <CalendarPlus className="h-3.5 w-3.5 mr-1.5" /> Резервирай
+                                                        </Button>
+                                                    )}
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => openEdit(p)}
+                                                        data-testid={`admin-edit-property-${p.code}`}
+                                                    >
+                                                        <Pencil className="h-3.5 w-3.5 mr-1.5" /> Редакция
+                                                    </Button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </React.Fragment>
+                        ))}
                         {filtered.length === 0 && (
-                            <tr><td className="p-5 text-sm text-slate-500" colSpan={11}>Няма обекти с избраните филтри.</td></tr>
+                            <tr><td className="p-5 text-sm text-slate-500" colSpan={15}>Няма обекти с избраните филтри.</td></tr>
                         )}
                     </tbody>
                 </table>
@@ -650,7 +792,7 @@ function PropertyFormBody({ form, setField, buyers, mode, projects, buildings })
                     <Select value={form.status} onValueChange={setField("status")}>
                         <SelectTrigger data-testid="pf-status"><SelectValue /></SelectTrigger>
                         <SelectContent>
-                            {Object.keys(PROPERTY_STATUS).map((s) => (
+                            {EDITABLE_STATUSES.map((s) => (
                                 <SelectItem key={s} value={s}>{PROPERTY_STATUS[s].label}</SelectItem>
                             ))}
                         </SelectContent>
