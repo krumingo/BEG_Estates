@@ -17,6 +17,7 @@ import {
     PROPERTY_STATUS,
     PROPERTY_TYPE_FILTERS,
     PROPERTY_TYPE_LABELS,
+    matchesTypeFilter,
     PROJECT_STATUS_LABELS,
 } from "../../lib/constants";
 import { Button } from "../../components/ui/button";
@@ -55,9 +56,15 @@ export default function ProjectDetail() {
     const project = data?.project;
 
     const byFloor = useMemo(() => {
-        const filtered = typeFilter === "all"
-            ? properties
-            : properties.filter((p) => p.property_type === typeFilter);
+        let filtered;
+        if (typeFilter === "all") {
+            filtered = properties;
+        } else {
+            const f = PROPERTY_TYPE_FILTERS.find((x) => x.value === typeFilter);
+            filtered = f
+                ? properties.filter((p) => matchesTypeFilter(f, p.property_type))
+                : properties.filter((p) => p.property_type === typeFilter);
+        }
         const groups = {};
         filtered.forEach((p) => {
             const k = p.floor;
@@ -70,7 +77,7 @@ export default function ProjectDetail() {
     const typeCounts = useMemo(() => {
         const counts = { all: properties.length };
         PROPERTY_TYPE_FILTERS.forEach((f) => {
-            counts[f.value] = properties.filter((p) => p.property_type === f.value).length;
+            counts[f.value] = properties.filter((p) => matchesTypeFilter(f, p.property_type)).length;
         });
         return counts;
     }, [properties]);

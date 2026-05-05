@@ -64,10 +64,15 @@ export const PROPERTY_TYPE_LABELS = {
 export const PROPERTY_TYPE_FILTERS = [
     { value: "apartment", label: "Апартаменти" },
     { value: "shop", label: "Магазин" },
-    { value: "parking", label: "Паркоместа" },
+    { value: "parking", label: "Паркоместа", types: ["parking", "yard_parking"] },
     { value: "garage", label: "Гаражи" },
     { value: "storage", label: "Складове" },
 ];
+
+export const matchesTypeFilter = (filter, propertyType) => {
+    if (filter.types) return filter.types.includes(propertyType);
+    return propertyType === filter.value;
+};
 
 export const PROJECT_STATUS_LABELS = {
     planned: "Планиран",
