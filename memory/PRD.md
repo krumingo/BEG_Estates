@@ -22,13 +22,15 @@
 - **v1.0 (2026-05-06)** — Clients Unification Pack C: unified `db.users(role=client)` as single clients directory, full CRUD endpoints, AdminClients UI rewrite, Brand fix "Building Express Group"
 # BEG Estates / EstateFlow — Product Requirements Document
 
-**Last updated:** 2026-05-06 (iteration 12)
-**Status:** Iteration 12 — Quote Builder Schemes E.1 (v1.2)
+**Last updated:** 2026-05-06 (iteration 13)
+**Status:** Iteration 13 — Deal Foundation Pack G.1 (v1.4)
 
 ## Iterations
-- **v1.1 (2026-05-06)** — Quote Builder Pack D: full quote lifecycle, reportlab PDF generator with Cyrillic, AdminQuotes list + QuoteEditor wizard
+- **v1.0 (2026-05-06)** — Clients Unification Pack C: unified `db.users(role=client)` as single clients directory
+- **v1.1 (2026-05-06)** — Quote Builder Pack D: full quote lifecycle, reportlab PDF, AdminQuotes + QuoteEditor wizard
 - **v1.2 (2026-05-06)** — Quote Schemes Pack E.1: structured payment schemes
-- **v1.3 (2026-05-06)** — **Sales Foundation Pack F.1**: Sale model + super_admin endpoints + ДДС helper + auto-seed migration + status hook (auto-create on sold, archive on revert)
+- **v1.3 (2026-05-06)** — Sales Foundation Pack F.1+F.2 (DEPRECATED in G.1)
+- **v1.4 (2026-05-06)** — **Deal Foundation Pack G.1**: replaced Sale model with per-client multi-property `Deal` model, dropped legacy financial collections (sales/quotes/payments), removed finance UI from /admin/properties, new "Сделки / Плащания" sidebar tab + AdminDeals/DealEditor placeholder pages, quote→deal converter
 
 ## Original problem statement
 Modern web SaaS/CRM for selling new-construction real estate in Bulgaria.
@@ -153,39 +155,49 @@ Seed is gated by `system_meta.seed.version` tag so future schema changes force c
 - New Pydantic models: `PropertyFinancePlanUpdate`, `PropertyInstallmentInput`, `PropertyPaymentCreate`
 - Frontend `AdminProperties.jsx`: extracted `PropertyFormBody` + added `FinanceSection` with summary cards, upcoming 1/2/3 block, editable installments table, payment form + history
 
+### v1.4 — G.1 Deal Foundation (2026-05-06)
+- **Скрапнат** legacy `Sale` модел и cleanup migration drop-ва: `db.sales` (12), `db.quotes` (2), `db.payment_plans` (2), `db.payment_installments` (6), `db.payments` (2). Marker doc в `db._migrations` гарантира идемпотентност. **52 имота + 19 клиенти запазени.**
+- **Нов модел `Deal`** (per-клиент multi-property сделка): `DealItem`, `DealPaymentMode` (with_bank/without_bank/combined + invoice/proforma split), `DealPaymentStage` (bucket: bank|non_bank, is_paid, paid_date, paid_amount), статуси active/completed/cancelled, auto-инкремент D-YYYY-NNN
+- **Backend endpoints (super_admin only):**
+  - `GET /api/deals` (filter by status/client_id/project_id), `/by-client/{id}`, `/{id}`
+  - `POST /api/deals` — multi-property, validates not-already-sold + not-in-active-deal, marks props sold + sets buyer_id
+  - `PUT /api/deals/{id}` — items, payment_mode, stages, vat_rate, notes
+  - `POST /api/deals/{id}/regenerate-schedule` — bucket=bank|non_bank|both, preset=standard|with_bank|custom, preserves paid stages
+  - `PATCH /api/deals/{id}/stages/{order}/payment` — toggle is_paid + paid_date/amount/notes
+  - `POST /api/deals/{id}/cancel` — releases properties (status=available, buyer_id=null)
+  - `DELETE /api/deals/{id}` — only when status=cancelled
+- **Quote→Deal converter:** `POST /api/quotes/{id}/convert-to-deal` (super_admin) — снимка на custom_price + discount → agreed_price, импортира payment_schedule в non_bank_stages
+- **PUT `/api/admin/projects/{id}`** (super_admin) — приема `expense_estimate` (foundation/rough_construction/finishing/total/notes) + `total_rzp_area`
+- **UI:**
+  - Премахнат целият финансов панел от `/admin/properties` (no tabs, no FinanceSection, no SaleFinanceSection, no RZP block, no schedule plan, no Next 1/2/3). Само Основни данни.
+  - Изтрит `frontend/src/components/admin/SaleFinanceSection.jsx`
+  - Нов sidebar tab „Сделки / Плащания" — **видим само за super_admin**
+  - Нови placeholder pages: `/admin/deals` (списък с реални данни) и `/admin/deals/new` + `/admin/deals/:id` (read-only viewer + G.2 placeholder)
+  - QuoteEditor: бутонът „Преобразувай в Sale" → „Преобразувай в Сделка" с redirect към `/admin/deals/{id}`
+- **Тестове:** 15/15 backend + frontend acceptance тестове ✅ (виж `/app/test_reports/iteration_3.json` и `/app/backend/tests/test_deals_g1.py`)
+
 ## Prioritized backlog
-### P0 — next iteration once real PDFs are attached
-- **Real inventory import** from "ПЛОЩООБРАЗУВАНЕ - нанесени КУПУВАЧИ.pdf" — replace placeholder area/price values; map file-based buyer assignments to admin records
-- **Real renders** from uploaded Enscape gallery → replace unsplash placeholders
-- **Real location screenshots** (Kaufland, Park Gerena, school, transport) → replace icon-only amenities with cards carrying photos
-- Architectural plan embed / link from "000 - NP165-SD-AR.pdf"
+### P0 — next pack G.2
+- **Deal Editor пълен UI** — payment mode picker (with_bank/without_bank/combined) + invoice/proforma разпределение, schedule builder per bucket с регенерация, drag-and-drop reorder на stages, payment tracking UI с marking is_paid + paid_date + paid_amount, audit timeline
 
-### P0 — functional
-- Admin UI to create/edit projects, properties, buyers (currently read/status-change only)
-- Payment plan CRUD + mark installment paid
-- TOTP 2FA setup UI for staff
-- Real email provider (Resend/SendGrid) for OTP + expiry reminders
-- Background scheduler for zero-deposit auto-release notifications
+### P1 — backlog
+- **Email Provider (Resend/SendGrid)** + auto-release scheduler за zero-deposit резервации
+- **Pricing Engine** — coefficient by floor/exposure, отстъпки, payment plans
+- **Financial Dashboard (G.3/G.4)** — агрегирани финансови данни от Deal модела (приход, кеш-флоу, прогнозни маржове, по проект и общо)
+- **Contract Generator** — на базата на Deal payment_schedule
 
-### P1
-- Pricing engine: coefficient by floor/exposure, per-sqm pricing, discounts, promotions
-- Contract/document upload (Object storage) + client signing flow
-- Change-requests & change-offers flow
-- Broker role UI + commission tracking
-
-### P2
-- Multi-language (EN) interface
-- Sales funnel reports, collection forecasts
-- Client in-portal messaging with sales
-- Trusted devices / login history UI
+### P2 — future
+- **„Моят интерес / Wishlist"** публичен flow за нерегистрирани клиенти
+- **Real File/PDF Import** — автоматично парсване на чертежи
+- Multi-language (EN), sales funnel reports, broker role UI, trusted devices
 
 ## Credentials (dev) — see `/app/memory/test_credentials.md`
-- admin@begestates.bg / Admin123!
-- sales@begestates.bg / Sales123!
+- super_admin: admin@begestates.bg / BegEstates2026!Admin
+- sales: sales@begestates.bg / BegEstates2026!Sales
 - Client OTP: ivan.petrov@example.com (dev_otp returned in response)
 
 ## Known limitations
 - OTP email sending is **MOCKED** (dev_otp in response)
-- No scheduled job for reservation expiry (lazy check on reads)
-- Pricing logic simplified (no discounts/coefficients yet)
+- Legacy `/api/sales` endpoints still mounted (deprecated; UI no longer uses them) — will be removed in G.3
+- DealEditor е read-only — пълен интерактивен редактор предстои в G.2
 - Real project files (PDFs, renders, location photos) **NOT YET UPLOADED** — current seed uses realistic placeholder inventory matching the described naming/structure, ready to be swapped to real values in a single pass once files are available
