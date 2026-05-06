@@ -236,6 +236,51 @@ async def update_project(project_id: str, payload: ProjectUpdate, user=Depends(r
     return updated
 
 
+@router.put("/admin/projects/{project_id}")
+async def admin_update_project(
+    project_id: str,
+    payload: ProjectUpdate,
+    user=Depends(require_staff()),
+):
+    """Super-admin extended project update — also accepts expense_estimate / total_rzp_area."""
+    from constants import Role
+    if user.get("role") != Role.SUPER_ADMIN.value:
+        raise HTTPException(status_code=403, detail="Достъп само за super_admin")
+
+    db = get_db()
+    existing = await db.projects.find_one({"id": project_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Проектът не е намерен")
+
+    changes = payload.model_dump(exclude_unset=True)
+    if "status" in changes:
+        valid_statuses = {s.value for s in ProjectStatus}
+        if changes["status"] not in valid_statuses:
+            raise HTTPException(status_code=400, detail="Невалиден статус на проект")
+
+    if "slug" in changes and changes["slug"] != existing.get("slug"):
+        dup = await db.projects.find_one(
+            {"slug": changes["slug"], "id": {"$ne": project_id}}, {"_id": 0, "id": 1}
+        )
+        if dup:
+            raise HTTPException(status_code=400, detail="Проект с този slug вече съществува")
+
+    if changes.get("is_primary") is True:
+        await db.projects.update_many(
+            {"is_primary": True, "id": {"$ne": project_id}},
+            {"$set": {"is_primary": False}},
+        )
+
+    if changes:
+        await db.projects.update_one({"id": project_id}, {"$set": changes})
+    await log_action(
+        user["id"], "project_admin_update", "project", project_id,
+        {"fields": list(changes.keys())},
+    )
+    updated = await db.projects.find_one({"id": project_id}, {"_id": 0})
+    return updated
+
+
 @router.post("/properties")
 async def create_property(payload: PropertyCreate, user=Depends(require_staff())):
     db = get_db()

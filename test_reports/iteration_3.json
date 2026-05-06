@@ -1,0 +1,62 @@
+{
+  "summary": "G.1 Financial Module Restructuring - All backend (15/15) and frontend tests passed. Deals module fully functional with super_admin-only access, multi-property deals, cancel/release, schedule regeneration, stage payment tracking, and quote-to-deal conversion.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_deals_g1.py",
+    "/app/test_reports/pytest/pytest_deals_g1.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Deals endpoints correctly enforce super_admin-only access (sales role gets 403)",
+    "Multi-property deal creation correctly marks all properties as sold with buyer_id set",
+    "Cancel deal correctly releases properties (status=available, buyer_id=null)",
+    "DELETE only allowed for cancelled deals (active deals return 400)",
+    "Regenerate schedule with bucket=both populates both bank_stages and non_bank_stages",
+    "PATCH stage payment correctly toggles is_paid flag with paid_date and paid_amount",
+    "Quote-to-deal conversion only works for accepted quotes (draft returns 400)",
+    "PUT /api/admin/projects correctly persists expense_estimate and total_rzp_area (super_admin only)",
+    "Sidebar correctly shows 'Сделки / Плащания' tab ONLY for super_admin",
+    "Property edit dialog has NO finance section (correctly removed per G.1 spec)",
+    "Deal numbers auto-increment per year (D-2026-NNN format)"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_deals_g1.py"
+  ],
+  "success_rate": {
+    "backend": "100% (15/15 tests passed)",
+    "frontend": "100% (all UI tests passed)"
+  },
+  "test_credentials": {
+    "super_admin": "admin@begestates.bg / BegEstates2026!Admin",
+    "sales": "sales@begestates.bg / BegEstates2026!Sales"
+  },
+  "seed_data_creation": "G.1 cleanup migration ran successfully - dropped 12 sales, 2 quotes, 2 payment_plans, 6 installments, 2 payments; preserved 52 properties + 19 clients. Migration is idempotent via _migrations marker doc.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "G.1 Deals module fully tested. Backend test file at /app/backend/tests/test_deals_g1.py covers all deals CRUD, access control, schedule regeneration, stage payments, and quote conversion. Frontend UI verified: sidebar tab visibility, deals list page, new deal placeholder, property edit dialog (no finance section), and quote-to-deal conversion button. Legacy /api/sales endpoints still mounted but deprecated - UI no longer references them.",
+  "verified_features": [
+    "Backend: GET /api/deals — list (super_admin only). Anonymous → 401, sales role → 403",
+    "Backend: POST /api/deals — create deal with multi-property, validates client+properties, marks props sold + sets buyer_id",
+    "Backend: POST /api/deals fails with 400 when property already sold or in active deal",
+    "Backend: POST /api/deals/{id}/cancel — releases properties (status=available, buyer_id=null)",
+    "Backend: POST /api/deals/{id}/regenerate-schedule with bucket=both, preset=with_bank — populates bank_stages",
+    "Backend: PATCH /api/deals/{id}/stages/{order}/payment with bucket=bank|non_bank — toggles is_paid",
+    "Backend: DELETE /api/deals/{id} — only allowed for cancelled deals; otherwise 400",
+    "Backend: POST /api/quotes/{id}/convert-to-deal — only for status=accepted; creates deal + imports schedule into non_bank_stages",
+    "Backend: PUT /api/admin/projects/{id} — super_admin only; persists expense_estimate + total_rzp_area",
+    "Backend: All deals endpoints reject non-super_admin staff (sales role) with 403",
+    "Frontend: Sidebar shows 'Сделки / Плащания' tab ONLY for super_admin (data-testid: admin-nav-deals)",
+    "Frontend: /admin/deals page loads and shows table (data-testid: admin-deals-page, admin-deals-table)",
+    "Frontend: /admin/deals/new shows placeholder for G.2 (data-testid: deal-editor-new-placeholder)",
+    "Frontend: /admin/properties — edit dialog has NO finance section, only 'Основни данни' form (data-testid: property-basics-form)",
+    "Frontend: QuoteEditor for accepted quote (super_admin) shows 'Преобразувай в Сделка' button (data-testid: quote-convert-to-deal-btn) — clicking it calls POST /quotes/{id}/convert-to-deal and redirects to /admin/deals/{deal_id}"
+  ]
+}

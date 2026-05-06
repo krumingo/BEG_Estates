@@ -1,5 +1,5 @@
 """Pydantic schemas for request/response models."""
-from typing import Optional, List
+from typing import Optional, List, Literal, Dict
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
@@ -35,6 +35,15 @@ from constants import ProjectStatus
 
 
 # ---------- Projects ----------
+class ProjectExpenseEstimate(BaseModel):
+    """Прогнозен разход по етапи на строителството (super_admin only)."""
+    total: Optional[float] = None
+    foundation: Optional[float] = None
+    rough_construction: Optional[float] = None
+    finishing: Optional[float] = None
+    notes: Optional[str] = None
+
+
 class ProjectCreate(BaseModel):
     name: str
     slug: str
@@ -89,6 +98,8 @@ class ProjectUpdate(BaseModel):
     is_primary: Optional[bool] = None
     expected_act_2_date: Optional[str] = None
     construction_duration_months: Optional[int] = None
+    expense_estimate: Optional[ProjectExpenseEstimate] = None
+    total_rzp_area: Optional[float] = None
 
     @field_validator("slug")
     @classmethod
@@ -574,6 +585,183 @@ class SaleUpdate(BaseModel):
 
 
 class SaleDelete(BaseModel):
+    reason: str
+
+    @field_validator("reason")
+    @classmethod
+    def _reason_required(cls, v):
+        if not v or not v.strip():
+            raise ValueError("Причината е задължителна")
+        return v.strip()
+
+
+
+# ---------- Deals (per-client multi-property sale) ----------
+_DEAL_PAYMENT_MODES = {"with_bank", "without_bank", "combined"}
+_DEAL_STATUSES = {"active", "completed", "cancelled"}
+_DEAL_BUCKETS = {"bank", "non_bank"}
+_DEAL_REGEN_PRESETS = {"standard", "with_bank", "custom"}
+
+
+class DealCreate(BaseModel):
+    client_id: str
+    property_ids: List[str]
+    agreed_prices: Optional[Dict[str, float]] = None
+    payment_mode: str = "without_bank"
+    source_quote_id: Optional[str] = None
+
+    @field_validator("property_ids")
+    @classmethod
+    def _at_least_one_prop(cls, v):
+        if not v:
+            raise ValueError("Трябва да изберете поне един имот")
+        return v
+
+    @field_validator("payment_mode")
+    @classmethod
+    def _mode_valid(cls, v):
+        if v not in _DEAL_PAYMENT_MODES:
+            raise ValueError("Невалиден тип плащане")
+        return v
+
+
+class DealItemUpdate(BaseModel):
+    property_id: str
+    agreed_price: Optional[float] = None
+    notes: Optional[str] = None
+
+    @field_validator("agreed_price")
+    @classmethod
+    def _price_non_negative(cls, v):
+        if v is None:
+            return v
+        if v < 0:
+            raise ValueError("Цената трябва да е >= 0")
+        return v
+
+
+class DealPaymentModeInput(BaseModel):
+    mode: Optional[str] = None
+    bank_amount: Optional[float] = None
+    non_bank_amount: Optional[float] = None
+    invoice_amount: Optional[float] = None
+    proforma_amount: Optional[float] = None
+
+    @field_validator("mode")
+    @classmethod
+    def _mode_valid(cls, v):
+        if v is None:
+            return v
+        if v not in _DEAL_PAYMENT_MODES:
+            raise ValueError("Невалиден тип плащане")
+        return v
+
+    @field_validator("bank_amount", "non_bank_amount", "invoice_amount", "proforma_amount")
+    @classmethod
+    def _non_negative(cls, v):
+        if v is None:
+            return v
+        if v < 0:
+            raise ValueError("Стойността трябва да е >= 0")
+        return v
+
+
+class DealStageInput(BaseModel):
+    order: int
+    label: str
+    percent: float
+    amount: Optional[float] = None
+    expected_date: Optional[str] = None
+    milestone_type: Optional[str] = None
+    bucket: str = "non_bank"
+    is_paid: Optional[bool] = None
+    paid_date: Optional[str] = None
+    paid_amount: Optional[float] = None
+    payment_notes: Optional[str] = None
+
+    @field_validator("bucket")
+    @classmethod
+    def _bucket_valid(cls, v):
+        if v not in _DEAL_BUCKETS:
+            raise ValueError("Невалиден bucket")
+        return v
+
+
+class DealUpdate(BaseModel):
+    items: Optional[List[DealItemUpdate]] = None
+    payment_mode: Optional[DealPaymentModeInput] = None
+    bank_stages: Optional[List[DealStageInput]] = None
+    non_bank_stages: Optional[List[DealStageInput]] = None
+    vat_rate: Optional[float] = None
+    notes: Optional[str] = None
+    expected_act_2_date: Optional[str] = None
+    construction_duration_months: Optional[int] = None
+
+    @field_validator("vat_rate")
+    @classmethod
+    def _vat_non_negative(cls, v):
+        if v is None:
+            return v
+        if v < 0:
+            raise ValueError("ДДС % трябва да е >= 0")
+        return v
+
+
+class DealRegenerateScheduleRequest(BaseModel):
+    bucket: str = "non_bank"
+    preset: str = "standard"
+
+    @field_validator("bucket")
+    @classmethod
+    def _bucket_valid(cls, v):
+        if v not in _DEAL_BUCKETS and v != "both":
+            raise ValueError("bucket трябва да е bank, non_bank или both")
+        return v
+
+    @field_validator("preset")
+    @classmethod
+    def _preset_valid(cls, v):
+        if v not in _DEAL_REGEN_PRESETS:
+            raise ValueError("preset трябва да е standard, with_bank или custom")
+        return v
+
+
+class DealStagePaymentUpdate(BaseModel):
+    bucket: str = "non_bank"
+    is_paid: Optional[bool] = None
+    paid_date: Optional[str] = None
+    paid_amount: Optional[float] = None
+    payment_notes: Optional[str] = None
+
+    @field_validator("bucket")
+    @classmethod
+    def _bucket_valid(cls, v):
+        if v not in _DEAL_BUCKETS:
+            raise ValueError("Невалиден bucket")
+        return v
+
+    @field_validator("paid_amount")
+    @classmethod
+    def _amount_non_negative(cls, v):
+        if v is None:
+            return v
+        if v < 0:
+            raise ValueError("Сумата трябва да е >= 0")
+        return v
+
+
+class DealCancelRequest(BaseModel):
+    reason: str
+
+    @field_validator("reason")
+    @classmethod
+    def _reason_required(cls, v):
+        if not v or not v.strip():
+            raise ValueError("Причината е задължителна")
+        return v.strip()
+
+
+class DealDeleteRequest(BaseModel):
     reason: str
 
     @field_validator("reason")

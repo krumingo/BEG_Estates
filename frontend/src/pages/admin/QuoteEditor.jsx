@@ -383,34 +383,15 @@ function EditQuoteScreen({ id }) {
         }
     };
 
-    const convertToSale = async () => {
+    const convertToDeal = async () => {
         if (!quote || quote.status !== "accepted") return;
         setConvertingToSale(true);
-        let success = 0;
-        let failed = 0;
         try {
-            for (const it of quote.items || []) {
-                try {
-                    // Mark property sold (auto-creates Sale via backend hook)
-                    await api.patch(`/properties/${it.property_id}/status`, { status: "sold" });
-                    // Find created sale and update with custom_price + source_quote_id
-                    const r = await api.get(`/sales/by-property/${it.property_id}`);
-                    const sale = r.data;
-                    if (sale && it.custom_price) {
-                        await api.put(`/sales/${sale.id}`, {
-                            invoice_amount: parseFloat(it.custom_price),
-                            proforma_amount: 0,
-                            vat_rate: 20,
-                            notes: `Преобразувано от оферта ${quote.quote_number}`,
-                        });
-                    }
-                    success += 1;
-                } catch {
-                    failed += 1;
-                }
-            }
-            if (success > 0) toast.success(`${success} имот${success === 1 ? "" : "а"} преобразуван${success === 1 ? "" : "и"} в продажба`);
-            if (failed > 0) toast.error(`${failed} имот${failed === 1 ? "" : "а"} не успяха да се преобразуват`);
+            const { data } = await api.post(`/quotes/${quote.id}/convert-to-deal`);
+            toast.success(`Сделка ${data.deal_number} създадена`);
+            navigate(`/admin/deals/${data.deal_id}`);
+        } catch (e) {
+            toast.error(formatApiError(e.response?.data?.detail) || "Грешка при преобразуване");
         } finally {
             setConvertingToSale(false);
             setConfirmAction(null);
@@ -685,13 +666,13 @@ function EditQuoteScreen({ id }) {
                 )}
                 {quote.status === "accepted" && isSuperAdmin && (
                     <Button
-                        onClick={() => setConfirmAction({ type: "convert_to_sale" })}
+                        onClick={() => setConfirmAction({ type: "convert_to_deal" })}
                         disabled={convertingToSale}
                         className="bg-amber-700 hover:bg-amber-800 text-white"
-                        data-testid="quote-convert-to-sale-btn"
+                        data-testid="quote-convert-to-deal-btn"
                     >
                         <Lock className="h-4 w-4 mr-1.5" />
-                        {convertingToSale ? "Преобразуване…" : "Преобразувай в Sale"}
+                        {convertingToSale ? "Преобразуване…" : "Преобразувай в Сделка"}
                     </Button>
                 )}
             </div>
@@ -706,7 +687,7 @@ function EditQuoteScreen({ id }) {
                             {confirmAction?.type === "accept" && "Маркирай като приета"}
                             {confirmAction?.type === "reject" && "Маркирай като отказана"}
                             {confirmAction?.type === "expire" && "Маркирай като изтекла"}
-                            {confirmAction?.type === "convert_to_sale" && "Преобразуване в продажба"}
+                            {confirmAction?.type === "convert_to_deal" && "Преобразуване в сделка"}
                         </DialogTitle>
                         <DialogDescription>
                             {confirmAction?.type === "delete" && `Сигурни ли сте, че искате да изтриете оферта ${quote.quote_number}? Това действие е необратимо.`}
@@ -714,7 +695,7 @@ function EditQuoteScreen({ id }) {
                             {confirmAction?.type === "accept" && "Офертата ще стане финална. Продължавате ли?"}
                             {confirmAction?.type === "reject" && "Офертата ще се запази с маркер „отказана\". Продължавате ли?"}
                             {confirmAction?.type === "expire" && "Офертата ще се маркира като изтекла."}
-                            {confirmAction?.type === "convert_to_sale" && "Това действие ще: маркира всички имоти като продадени и ще създаде Sale запис(и) с цените от офертата (100% по фактура default). Можете после да промените разпределението фактура/проформа в /admin/properties."}
+                            {confirmAction?.type === "convert_to_deal" && "Това действие ще: (1) маркира всички имоти от офертата като продадени, (2) създаде нов запис „Сделка\" с цените от офертата, и (3) импортира schedule-а. Можете да редактирате сделката в раздел „Сделки / Плащания\"."}
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
@@ -729,7 +710,7 @@ function EditQuoteScreen({ id }) {
                                 if (t === "accept") await setStatus("accepted");
                                 if (t === "reject") await setStatus("rejected");
                                 if (t === "expire") await setStatus("expired");
-                                if (t === "convert_to_sale") await convertToSale();
+                                if (t === "convert_to_deal") await convertToDeal();
                             }}
                             data-testid="quote-confirm-action-ok"
                         >

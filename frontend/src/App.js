@@ -34,6 +34,8 @@ import AdminReservations from "./pages/admin/AdminReservations";
 import AdminClients from "./pages/admin/AdminClients";
 import AdminQuotes from "./pages/admin/AdminQuotes";
 import QuoteEditor from "./pages/admin/QuoteEditor";
+import AdminDeals from "./pages/admin/AdminDeals";
+import DealEditor from "./pages/admin/DealEditor";
 import AdminAudit from "./pages/admin/AdminAudit";
 
 import NotFound from "./pages/NotFound";
@@ -91,6 +93,9 @@ function App() {
                             <Route path="quotes" element={<AdminQuotes />} />
                             <Route path="quotes/new" element={<QuoteEditor />} />
                             <Route path="quotes/:id" element={<QuoteEditor />} />
+                            <Route path="deals" element={<AdminDeals />} />
+                            <Route path="deals/new" element={<DealEditor />} />
+                            <Route path="deals/:id" element={<DealEditor />} />
                             <Route path="clients" element={<AdminClients />} />
                             <Route path="inquiries" element={<Navigate to="/admin/reservations?tab=inquiries" replace />} />
                             <Route path="floor-plans" element={<Navigate to="/admin/properties" replace />} />

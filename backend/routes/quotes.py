@@ -415,3 +415,68 @@ async def quote_pdf(quote_id: str, user=Depends(require_staff())):
             "Content-Disposition": f'attachment; filename="{filename_ascii}"'
         },
     )
+
+
+# ---------- CONVERT TO DEAL (super_admin) ----------
+@router.post("/quotes/{quote_id}/convert-to-deal")
+async def convert_quote_to_deal(
+    quote_id: str,
+    user=Depends(require_roles(Role.SUPER_ADMIN.value)),
+):
+    db = get_db()
+    quote = await db.quotes.find_one({"id": quote_id}, {"_id": 0})
+    if not quote:
+        raise HTTPException(status_code=404, detail="Офертата не е намерена")
+    if quote.get("status") != "accepted":
+        raise HTTPException(
+            status_code=400,
+            detail="Само приети оферти могат да се преобразуват в сделка",
+        )
+
+    items = quote.get("items") or []
+    if not items:
+        raise HTTPException(status_code=400, detail="Офертата няма имоти")
+
+    property_ids = [it.get("property_id") for it in items if it.get("property_id")]
+    agreed_prices: dict = {}
+    for it in items:
+        pid = it.get("property_id")
+        if not pid:
+            continue
+        price = it.get("custom_price")
+        disc = float(it.get("discount_percent") or 0)
+        if price is not None:
+            agreed_prices[pid] = round(float(price) * (1 - disc / 100.0), 2)
+
+    from routes.deals import _create_deal_internal, _stages_from_scheme
+    deal = await _create_deal_internal(
+        db,
+        client_id=quote.get("client_id"),
+        property_ids=property_ids,
+        agreed_prices=agreed_prices,
+        payment_mode_str="without_bank",
+        source_quote_id=quote.get("id"),
+        user_id=user["id"],
+    )
+
+    # Import quote schedule into non_bank_stages
+    sched = quote.get("payment_schedule") or {}
+    if sched.get("stages"):
+        non_bank_stages = _stages_from_scheme(sched, "non_bank")
+        await db.deals.update_one(
+            {"id": deal["id"]},
+            {"$set": {
+                "non_bank_stages": non_bank_stages,
+                "updated_at": _now_iso(),
+            }},
+        )
+
+    await log_action(
+        user["id"], "quote_converted_to_deal", "quote", quote_id,
+        {
+            "quote_number": quote.get("quote_number"),
+            "deal_id": deal["id"],
+            "deal_number": deal["deal_number"],
+        },
+    )
+    return {"deal_id": deal["id"], "deal_number": deal["deal_number"]}

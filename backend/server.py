@@ -12,10 +12,10 @@ from fastapi import FastAPI, APIRouter
 from starlette.middleware.cors import CORSMiddleware
 
 from db import close_db, get_db
-from routes import auth_routes, projects, reservations, dashboard, audit, profile, imports, exports, clients, quotes, sales
+from routes import auth_routes, projects, reservations, dashboard, audit, profile, imports, exports, clients, quotes, sales, deals
 from seed import seed_all
 from migrations.migrate_buyers_to_clients import migrate_buyers_to_clients
-from migrations.auto_seed_sales import auto_seed_sales
+from migrations.cleanup_old_financial import cleanup_old_financial
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -41,6 +41,7 @@ api_router.include_router(exports.router)
 api_router.include_router(clients.router)
 api_router.include_router(quotes.router)
 api_router.include_router(sales.router)
+api_router.include_router(deals.router)
 
 app.include_router(api_router)
 
@@ -71,8 +72,9 @@ async def on_startup():
     # Migrate legacy db.buyers → db.users(role=client) BEFORE seed (idempotent).
     await migrate_buyers_to_clients()
     await seed_all()
-    # Auto-seed Sales for already-sold properties (idempotent)
-    await auto_seed_sales()
+    # G.1 cleanup: drop legacy financial collections (sales, quotes, payments, etc.)
+    # Idempotent — only runs once via marker doc in `_migrations`.
+    await cleanup_old_financial()
     logger.info("BEG Estates API ready (seed complete)")
 
 

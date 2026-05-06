@@ -7,26 +7,29 @@ import {
     CalendarClock,
     Users,
     FileText,
-    Receipt,
+    Wallet,
     ClipboardList,
     LogOut,
 } from "lucide-react";
-import { useAuth } from "../../lib/auth";
+import { useAuth, useIsSuperAdmin } from "../../lib/auth";
 import { ROLE_LABELS } from "../../lib/constants";
 
-const NAV = [
+const buildNav = (isSuperAdmin) => [
     { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true, id: "admin-nav-dashboard" },
     { to: "/admin/projects", label: "Проекти", icon: Building2, id: "admin-nav-projects" },
     { to: "/admin/properties", label: "Имоти", icon: Home, id: "admin-nav-properties" },
     { to: "/admin/reservations", label: "Резервации & Запитвания", icon: CalendarClock, id: "admin-nav-reservations" },
     { to: "/admin/quotes", label: "Оферти", icon: FileText, id: "admin-nav-quotes" },
+    isSuperAdmin && { to: "/admin/deals", label: "Сделки / Плащания", icon: Wallet, id: "admin-nav-deals" },
     { to: "/admin/clients", label: "Клиенти", icon: Users, id: "admin-nav-clients" },
     { to: "/admin/audit", label: "Audit log", icon: ClipboardList, id: "admin-nav-audit" },
-];
+].filter(Boolean);
 
 export default function AdminSidebar() {
     const { user, logout } = useAuth();
+    const isSuperAdmin = useIsSuperAdmin();
     const navigate = useNavigate();
+    const NAV = buildNav(isSuperAdmin);
 
     return (
         <aside
