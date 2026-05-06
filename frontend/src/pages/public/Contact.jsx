@@ -1,5 +1,6 @@
 import React from "react";
 import PublicHeader from "../../components/layout/PublicHeader";
+import PublicFooter from "../../components/layout/PublicFooter";
 import InquiryForm from "./InquiryForm";
 
 export default function Contact() {
@@ -28,6 +29,7 @@ export default function Contact() {
                     <InquiryForm />
                 </div>
             </section>
+            <PublicFooter />
         </div>
     );
 }

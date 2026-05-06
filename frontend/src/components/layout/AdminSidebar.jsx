@@ -32,9 +32,13 @@ export default function AdminSidebar() {
             className="hidden lg:flex fixed top-0 left-0 h-full w-64 flex-col border-r hairline bg-white z-40"
         >
             <div className="px-6 py-6 border-b hairline">
-                <Link to="/admin" className="flex flex-col gap-0.5">
-                    <span className="font-serif text-2xl text-slate-900 leading-none">BEG Estates</span>
-                    <span className="overline">EstateFlow Admin</span>
+                <Link to="/admin" className="block" data-testid="admin-sidebar-brand">
+                    <img
+                        src="/logos/beg_estates_admin.svg"
+                        alt="BEG Estates · EstateFlow Admin"
+                        className="h-12 w-auto"
+                        data-testid="admin-sidebar-logo"
+                    />
                 </Link>
             </div>
 

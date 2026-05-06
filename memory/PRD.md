@@ -1,7 +1,7 @@
 # BEG Estates / EstateFlow — Product Requirements Document
 
-**Last updated:** 2026-05-05 (iteration 8)
-**Status:** Iteration 8 — Foundation Pack A: UI refactor + Smart Import (v0.8)
+**Last updated:** 2026-05-06 (iteration 9)
+**Status:** Iteration 9 — Brand Integration Pack B.1 (v0.9)
 
 ## Iterations
 - **v0.1 (2026-04-17)** — initial scaffold, 3-zone layout, generic demo project "Яна"
@@ -12,6 +12,7 @@
 - **v0.6 (2026-04-21)** — client profile + contact completeness + flat client↔admin messaging
 - **v0.7 (2026-04-21)** — admin floor-plan mapping + public clickable floor-plan overlay (REMOVED in v0.8)
 - **v0.8 (2026-05-05)** — UI refactor: removed floor-plans entirely, merged inquiries into reservations (tabs), Smart Diff bulk import endpoint + UI, hadji dimitar 52 units canonicalised (never revenue, but its raw_area participates in the *including compensation area* scenario)
+- **v0.9 (2026-05-06)** — Brand Integration Pack B.1: 5 SVG logos (admin / main / icon / dark / vertical), favicon, AdminSidebar / PublicHeader / StaffLogin / new PublicFooter wired up on `/`, `/projects`, `/projects/:id`, `/properties/:id`, `/contact`
 
 ## Original problem statement
 Modern web SaaS/CRM for selling new-construction real estate in Bulgaria.

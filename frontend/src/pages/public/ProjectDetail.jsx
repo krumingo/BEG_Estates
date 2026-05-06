@@ -11,6 +11,7 @@ import {
     Hammer,
 } from "lucide-react";
 import PublicHeader from "../../components/layout/PublicHeader";
+import PublicFooter from "../../components/layout/PublicFooter";
 import { StatusBadge } from "../../components/common/StatusBadge";
 import { api, currency, formatDate } from "../../lib/api";
 import {
@@ -268,6 +269,7 @@ export default function ProjectDetail() {
                     </div>
                 </div>
             </section>
+            <PublicFooter />
         </div>
     );
 }

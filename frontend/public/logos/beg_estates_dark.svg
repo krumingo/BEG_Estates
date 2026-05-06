@@ -1,0 +1,9 @@
+<svg width="240" height="72" viewBox="0 0 240 72" xmlns="http://www.w3.org/2000/svg">
+    <g transform="translate(8,10)">
+        <path d="M28 2 L52 50 L28 38 Z" fill="#fde68a"/>
+        <path d="M28 2 L4 50 L28 38 Z" fill="#facc40"/>
+        <path d="M4 50 L52 50 L28 38 Z" fill="#d4a017"/>
+    </g>
+    <text x="78" y="36" font-family="'Cormorant Garamond', Georgia, serif" font-size="30" font-weight="600" fill="#ffffff" letter-spacing="2">BEG</text>
+    <text x="78" y="58" font-family="'Manrope', sans-serif" font-size="10" font-weight="500" fill="#cbd5e1" letter-spacing="4">ESTATES</text>
+</svg>

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { MapPin, Ruler, ArrowLeft, Clock } from "lucide-react";
 import PublicHeader from "../../components/layout/PublicHeader";
+import PublicFooter from "../../components/layout/PublicFooter";
 import { StatusBadge } from "../../components/common/StatusBadge";
 import { api, currency, formatApiError } from "../../lib/api";
 import { PROPERTY_TYPE_LABELS } from "../../lib/constants";
@@ -121,6 +122,7 @@ export default function PropertyDetail() {
                     </div>
                 </div>
             </div>
+            <PublicFooter />
         </div>
     );
 }

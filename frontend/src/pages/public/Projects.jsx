@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { MapPin } from "lucide-react";
 import PublicHeader from "../../components/layout/PublicHeader";
+import PublicFooter from "../../components/layout/PublicFooter";
 import { api } from "../../lib/api";
 
 export default function Projects() {
@@ -50,6 +51,7 @@ export default function Projects() {
                     ))}
                 </div>
             </section>
+            <PublicFooter />
         </div>
     );
 }

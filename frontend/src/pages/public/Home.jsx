@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, MapPin, Ruler, Building2 } from "lucide-react";
 import PublicHeader from "../../components/layout/PublicHeader";
+import PublicFooter from "../../components/layout/PublicFooter";
 import { api, currency } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 
@@ -171,15 +172,7 @@ export default function Home() {
                 </div>
             </section>
 
-            <footer className="border-t hairline">
-                <div className="mx-auto max-w-7xl px-6 lg:px-10 py-12 flex flex-col md:flex-row justify-between gap-6 text-sm text-slate-500">
-                    <div>
-                        <span className="font-serif text-xl text-slate-900">BEG Estates</span>
-                        <span className="ml-2 overline">EstateFlow</span>
-                    </div>
-                    <div>© {new Date().getFullYear()} BEG Estates. Всички права запазени.</div>
-                </div>
-            </footer>
+            <PublicFooter />
         </div>
     );
 }

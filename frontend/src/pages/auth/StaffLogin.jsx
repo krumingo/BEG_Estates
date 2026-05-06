@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Lock } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -52,7 +51,13 @@ export default function StaffLogin() {
                 />
                 <div className="absolute inset-0 bg-gradient-to-br from-black/40 via-black/20 to-black/70" />
                 <div className="relative z-10 p-12 h-full flex flex-col justify-between text-white">
-                    <Link to="/" className="font-serif text-3xl">BEG Estates</Link>
+                    <Link to="/" data-testid="staff-login-brand">
+                        <img
+                            src="/logos/beg_estates_dark.svg"
+                            alt="BEG Estates"
+                            className="h-10 w-auto"
+                        />
+                    </Link>
                     <div>
                         <div className="overline text-white/60 mb-2">EstateFlow Backoffice</div>
                         <div className="font-serif text-4xl leading-tight max-w-md">
@@ -63,8 +68,13 @@ export default function StaffLogin() {
             </div>
             <div className="flex items-center justify-center p-8 lg:p-16 bg-stone-50">
                 <div className="w-full max-w-md">
-                    <Lock className="h-6 w-6 text-slate-900 mb-6" strokeWidth={1.5} />
-                    <h1 className="font-serif text-4xl text-slate-900 mb-2">Вход за екипа</h1>
+                    <img
+                        src="/logos/beg_estates_icon.svg"
+                        alt="BEG Estates"
+                        className="h-16 w-auto mb-4"
+                        data-testid="staff-login-icon"
+                    />
+                    <h1 className="font-serif text-2xl text-slate-900 mb-2">Estateflow Admin</h1>
                     <p className="text-sm text-slate-500 mb-8">Влезте в админ панела с вашия служебен имейл.</p>
 
                     <form onSubmit={submit} className="space-y-4" data-testid="staff-login-form">
