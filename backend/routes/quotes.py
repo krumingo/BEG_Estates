@@ -10,6 +10,7 @@ from constants import Role, PropertyStatus, PROPERTY_STATUS_LABELS, PROPERTY_TYP
 from db import get_db
 from models import QuoteCreate, QuoteUpdate, QuoteStatusUpdate
 from routes.audit import log_action
+from services.payment_schemes import build_scheme, apply_stop_deposit, recalc_amounts
 
 router = APIRouter(tags=["quotes"])
 
@@ -215,6 +216,16 @@ async def create_quote(payload: QuoteCreate, user=Depends(require_staff())):
     }
     _calc_totals(quote)
 
+    # Build payment schedule from chosen scheme + stop deposit
+    project = await db.projects.find_one(
+        {"id": props[0].get("project_id")} if props else {"id": "__none__"},
+        {"_id": 0, "expected_act_2_date": 1, "construction_duration_months": 1},
+    ) if props else None
+    schedule = build_scheme(payload.scheme_type, quote["total"], project)
+    if payload.stop_deposit_amount and payload.stop_deposit_amount > 0:
+        apply_stop_deposit(schedule, float(payload.stop_deposit_amount))
+    quote["payment_schedule"] = schedule
+
     await db.quotes.insert_one(quote)
     await log_action(
         user["id"], "quote_create", "quote", quote["id"],
@@ -269,6 +280,47 @@ async def update_quote(quote_id: str, payload: QuoteUpdate, user=Depends(require
             q[field] = v
 
     _calc_totals(q)
+
+    # Payment schedule handling
+    if payload.reset_schedule_to:
+        # Rebuild from template
+        first_prop = (q.get("items") or [{}])[0]
+        proj_id = None
+        if first_prop:
+            full = await db.properties.find_one(
+                {"id": first_prop.get("property_id")}, {"_id": 0, "project_id": 1}
+            )
+            proj_id = (full or {}).get("project_id")
+        project = await db.projects.find_one(
+            {"id": proj_id}, {"_id": 0, "expected_act_2_date": 1}
+        ) if proj_id else None
+        new_sched = build_scheme(payload.reset_schedule_to, q["total"], project)
+        # Preserve existing stop_deposit if not explicitly reset
+        if payload.payment_schedule and payload.payment_schedule.stop_deposit_amount is not None:
+            apply_stop_deposit(new_sched, float(payload.payment_schedule.stop_deposit_amount))
+        q["payment_schedule"] = new_sched
+    elif payload.payment_schedule is not None:
+        # Manual edits to schedule
+        sched = q.get("payment_schedule") or build_scheme("custom", q["total"], None)
+        sched_in = payload.payment_schedule
+        if sched_in.stages is not None:
+            sched["stages"] = [s.model_dump() for s in sched_in.stages]
+        if sched_in.expected_act_2_date is not None:
+            sched["expected_act_2_date"] = sched_in.expected_act_2_date
+        if sched_in.notes is not None:
+            sched["notes"] = sched_in.notes
+        if sched_in.scheme_type is not None:
+            sched["scheme_type"] = sched_in.scheme_type
+        # Recalc amounts from total + percents (admin edits percents)
+        recalc_amounts(sched, q["total"])
+        if sched_in.stop_deposit_amount is not None:
+            apply_stop_deposit(sched, float(sched_in.stop_deposit_amount))
+        q["payment_schedule"] = sched
+    else:
+        # Items/total may have changed → recalc existing schedule amounts
+        if q.get("payment_schedule"):
+            recalc_amounts(q["payment_schedule"], q["total"])
+
     q["updated_at"] = _now_iso()
 
     await db.quotes.update_one({"id": quote_id}, {"$set": q})

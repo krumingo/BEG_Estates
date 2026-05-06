@@ -50,6 +50,8 @@ class ProjectCreate(BaseModel):
     lng: Optional[float] = None
     progress_percent: int = 0
     is_primary: bool = False
+    expected_act_2_date: Optional[str] = None
+    construction_duration_months: int = 30
 
     @field_validator("slug")
     @classmethod
@@ -85,6 +87,8 @@ class ProjectUpdate(BaseModel):
     lng: Optional[float] = None
     progress_percent: Optional[int] = None
     is_primary: Optional[bool] = None
+    expected_act_2_date: Optional[str] = None
+    construction_duration_months: Optional[int] = None
 
     @field_validator("slug")
     @classmethod
@@ -445,6 +449,8 @@ class QuoteCreate(BaseModel):
     valid_until: Optional[str] = None  # ISO date; if None → today + 14 days
     discount_amount: Optional[float] = 0.0
     additional_notes: Optional[str] = None
+    scheme_type: str = "standard"  # standard | with_bank | custom
+    stop_deposit_amount: Optional[float] = 0.0
 
     @field_validator("vat_mode")
     @classmethod
@@ -453,12 +459,38 @@ class QuoteCreate(BaseModel):
             raise ValueError("Невалиден ДДС режим")
         return v
 
+    @field_validator("scheme_type")
+    @classmethod
+    def _scheme_valid(cls, v):
+        if v not in {"standard", "with_bank", "custom"}:
+            raise ValueError("Невалиден тип схема")
+        return v
+
     @field_validator("property_ids")
     @classmethod
     def _at_least_one(cls, v):
         if not v:
             raise ValueError("Трябва да изберете поне един имот")
         return v
+
+
+class PaymentStageInput(BaseModel):
+    order: int
+    label: str
+    percent: float
+    amount: Optional[float] = None  # auto-calculated if None
+    expected_date: Optional[str] = None
+    milestone_type: Optional[str] = None
+    description: Optional[str] = None
+    is_deposit: bool = False
+
+
+class PaymentScheduleInput(BaseModel):
+    scheme_type: Optional[str] = None
+    stop_deposit_amount: Optional[float] = None
+    expected_act_2_date: Optional[str] = None
+    notes: Optional[str] = None
+    stages: Optional[List[PaymentStageInput]] = None
 
 
 class QuoteUpdate(BaseModel):
@@ -470,6 +502,8 @@ class QuoteUpdate(BaseModel):
     payment_terms: Optional[str] = None
     delivery_terms: Optional[str] = None
     additional_notes: Optional[str] = None
+    payment_schedule: Optional[PaymentScheduleInput] = None
+    reset_schedule_to: Optional[str] = None  # standard | with_bank | custom
 
     @field_validator("vat_mode")
     @classmethod

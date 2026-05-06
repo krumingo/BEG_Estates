@@ -166,6 +166,8 @@ async def seed_all():
                 {"icon": "bus", "label": "Градски транспорт", "walk_time": "1 мин. пеша"},
             ],
             "is_primary": True,
+            "expected_act_2_date": "2026-06-15",
+            "construction_duration_months": 30,
             "created_at": _utcnow().isoformat(),
             "source_files": [src["source_file"], "000 - NP165-SD-AR.pdf"],
             "source_notice": src.get("notice"),

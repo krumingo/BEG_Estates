@@ -40,6 +40,8 @@ const EMPTY_FORM = {
     lng: "",
     progress_percent: 0,
     is_primary: false,
+    expected_act_2_date: "",
+    construction_duration_months: 30,
 };
 
 function toForm(project) {
@@ -59,6 +61,8 @@ function toForm(project) {
         lng: project.lng ?? "",
         progress_percent: project.progress_percent ?? 0,
         is_primary: !!project.is_primary,
+        expected_act_2_date: project.expected_act_2_date || "",
+        construction_duration_months: project.construction_duration_months ?? 30,
     };
 }
 
@@ -83,6 +87,8 @@ function toPayload(form) {
         lng: numOrNull(form.lng),
         progress_percent: Number(form.progress_percent) || 0,
         is_primary: !!form.is_primary,
+        expected_act_2_date: form.expected_act_2_date || null,
+        construction_duration_months: Number(form.construction_duration_months) || 30,
     };
 }
 
@@ -260,6 +266,34 @@ export default function AdminProjects() {
                             <div>
                                 <Label htmlFor="pf-progress">Прогрес %</Label>
                                 <Input id="pf-progress" type="number" min="0" max="100" value={form.progress_percent} onChange={set("progress_percent")} data-testid="pf-progress" />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <Label htmlFor="pf-act2">Очаквана дата на Акт 2</Label>
+                                <Input
+                                    id="pf-act2"
+                                    type="date"
+                                    value={form.expected_act_2_date || ""}
+                                    onChange={set("expected_act_2_date")}
+                                    data-testid="pf-act2-date"
+                                />
+                                <p className="text-xs text-slate-500 mt-1">
+                                    От тази дата се изчисляват milestone-ите за Quote Builder (изкоп, кота 0, Акт 14, Акт 16…).
+                                </p>
+                            </div>
+                            <div>
+                                <Label htmlFor="pf-duration">Срок за завършване (месеци)</Label>
+                                <Input
+                                    id="pf-duration"
+                                    type="number"
+                                    min="1"
+                                    max="120"
+                                    value={form.construction_duration_months}
+                                    onChange={set("construction_duration_months")}
+                                    data-testid="pf-duration-months"
+                                />
                             </div>
                         </div>
 

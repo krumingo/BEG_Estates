@@ -20,7 +20,14 @@
 
 ## Iterations
 - **v1.0 (2026-05-06)** — Clients Unification Pack C: unified `db.users(role=client)` as single clients directory, full CRUD endpoints, AdminClients UI rewrite, Brand fix "Building Express Group"
-- **v1.1 (2026-05-06)** — **Quote Builder Pack D**: full quote lifecycle (draft → sent → accepted/rejected/expired), reportlab PDF generator with Cyrillic, AdminQuotes list + QuoteEditor wizard, sidebar nav, "Добави в оферта" property action
+# BEG Estates / EstateFlow — Product Requirements Document
+
+**Last updated:** 2026-05-06 (iteration 12)
+**Status:** Iteration 12 — Quote Builder Schemes E.1 (v1.2)
+
+## Iterations
+- **v1.1 (2026-05-06)** — Quote Builder Pack D: full quote lifecycle, reportlab PDF generator with Cyrillic, AdminQuotes list + QuoteEditor wizard
+- **v1.2 (2026-05-06)** — **Quote Schemes Pack E.1**: 3 структурирани payment schemes (standard/with_bank/custom), stop-deposit auto-deduct, project Акт 2 date as base for milestone dates, PDF секция "Схема за плащане", inline-editable PaymentScheduleEditor
 
 ## Original problem statement
 Modern web SaaS/CRM for selling new-construction real estate in Bulgaria.

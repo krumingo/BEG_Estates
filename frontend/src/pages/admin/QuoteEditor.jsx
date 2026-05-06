@@ -46,6 +46,8 @@ function NewQuoteWizard({ initialPropertyId }) {
     const [properties, setProperties] = useState([]);
     const [selected, setSelected] = useState(new Set(initialPropertyId ? [initialPropertyId] : []));
     const [vatMode, setVatMode] = useState("with_vat");
+    const [schemeType, setSchemeType] = useState("standard");
+    const [stopDeposit, setStopDeposit] = useState("");
     const [creating, setCreating] = useState(false);
 
     useEffect(() => {
@@ -100,6 +102,8 @@ function NewQuoteWizard({ initialPropertyId }) {
                 client_id: clientId,
                 property_ids: Array.from(selected),
                 vat_mode: vatMode,
+                scheme_type: schemeType,
+                stop_deposit_amount: parseFloat(stopDeposit || 0),
             });
             toast.success(`Оферта ${data.quote_number} създадена`);
             navigate(`/admin/quotes/${data.id}`);
@@ -156,6 +160,32 @@ function NewQuoteWizard({ initialPropertyId }) {
                                 <SelectItem value="without_vat">Без ДДС</SelectItem>
                             </SelectContent>
                         </Select>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <Label>Схема за плащане</Label>
+                        <Select value={schemeType} onValueChange={setSchemeType}>
+                            <SelectTrigger data-testid="quote-wizard-scheme"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="standard">Стандартна (без банка) — 8 етапа</SelectItem>
+                                <SelectItem value="with_bank">С банков кредит — 4 етапа</SelectItem>
+                                <SelectItem value="custom">Custom (ръчно)</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div>
+                        <Label>Стоп-капаро (вече внесено), €</Label>
+                        <Input
+                            type="number"
+                            step="100"
+                            min="0"
+                            value={stopDeposit}
+                            onChange={(e) => setStopDeposit(e.target.value)}
+                            placeholder="0"
+                            data-testid="quote-wizard-stop-deposit"
+                        />
                     </div>
                 </div>
             </div>
@@ -264,6 +294,7 @@ function EditQuoteScreen({ id }) {
         if (!editable) return;
         setSaving(true);
         try {
+            const sched = quote.payment_schedule || {};
             const payload = {
                 items: (quote.items || []).map((it) => ({
                     property_id: it.property_id,
@@ -278,6 +309,22 @@ function EditQuoteScreen({ id }) {
                 payment_terms: quote.payment_terms,
                 delivery_terms: quote.delivery_terms,
                 additional_notes: quote.additional_notes,
+                payment_schedule: {
+                    scheme_type: sched.scheme_type || "standard",
+                    stop_deposit_amount: parseFloat(sched.stop_deposit_amount || 0),
+                    expected_act_2_date: sched.expected_act_2_date || null,
+                    notes: sched.notes || null,
+                    stages: (sched.stages || []).map((s, idx) => ({
+                        order: s.order ?? idx + 1,
+                        label: s.label || "",
+                        percent: parseFloat(s.percent || 0),
+                        amount: s.amount != null ? parseFloat(s.amount) : null,
+                        expected_date: s.expected_date || null,
+                        milestone_type: s.milestone_type || null,
+                        description: s.description || null,
+                        is_deposit: !!s.is_deposit,
+                    })),
+                },
             };
             const { data } = await api.put(`/quotes/${id}`, payload);
             setQuote(data);
@@ -479,6 +526,17 @@ function EditQuoteScreen({ id }) {
                 </div>
             </div>
 
+            {/* Payment schedule */}
+            <PaymentScheduleSection quote={quote} setQuote={setQuote} editable={editable} onResetTo={async (type) => {
+                try {
+                    const { data } = await api.put(`/quotes/${id}`, { reset_schedule_to: type });
+                    setQuote(data);
+                    toast.success("Схемата е презаредена");
+                } catch (e) {
+                    toast.error(formatApiError(e.response?.data?.detail));
+                }
+            }} />
+
             {/* Validity */}
             <div className="space-y-3">
                 <h2 className="font-serif text-xl text-slate-900">Валидност</h2>
@@ -625,6 +683,245 @@ function EditQuoteScreen({ id }) {
                             data-testid="quote-confirm-action-ok"
                         >
                             Потвърди
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </div>
+    );
+}
+
+
+// =====================================================
+// Payment Schedule Editor (inline section)
+// =====================================================
+const SCHEME_LABELS = {
+    standard: "Стандартна (без банка) — 8 етапа",
+    with_bank: "С банков кредит — 4 етапа",
+    custom: "Custom (ръчно)",
+};
+
+function PaymentScheduleSection({ quote, setQuote, editable, onResetTo }) {
+    const sched = quote.payment_schedule || { scheme_type: "custom", stages: [], stop_deposit_amount: 0 };
+    const [resetDialog, setResetDialog] = React.useState(null);
+
+    const setSched = (patch) => {
+        setQuote((q) => ({ ...q, payment_schedule: { ...(q.payment_schedule || {}), ...patch } }));
+    };
+    const updateStage = (idx, patch) => {
+        setQuote((q) => {
+            const stages = [...(q.payment_schedule?.stages || [])];
+            stages[idx] = { ...stages[idx], ...patch };
+            return { ...q, payment_schedule: { ...(q.payment_schedule || {}), stages } };
+        });
+    };
+    const removeStage = (idx) => {
+        setQuote((q) => {
+            const stages = (q.payment_schedule?.stages || []).filter((_, i) => i !== idx);
+            return { ...q, payment_schedule: { ...(q.payment_schedule || {}), stages } };
+        });
+    };
+    const addStage = () => {
+        setQuote((q) => {
+            const cur = q.payment_schedule?.stages || [];
+            return {
+                ...q,
+                payment_schedule: {
+                    ...(q.payment_schedule || {}),
+                    stages: [
+                        ...cur,
+                        { order: cur.length + 1, label: "Нов етап", percent: 0, amount: 0, expected_date: null, description: "", is_deposit: false },
+                    ],
+                },
+            };
+        });
+    };
+
+    const total = parseFloat(quote.total || 0);
+    const stages = sched.stages || [];
+    const sumPercent = stages.reduce((s, st) => s + parseFloat(st.percent || 0), 0);
+    const sumAmount = stages.reduce((s, st) => s + parseFloat(st.amount || 0), 0);
+    const stop = parseFloat(sched.stop_deposit_amount || 0);
+
+    return (
+        <div className="space-y-3">
+            <h2 className="font-serif text-xl text-slate-900">Схема за плащане</h2>
+            <div className="rounded-lg border hairline bg-white p-4 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                        <Label>Тип схема</Label>
+                        <Select
+                            value={sched.scheme_type || "standard"}
+                            disabled={!editable}
+                            onValueChange={(v) => {
+                                if (!editable) return;
+                                setResetDialog(v);
+                            }}
+                        >
+                            <SelectTrigger data-testid="quote-scheme-type"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                {Object.entries(SCHEME_LABELS).map(([k, l]) => (
+                                    <SelectItem key={k} value={k}>{l}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div>
+                        <Label>Стоп-капаро (€)</Label>
+                        <Input
+                            type="number"
+                            step="100"
+                            min="0"
+                            value={sched.stop_deposit_amount ?? 0}
+                            disabled={!editable}
+                            onChange={(e) => setSched({ stop_deposit_amount: e.target.value })}
+                            data-testid="quote-stop-deposit"
+                        />
+                    </div>
+                    <div>
+                        <Label>Дата на Акт 2</Label>
+                        <Input
+                            type="date"
+                            value={(sched.expected_act_2_date || "").substring(0, 10)}
+                            disabled={!editable}
+                            onChange={(e) => setSched({ expected_act_2_date: e.target.value })}
+                            data-testid="quote-act2-date"
+                        />
+                    </div>
+                </div>
+
+                <div className="rounded-md border hairline overflow-x-auto">
+                    <table className="w-full text-sm">
+                        <thead className="bg-stone-50 text-slate-600">
+                            <tr>
+                                <th className="text-left p-2 font-medium w-10">#</th>
+                                <th className="text-left p-2 font-medium">Етап</th>
+                                <th className="text-right p-2 font-medium w-20">%</th>
+                                <th className="text-right p-2 font-medium w-32">Сума</th>
+                                <th className="text-left p-2 font-medium w-44">Очаквана дата</th>
+                                {editable && <th className="w-10"></th>}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {stages.map((st, idx) => (
+                                <tr key={idx} className="border-t hairline" data-testid={`quote-stage-${idx}`}>
+                                    <td className="p-2 text-slate-500">{st.order || idx + 1}</td>
+                                    <td className="p-2">
+                                        <Input
+                                            value={st.label || ""}
+                                            disabled={!editable}
+                                            onChange={(e) => updateStage(idx, { label: e.target.value })}
+                                            className="h-8 text-sm"
+                                            data-testid={`quote-stage-label-${idx}`}
+                                        />
+                                        <Input
+                                            value={st.description || ""}
+                                            disabled={!editable}
+                                            onChange={(e) => updateStage(idx, { description: e.target.value })}
+                                            placeholder="описание (по желание)"
+                                            className="h-7 text-xs mt-1 text-slate-500"
+                                        />
+                                    </td>
+                                    <td className="p-2 text-right">
+                                        <Input
+                                            type="number"
+                                            step="0.5"
+                                            value={st.percent ?? 0}
+                                            disabled={!editable}
+                                            onChange={(e) => {
+                                                const v = parseFloat(e.target.value || 0);
+                                                updateStage(idx, { percent: v, amount: Math.round(total * v / 100 * 100) / 100 });
+                                            }}
+                                            className="h-8 text-sm text-right"
+                                            data-testid={`quote-stage-percent-${idx}`}
+                                        />
+                                    </td>
+                                    <td className="p-2 text-right">
+                                        <span className="text-slate-700 font-medium" data-testid={`quote-stage-amount-${idx}`}>
+                                            {currency(st.amount || 0)}
+                                        </span>
+                                    </td>
+                                    <td className="p-2">
+                                        <Input
+                                            type="date"
+                                            value={(st.expected_date || "").substring(0, 10)}
+                                            disabled={!editable}
+                                            onChange={(e) => updateStage(idx, { expected_date: e.target.value })}
+                                            className="h-8 text-sm"
+                                            data-testid={`quote-stage-date-${idx}`}
+                                        />
+                                    </td>
+                                    {editable && (
+                                        <td className="p-2 text-right">
+                                            <Button size="sm" variant="outline" onClick={() => removeStage(idx)} title="Премахни" data-testid={`quote-stage-remove-${idx}`}>
+                                                <X className="h-3 w-3" />
+                                            </Button>
+                                        </td>
+                                    )}
+                                </tr>
+                            ))}
+                            {stages.length === 0 && (
+                                <tr><td colSpan={editable ? 6 : 5} className="p-4 text-center text-sm text-slate-500">Няма етапи. Добавете нов или сменете типа на схемата.</td></tr>
+                            )}
+                        </tbody>
+                        <tfoot className="bg-stone-50">
+                            <tr className="border-t hairline">
+                                <td colSpan={2} className="p-2 font-medium text-slate-700">ОБЩО</td>
+                                <td className={`p-2 text-right font-medium ${Math.abs(sumPercent - 100) > 0.01 ? "text-amber-700" : "text-slate-900"}`} data-testid="quote-stages-percent-total">
+                                    {sumPercent.toFixed(0)}%
+                                </td>
+                                <td className="p-2 text-right font-medium" data-testid="quote-stages-amount-total">{currency(sumAmount)}</td>
+                                <td colSpan={editable ? 2 : 1} className="p-2 text-xs text-slate-500">
+                                    {stop > 0 && <>− {currency(stop)} стоп-капаро</>}
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                {Math.abs(sumPercent - 100) > 0.01 && (
+                    <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                        ⚠ Сумата на процентите е {sumPercent.toFixed(0)}%, не 100%. Намести вноските преди да изпратиш офертата.
+                    </div>
+                )}
+
+                {editable && (
+                    <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={addStage} data-testid="quote-stage-add">
+                            <Plus className="h-3.5 w-3.5 mr-1" /> Добави етап
+                        </Button>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setResetDialog(sched.scheme_type || "standard")}
+                            data-testid="quote-stage-reset"
+                        >
+                            ↻ Reset към default
+                        </Button>
+                    </div>
+                )}
+            </div>
+
+            <Dialog open={!!resetDialog} onOpenChange={(o) => !o && setResetDialog(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle className="font-serif text-2xl">Презареждане на схемата</DialogTitle>
+                        <DialogDescription>
+                            Това ще премахне всички ръчни промени и ще генерира нова схема от тип „{SCHEME_LABELS[resetDialog]}". Продължавате ли?
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setResetDialog(null)}>Отказ</Button>
+                        <Button
+                            className="bg-slate-900 text-white hover:bg-slate-800"
+                            onClick={async () => {
+                                const t = resetDialog;
+                                setResetDialog(null);
+                                await onResetTo(t);
+                            }}
+                            data-testid="quote-reset-confirm"
+                        >
+                            Презареди
                         </Button>
                     </DialogFooter>
                 </DialogContent>

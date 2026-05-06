@@ -6,6 +6,7 @@ Layout: A4 portrait with vertical logo header, items table, totals, terms, foote
 import io
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -58,6 +59,21 @@ def _fmt_date_iso(iso: str) -> str:
         else:
             d = datetime.fromisoformat(iso).date()
         return d.strftime("%d.%m.%Y")
+    except Exception:
+        return iso
+
+
+def _parse_date_to_bg(iso: Optional[str]) -> str:
+    """For schedule milestones: short BG month/year, e.g. „Юли 2026"."""
+    from services.payment_schemes import fmt_bg_month_year
+    if not iso:
+        return "—"
+    try:
+        if "T" in iso:
+            d = datetime.fromisoformat(iso.replace("Z", "+00:00")).date()
+        else:
+            d = datetime.fromisoformat(iso).date()
+        return fmt_bg_month_year(d)
     except Exception:
         return iso
 
@@ -226,6 +242,87 @@ def build_quote_pdf(quote: dict) -> bytes:
         story.append(Paragraph("ДОПЪЛНИТЕЛНИ БЕЛЕЖКИ", h2))
         for line in (quote["additional_notes"] or "").split("\n"):
             story.append(Paragraph(line or "&nbsp;", muted))
+        story.append(Spacer(1, 4 * mm))
+
+    # ---- Payment Schedule ----
+    sched = quote.get("payment_schedule") or {}
+    stages = sched.get("stages") or []
+    if stages:
+        from services.payment_schemes import fmt_bg_month_year
+        scheme_label = {
+            "standard": "Стандартна (без банков кредит)",
+            "with_bank": "С банков кредит",
+            "custom": "Custom",
+        }.get(sched.get("scheme_type"), "Custom")
+        story.append(Paragraph(f"СХЕМА ЗА ПЛАЩАНЕ — {scheme_label}", h2))
+        if sched.get("expected_act_2_date"):
+            story.append(Paragraph(
+                f"Дата на Акт 2: {_fmt_date_iso(sched['expected_act_2_date'])} · Срок за завършване: ~30 месеца",
+                muted,
+            ))
+        if sched.get("stop_deposit_amount") and float(sched["stop_deposit_amount"]) > 0:
+            story.append(Paragraph(
+                f"Внесено стоп-капаро: {_fmt_money(float(sched['stop_deposit_amount']))} (приспаднато от долните вноски)",
+                muted,
+            ))
+        story.append(Spacer(1, 2 * mm))
+        sch_head = [
+            Paragraph('<font name="LiberationSans-Bold" size="9">#</font>', base_style),
+            Paragraph('<font name="LiberationSans-Bold" size="9">Етап</font>', base_style),
+            Paragraph('<font name="LiberationSans-Bold" size="9">Очаквана дата</font>', base_style),
+            Paragraph('<font name="LiberationSans-Bold" size="9">%</font>', base_style),
+            Paragraph('<font name="LiberationSans-Bold" size="9">Сума</font>', base_style),
+        ]
+        sch_rows = [sch_head]
+        total_pct = 0.0
+        total_amt = 0.0
+        for st in stages:
+            order = st.get("order")
+            label = st.get("label") or "—"
+            desc = st.get("description") or ""
+            pct = float(st.get("percent") or 0)
+            amount = float(st.get("amount") or 0)
+            ed = _parse_date_to_bg(st.get("expected_date"))
+            total_pct += pct
+            total_amt += amount
+            label_block = label
+            if desc:
+                label_block += f"<br/><font size='7' color='#64748b'>{desc}</font>"
+            sch_rows.append([
+                Paragraph(str(order or "—"), base_style),
+                Paragraph(label_block, base_style),
+                Paragraph(ed, base_style),
+                Paragraph(f"{pct:.0f}%", base_style),
+                Paragraph(_fmt_money(amount), base_style),
+            ])
+        sch_rows.append([
+            "",
+            Paragraph('<font name="LiberationSans-Bold">ОБЩО</font>', base_style),
+            "",
+            Paragraph(f'<font name="LiberationSans-Bold">{total_pct:.0f}%</font>', base_style),
+            Paragraph(f'<font name="LiberationSans-Bold">{_fmt_money(total_amt)}</font>', base_style),
+        ])
+        sch_tbl = Table(sch_rows, colWidths=[10 * mm, 70 * mm, 38 * mm, 18 * mm, 28 * mm])
+        sch_tbl.setStyle(TableStyle([
+            ("FONT", (0, 0), (-1, -1), _FONT_NAME, 9),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f8fafc")),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.5, colors.HexColor("#cbd5e1")),
+            ("LINEABOVE", (0, -1), (-1, -1), 0.5, colors.HexColor("#0f172a")),
+            ("INNERGRID", (0, 1), (-1, -2), 0.25, colors.HexColor("#e2e8f0")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("ALIGN", (3, 0), (-1, -1), "RIGHT"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.append(sch_tbl)
+        story.append(Spacer(1, 3 * mm))
+        story.append(Paragraph(
+            "<font color='#64748b'>ВАЖНО: Сроковете са приблизителни. При неспазване на срок неустойка 0.2%/ден. "
+            "Капарото е невъзстановимо при отказ от страна на купувача.</font>",
+            small,
+        ))
         story.append(Spacer(1, 4 * mm))
 
     # ---- Footer ----
