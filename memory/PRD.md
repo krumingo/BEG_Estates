@@ -22,8 +22,12 @@
 - **v1.0 (2026-05-06)** — Clients Unification Pack C: unified `db.users(role=client)` as single clients directory, full CRUD endpoints, AdminClients UI rewrite, Brand fix "Building Express Group"
 # BEG Estates / EstateFlow — Product Requirements Document
 
-**Last updated:** 2026-05-06 (iteration 14)
-**Status:** Iteration 14 — Deal Editor Full UI Pack G.2 (v1.5)
+**Last updated:** 2026-05-06 (iteration 15)
+**Status:** Iteration 15 — Terminology Redesign Pack G.2.1 (v1.5.1)
+
+## Iterations
+- **v1.5 (2026-05-06)** — Deal Editor Full UI Pack G.2
+- **v1.5.1 (2026-05-06)** — **Terminology Redesign Pack G.2.1**: with_bank→bank_loan ("Банков кредит"), without_bank→own_funds ("Лични средства"), bucket non_bank→own; both buckets now have invoice/proforma split; auto-suggest при въвеждане; schedule без editable % колона
 
 ## Iterations
 - **v1.0 (2026-05-06)** — Clients Unification Pack C: unified `db.users(role=client)` as single clients directory
@@ -155,6 +159,20 @@ Seed is gated by `system_meta.seed.version` tag so future schema changes force c
   - `POST /api/properties/{id}/payments` — inserts payment record keyed by `property_id` + greedy mark-as-paid of oldest unpaid installments it fully covers (no partials in this package); audit `property_payment_recorded`
 - New Pydantic models: `PropertyFinancePlanUpdate`, `PropertyInstallmentInput`, `PropertyPaymentCreate`
 - Frontend `AdminProperties.jsx`: extracted `PropertyFormBody` + added `FinanceSection` with summary cards, upcoming 1/2/3 block, editable installments table, payment form + history
+
+### v1.5.1 — G.2.1 Terminology Redesign (2026-05-06)
+- **Backend model renames**: `DealPaymentMode.mode`: `with_bank`→`bank_loan`, `without_bank`→`own_funds`. Нови полета: `own_amount`, `bank_invoice_amount`, `bank_proforma_amount`, `own_invoice_amount`, `own_proforma_amount` (premahnati: `non_bank_amount`, `invoice_amount`, `proforma_amount`). Bucket: `non_bank`→`own`. Deal field `non_bank_stages`→`own_stages`.
+- **Migration** (`migrations/rename_payment_terminology.py`, idempotent via marker в `_migrations`) — auto-мигрира 5 съществуващи deals с правилна renaming.
+- **Нов endpoint** `POST /api/deals/{id}/suggest-distribution` (super_admin) — връща auto-filled breakdown при промяна на едно поле (напр. `bank_invoice=5000` при total=11584 → `bank_proforma=6584`).
+- **PUT /api/deals/{id}** — backend сега recompute-ва `percent` от `amount/basis` на всички stages (amount = source of truth).
+- **Frontend helpers** (`/app/frontend/src/lib/deal-helpers.js`): нови функции `suggestDistribution` (mirror на backend), `defaultBreakdownForMode`, `rescaleStagesByBasis`, `recomputeStagePercents`. `validatePaymentMode` покрива и двата invoice/proforma split-а.
+- **Frontend DealEditor**:
+  - PaymentModeSection redesigned — 3 секции (combined split / bank invoice-proforma / own invoice-proforma) + summary (По фактура / По проформа / Общо с ✓✗ indicator). Auto-suggest на blur (NumLabelInput с local state + onCommit pattern).
+  - ScheduleSection: **премахната editable % колона**, само Сума с info text `(X% от basis)` под полето; `sum` показва total суми; validation warning ако sum ≠ basis.
+  - Всички radio + testids обновени: `pm-radio-bank_loan` / `pm-radio-own_funds` / `pm-radio-combined`, `schedule-section-bank` / `schedule-section-own`, `stage-amount-{bucket}-{order}` (вместо `stage-percent-*`).
+  - NewDealWizard radio values обновени.
+- **Bug fix (testing agent)**: `/app/frontend/src/pages/admin/AdminDeals.jsx:179` използваше `non_bank_stages` — fixed to `own_stages` за правилен прогрес бар след миграцията.
+- **Тестове:** 16/16 backend + 100% frontend ✅ (виж `/app/test_reports/iteration_5.json` и `/app/backend/tests/test_deals_g21.py`)
 
 ### v1.5 — G.2 Deal Editor Full UI (2026-05-06)
 - **AdminDeals списък**: filter by status/client + search; counters Активни/Завършени/Отказани; progress bar (sumPaidAmount/total_with_vat); delete button за cancelled сделки с confirmation+reason
