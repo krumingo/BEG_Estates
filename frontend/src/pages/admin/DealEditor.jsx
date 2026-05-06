@@ -17,9 +17,9 @@ import {
 import { toast } from "sonner";
 import {
     DEAL_STATUS_LABELS, DEAL_STATUS_BADGE, PAYMENT_MODE_LABELS,
-    calculateVatSplit, sumStagesAmount, sumStagesPercent, sumPaidAmount,
+    calculateVatSplit, sumStagesAmount, sumPaidAmount,
     validatePaymentMode, validateScheduleSum, bucketBasis, isBucketVisible,
-    round2,
+    round2, suggestDistribution, defaultBreakdownForMode,
 } from "../../lib/deal-helpers";
 import { floorLabel, floorKote, PROPERTY_TYPE_LABELS } from "../../lib/constants";
 
@@ -42,7 +42,7 @@ function NewDealWizard() {
     const [properties, setProperties] = useState([]);
     const [selected, setSelected] = useState(new Set());
     const [agreedPrices, setAgreedPrices] = useState({});
-    const [paymentMode, setPaymentMode] = useState("without_bank");
+    const [paymentMode, setPaymentMode] = useState("own_funds");
     const [autoSchedule, setAutoSchedule] = useState(true);
     const [creating, setCreating] = useState(false);
 
@@ -114,8 +114,8 @@ function NewDealWizard() {
             const { data: deal } = await api.post("/deals", payload);
             // Auto-generate schedule if requested
             if (autoSchedule) {
-                const preset = paymentMode === "with_bank" ? "with_bank" : "standard";
-                const bucket = paymentMode === "combined" ? "both" : (paymentMode === "with_bank" ? "bank" : "non_bank");
+                const preset = paymentMode === "bank_loan" ? "with_bank" : "standard";
+                const bucket = paymentMode === "combined" ? "both" : (paymentMode === "bank_loan" ? "bank" : "own");
                 try {
                     await api.post(`/deals/${deal.id}/regenerate-schedule`, { bucket, preset });
                 } catch (e) {
@@ -350,21 +350,21 @@ function DealEditorMain({ id }) {
     };
 
     const updateStage = (bucket, idx, field, value) => {
-        const key = bucket === "bank" ? "bank_stages" : "non_bank_stages";
+        const key = bucket === "bank" ? "bank_stages" : "own_stages";
         setDeal((prev) => {
             const stages = [...(prev[key] || [])];
-            stages[idx] = { ...stages[idx], [field]: field === "percent" || field === "amount" ? Number(value) || 0 : value };
-            // If percent changed, recompute amount
-            if (field === "percent") {
+            stages[idx] = { ...stages[idx], [field]: field === "amount" ? Number(value) || 0 : value };
+            // If amount changed, recompute percent (info-only)
+            if (field === "amount") {
                 const basis = bucketBasis(prev, bucket);
-                stages[idx].amount = round2(basis * stages[idx].percent / 100);
+                stages[idx].percent = basis > 0 ? round2(stages[idx].amount * 100 / basis) : 0;
             }
             return { ...prev, [key]: stages };
         });
     };
 
     const addStage = (bucket) => {
-        const key = bucket === "bank" ? "bank_stages" : "non_bank_stages";
+        const key = bucket === "bank" ? "bank_stages" : "own_stages";
         setDeal((prev) => {
             const stages = [...(prev[key] || [])];
             const nextOrder = stages.length === 0 ? 1 : Math.max(...stages.map((s) => s.order || 0)) + 1;
@@ -386,7 +386,7 @@ function DealEditorMain({ id }) {
     };
 
     const removeStage = (bucket, idx) => {
-        const key = bucket === "bank" ? "bank_stages" : "non_bank_stages";
+        const key = bucket === "bank" ? "bank_stages" : "own_stages";
         setDeal((prev) => ({
             ...prev,
             [key]: (prev[key] || []).filter((_, i) => i !== idx),
@@ -411,7 +411,7 @@ function DealEditorMain({ id }) {
                 })),
                 payment_mode: deal.payment_mode,
                 bank_stages: (deal.bank_stages || []).map((s) => sanitizeStage(s, "bank")),
-                non_bank_stages: (deal.non_bank_stages || []).map((s) => sanitizeStage(s, "non_bank")),
+                own_stages: (deal.own_stages || []).map((s) => sanitizeStage(s, "own")),
                 vat_rate: deal.vat_rate,
                 notes: deal.notes,
             };
@@ -496,7 +496,7 @@ function DealEditorMain({ id }) {
     if (!deal) return null;
 
     const isCancelled = deal.status === "cancelled";
-    const allStages = [...(deal.bank_stages || []), ...(deal.non_bank_stages || [])];
+    const allStages = [...(deal.bank_stages || []), ...(deal.own_stages || [])];
     const paidTotal = sumPaidAmount(allStages);
     const expectedTotal = round2(Number(deal.total_with_vat) - paidTotal);
     const paidPct = deal.total_with_vat > 0 ? (paidTotal / deal.total_with_vat) * 100 : 0;
@@ -623,24 +623,24 @@ function DealEditorMain({ id }) {
             <PaymentModeSection deal={deal} updateField={updateField} disabled={isCancelled} />
 
             {/* SCHEDULES */}
-            {isBucketVisible(deal, "non_bank") && (
+            {isBucketVisible(deal, "own") && (
                 <ScheduleSection
                     deal={deal}
-                    bucket="non_bank"
-                    title="Без банка"
+                    bucket="own"
+                    title="Лични средства"
                     disabled={isCancelled}
-                    onUpdate={(idx, field, value) => updateStage("non_bank", idx, field, value)}
-                    onAdd={() => addStage("non_bank")}
-                    onRemove={(idx) => removeStage("non_bank", idx)}
-                    onRegen={(preset) => regenerateSchedule("non_bank", preset)}
-                    onTogglePayment={(stage) => togglePayment("non_bank", stage)}
+                    onUpdate={(idx, field, value) => updateStage("own", idx, field, value)}
+                    onAdd={() => addStage("own")}
+                    onRemove={(idx) => removeStage("own", idx)}
+                    onRegen={(preset) => regenerateSchedule("own", preset)}
+                    onTogglePayment={(stage) => togglePayment("own", stage)}
                 />
             )}
             {isBucketVisible(deal, "bank") && (
                 <ScheduleSection
                     deal={deal}
                     bucket="bank"
-                    title="С банка"
+                    title="Банков кредит"
                     disabled={isCancelled}
                     onUpdate={(idx, field, value) => updateStage("bank", idx, field, value)}
                     onAdd={() => addStage("bank")}
@@ -725,41 +725,40 @@ function sanitizeStage(s, bucket) {
         payment_notes: s.payment_notes || null,
     };
 }
-
 // =====================================================
-// PAYMENT MODE SECTION
+// PAYMENT MODE SECTION (G.2.1 — both buckets have invoice/proforma)
 // =====================================================
 function PaymentModeSection({ deal, updateField, disabled }) {
     const pm = deal.payment_mode || {};
     const total = Number(deal.total_with_vat) || 0;
+    const mode = pm.mode || "own_funds";
 
-    const setMode = (mode) => {
-        // Reset breakdown defaults based on mode
-        const next = { mode };
-        if (mode === "with_bank") {
-            next.bank_amount = total;
-            next.non_bank_amount = 0;
-            next.invoice_amount = 0;
-            next.proforma_amount = 0;
-        } else if (mode === "without_bank") {
-            next.bank_amount = 0;
-            next.non_bank_amount = total;
-            next.invoice_amount = total;
-            next.proforma_amount = 0;
-        } else {
-            // combined — keep current or split 50/50
-            next.bank_amount = pm.bank_amount || round2(total / 2);
-            next.non_bank_amount = pm.non_bank_amount || round2(total / 2);
-            next.invoice_amount = pm.invoice_amount || next.non_bank_amount;
-            next.proforma_amount = pm.proforma_amount || 0;
-        }
+    const setMode = (newMode) => {
+        const fresh = defaultBreakdownForMode(newMode, total);
+        updateField("payment_mode.mode", newMode);
+        Object.entries(fresh).forEach(([k, v]) => updateField(`payment_mode.${k}`, v));
+    };
+
+    const setField = (field, value) => {
+        const num = Number(value) || 0;
+        const next = suggestDistribution(mode, total, pm, field, num);
         Object.entries(next).forEach(([k, v]) => updateField(`payment_mode.${k}`, v));
     };
 
-    const v = validatePaymentMode(pm.mode, total, pm);
+    const v = validatePaymentMode(mode, total, pm);
+
+    const showBank = mode === "bank_loan" || mode === "combined";
+    const showOwn = mode === "own_funds" || mode === "combined";
+
+    const bankBase = mode === "bank_loan" ? total : Number(pm.bank_amount || 0);
+    const ownBase = mode === "own_funds" ? total : Number(pm.own_amount || 0);
+
+    const totalInvoice = Number(pm.bank_invoice_amount || 0) + Number(pm.own_invoice_amount || 0);
+    const totalProforma = Number(pm.bank_proforma_amount || 0) + Number(pm.own_proforma_amount || 0);
+    const grand = totalInvoice + totalProforma;
 
     return (
-        <div className="rounded-xl border hairline bg-white p-6 space-y-4" data-testid="deal-payment-mode-section">
+        <div className="rounded-xl border hairline bg-white p-6 space-y-5" data-testid="deal-payment-mode-section">
             <div className="text-sm font-semibold text-slate-900">Тип плащане</div>
             <div className="flex gap-6 text-sm">
                 {Object.entries(PAYMENT_MODE_LABELS).map(([val, label]) => (
@@ -767,7 +766,7 @@ function PaymentModeSection({ deal, updateField, disabled }) {
                         <input
                             type="radio"
                             name="deal_payment_mode"
-                            checked={pm.mode === val}
+                            checked={mode === val}
                             onChange={() => setMode(val)}
                             disabled={disabled}
                             data-testid={`pm-radio-${val}`}
@@ -777,68 +776,128 @@ function PaymentModeSection({ deal, updateField, disabled }) {
                 ))}
             </div>
 
-            {pm.mode === "combined" && (
+            {/* COMBINED top split */}
+            {mode === "combined" && (
                 <div className="border-t hairline pt-4 space-y-3" data-testid="pm-combined-breakdown">
-                    <div className="text-xs text-slate-500 uppercase tracking-wide">Разпределение по/без банка</div>
+                    <div className="text-xs text-slate-500 uppercase tracking-wide">
+                        Разпределение по тип финансиране (общо: {currency(total)})
+                    </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <NumLabelInput
-                            label="По банка (€)"
+                            label="Банков кредит (€)"
                             value={pm.bank_amount}
-                            onChange={(v) => updateField("payment_mode.bank_amount", Number(v) || 0)}
+                            onCommit={(v) => setField("bank_amount", v)}
                             pct={total > 0 ? (Number(pm.bank_amount || 0) / total) * 100 : 0}
                             disabled={disabled}
                             testId="pm-bank-amount"
                         />
                         <NumLabelInput
-                            label="Без банка (€)"
-                            value={pm.non_bank_amount}
-                            onChange={(v) => updateField("payment_mode.non_bank_amount", Number(v) || 0)}
-                            pct={total > 0 ? (Number(pm.non_bank_amount || 0) / total) * 100 : 0}
+                            label="Лични средства (€)"
+                            value={pm.own_amount}
+                            onCommit={(v) => setField("own_amount", v)}
+                            pct={total > 0 ? (Number(pm.own_amount || 0) / total) * 100 : 0}
                             disabled={disabled}
-                            testId="pm-non-bank-amount"
+                            testId="pm-own-amount"
                         />
+                    </div>
+                    <div className="text-[11px] text-slate-400 italic">
+                        Полетата се auto-pополват, така че сумата да е винаги {currency(total)}.
                     </div>
                 </div>
             )}
 
-            {(pm.mode === "without_bank" || pm.mode === "combined") && (
-                <div className="border-t hairline pt-4 space-y-3">
+            {/* BANK invoice/proforma */}
+            {showBank && (
+                <div className="border-t hairline pt-4 space-y-3" data-testid="pm-bank-section">
                     <div className="text-xs text-slate-500 uppercase tracking-wide">
-                        Без банка ({currency(pm.mode === "combined" ? pm.non_bank_amount : total)}) — фактура / проформа
+                        Банков кредит — фактура / проформа (общо: {currency(bankBase)})
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <NumLabelInput
                             label="Фактура (€)"
-                            value={pm.invoice_amount}
-                            onChange={(v) => updateField("payment_mode.invoice_amount", Number(v) || 0)}
+                            value={pm.bank_invoice_amount}
+                            onCommit={(v) => setField("bank_invoice_amount", v)}
+                            pct={bankBase > 0 ? (Number(pm.bank_invoice_amount || 0) / bankBase) * 100 : 0}
                             disabled={disabled}
-                            testId="pm-invoice-amount"
+                            testId="pm-bank-invoice"
                         />
                         <NumLabelInput
                             label="Проформа (€)"
-                            value={pm.proforma_amount}
-                            onChange={(v) => updateField("payment_mode.proforma_amount", Number(v) || 0)}
+                            value={pm.bank_proforma_amount}
+                            onCommit={(v) => setField("bank_proforma_amount", v)}
+                            pct={bankBase > 0 ? (Number(pm.bank_proforma_amount || 0) / bankBase) * 100 : 0}
                             disabled={disabled}
-                            testId="pm-proforma-amount"
+                            testId="pm-bank-proforma"
                         />
                     </div>
                 </div>
             )}
 
-            {pm.mode === "with_bank" && (
-                <div className="text-xs text-slate-500 italic">Цялата сума ({currency(total)}) се плаща по банков превод (винаги по фактура).</div>
+            {/* OWN invoice/proforma */}
+            {showOwn && (
+                <div className="border-t hairline pt-4 space-y-3" data-testid="pm-own-section">
+                    <div className="text-xs text-slate-500 uppercase tracking-wide">
+                        Лични средства — фактура / проформа (общо: {currency(ownBase)})
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <NumLabelInput
+                            label="Фактура (€)"
+                            value={pm.own_invoice_amount}
+                            onCommit={(v) => setField("own_invoice_amount", v)}
+                            pct={ownBase > 0 ? (Number(pm.own_invoice_amount || 0) / ownBase) * 100 : 0}
+                            disabled={disabled}
+                            testId="pm-own-invoice"
+                        />
+                        <NumLabelInput
+                            label="Проформа (€)"
+                            value={pm.own_proforma_amount}
+                            onCommit={(v) => setField("own_proforma_amount", v)}
+                            pct={ownBase > 0 ? (Number(pm.own_proforma_amount || 0) / ownBase) * 100 : 0}
+                            disabled={disabled}
+                            testId="pm-own-proforma"
+                        />
+                    </div>
+                </div>
             )}
 
+            {/* Totals summary */}
+            <div className="border-t hairline pt-4 grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm" data-testid="pm-totals-summary">
+                <div className="rounded-md bg-stone-50 p-2">
+                    <div className="text-[11px] text-slate-500 uppercase">По фактура</div>
+                    <div className="font-medium text-slate-900">
+                        {currency(totalInvoice)} <span className="text-xs text-slate-500">({total > 0 ? ((totalInvoice / total) * 100).toFixed(1) : "0"}%)</span>
+                    </div>
+                </div>
+                <div className="rounded-md bg-stone-50 p-2">
+                    <div className="text-[11px] text-slate-500 uppercase">По проформа</div>
+                    <div className="font-medium text-slate-900">
+                        {currency(totalProforma)} <span className="text-xs text-slate-500">({total > 0 ? ((totalProforma / total) * 100).toFixed(1) : "0"}%)</span>
+                    </div>
+                </div>
+                <div className={`rounded-md p-2 ${Math.abs(grand - total) < 0.01 ? "bg-emerald-50 border border-emerald-200" : "bg-rose-50 border border-rose-200"}`}>
+                    <div className="text-[11px] text-slate-500 uppercase">Общо</div>
+                    <div className="font-medium text-slate-900 inline-flex items-center gap-1">
+                        {currency(grand)} {Math.abs(grand - total) < 0.01 ? "✓" : "✗"}
+                    </div>
+                </div>
+            </div>
+
             {!v.valid && (
-                <div className="rounded-md bg-rose-50 border border-rose-200 p-2 text-xs text-rose-900" data-testid="pm-error">
-                    {v.errors.join(" · ")}
+                <div className="rounded-md bg-amber-50 border border-amber-200 p-2 text-xs text-amber-900 space-y-1" data-testid="pm-warning">
+                    {v.errors.map((e, i) => <div key={i}><AlertTriangle className="h-3.5 w-3.5 inline mr-1" /> {e}</div>)}
                 </div>
             )}
         </div>
     );
 }
 
-function NumLabelInput({ label, value, onChange, pct, disabled, testId }) {
+function NumLabelInput({ label, value, onCommit, pct, disabled, testId }) {
+    const [local, setLocal] = useState(value ?? "");
+    useEffect(() => { setLocal(value ?? ""); }, [value]);
+    const commit = () => {
+        const n = Number(local) || 0;
+        if (n !== Number(value)) onCommit(n);
+    };
     return (
         <div>
             <Label className="text-xs">{label}</Label>
@@ -847,13 +906,15 @@ function NumLabelInput({ label, value, onChange, pct, disabled, testId }) {
                     type="number"
                     min="0"
                     step="0.01"
-                    value={value ?? ""}
-                    onChange={(e) => onChange(e.target.value)}
+                    value={local}
+                    onChange={(e) => setLocal(e.target.value)}
+                    onBlur={commit}
+                    onKeyDown={(e) => e.key === "Enter" && commit()}
                     disabled={disabled}
                     data-testid={testId}
                 />
                 {pct !== undefined && (
-                    <span className="text-xs text-slate-500 whitespace-nowrap w-12 text-right">{pct.toFixed(1)}%</span>
+                    <span className="text-xs text-slate-500 whitespace-nowrap w-14 text-right">{pct.toFixed(1)}%</span>
                 )}
             </div>
         </div>
@@ -861,16 +922,15 @@ function NumLabelInput({ label, value, onChange, pct, disabled, testId }) {
 }
 
 // =====================================================
-// SCHEDULE SECTION
+// SCHEDULE SECTION (G.2.1 — no editable %; info-only)
 // =====================================================
 function ScheduleSection({ deal, bucket, title, disabled, onUpdate, onAdd, onRemove, onRegen, onTogglePayment }) {
-    const stages = (bucket === "bank" ? deal.bank_stages : deal.non_bank_stages) || [];
+    const stages = (bucket === "bank" ? deal.bank_stages : deal.own_stages) || [];
     const basis = bucketBasis(deal, bucket);
-    const sumPct = sumStagesPercent(stages);
     const sumAmt = sumStagesAmount(stages);
     const paid = sumPaidAmount(stages);
     const due = round2(sumAmt - paid);
-    const validation = validateScheduleSum(stages);
+    const validation = validateScheduleSum(stages, basis);
 
     return (
         <div className="rounded-xl border hairline bg-white p-6 space-y-4" data-testid={`schedule-section-${bucket}`}>
@@ -915,8 +975,7 @@ function ScheduleSection({ deal, bucket, title, disabled, onUpdate, onAdd, onRem
                     <tr>
                         <th className="text-left py-2 font-medium w-12">#</th>
                         <th className="text-left py-2 font-medium">Етап</th>
-                        <th className="text-right py-2 font-medium w-20">%</th>
-                        <th className="text-right py-2 font-medium w-32">Сума</th>
+                        <th className="text-right py-2 font-medium w-44">Сума (€)</th>
                         <th className="text-left py-2 font-medium w-40">Дата</th>
                         <th className="text-center py-2 font-medium w-32">Платено</th>
                         {!disabled && <th className="w-10"></th>}
@@ -924,88 +983,97 @@ function ScheduleSection({ deal, bucket, title, disabled, onUpdate, onAdd, onRem
                 </thead>
                 <tbody>
                     {stages.length === 0 && (
-                        <tr><td colSpan={disabled ? 6 : 7} className="py-4 text-sm text-slate-500 italic text-center">Няма етапи. Натиснете „Auto-генерирай" за стандартен schedule.</td></tr>
+                        <tr><td colSpan={disabled ? 5 : 6} className="py-4 text-sm text-slate-500 italic text-center">Няма етапи. Натиснете „Auto-генерирай" за стандартен schedule.</td></tr>
                     )}
-                    {stages.map((s, idx) => (
-                        <tr key={idx} className={`border-b hairline ${s.is_paid ? "bg-emerald-50/40" : ""}`} data-testid={`stage-row-${bucket}-${s.order}`}>
-                            <td className="py-2 font-mono text-slate-500">{s.order}</td>
-                            <td className="py-2">
-                                <Input
-                                    value={s.label || ""}
-                                    onChange={(e) => onUpdate(idx, "label", e.target.value)}
-                                    disabled={disabled || s.is_paid}
-                                    className="h-8"
-                                    data-testid={`stage-label-${bucket}-${s.order}`}
-                                />
-                            </td>
-                            <td className="py-2 text-right">
-                                <Input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    value={s.percent ?? ""}
-                                    onChange={(e) => onUpdate(idx, "percent", e.target.value)}
-                                    disabled={disabled || s.is_paid}
-                                    className="h-8 w-20 text-right ml-auto"
-                                    data-testid={`stage-percent-${bucket}-${s.order}`}
-                                />
-                            </td>
-                            <td className="py-2 text-right text-slate-700">{currency(s.amount)}</td>
-                            <td className="py-2">
-                                <Input
-                                    type="date"
-                                    value={(s.expected_date || "").slice(0, 10)}
-                                    onChange={(e) => onUpdate(idx, "expected_date", e.target.value)}
-                                    disabled={disabled || s.is_paid}
-                                    className="h-8 w-36"
-                                    data-testid={`stage-date-${bucket}-${s.order}`}
-                                />
-                            </td>
-                            <td className="py-2 text-center">
-                                {s.is_paid ? (
-                                    <button
-                                        type="button"
-                                        onClick={() => !disabled && onTogglePayment(s)}
-                                        disabled={disabled}
-                                        className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200 hover:bg-emerald-200 transition disabled:opacity-50"
-                                        data-testid={`stage-paid-${bucket}-${s.order}`}
-                                    >
-                                        <CheckCircle2 className="h-3.5 w-3.5" />
-                                        {s.paid_date ? new Date(s.paid_date).toLocaleDateString("bg-BG") : "Платено"}
-                                    </button>
-                                ) : (
-                                    <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => !disabled && onTogglePayment(s)}
-                                        disabled={disabled}
-                                        className="h-7"
-                                        data-testid={`stage-mark-${bucket}-${s.order}`}
-                                    >
-                                        Маркирай
-                                    </Button>
-                                )}
-                            </td>
-                            {!disabled && (
+                    {stages.map((s, idx) => {
+                        const pct = basis > 0 ? (Number(s.amount) || 0) * 100 / basis : 0;
+                        return (
+                            <tr key={idx} className={`border-b hairline ${s.is_paid ? "bg-emerald-50/40" : ""}`} data-testid={`stage-row-${bucket}-${s.order}`}>
+                                <td className="py-2 font-mono text-slate-500">{s.order}</td>
+                                <td className="py-2">
+                                    <Input
+                                        value={s.label || ""}
+                                        onChange={(e) => onUpdate(idx, "label", e.target.value)}
+                                        disabled={disabled || s.is_paid}
+                                        className="h-8"
+                                        data-testid={`stage-label-${bucket}-${s.order}`}
+                                    />
+                                </td>
                                 <td className="py-2 text-right">
-                                    {!s.is_paid && (
+                                    <Input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={s.amount ?? ""}
+                                        onChange={(e) => onUpdate(idx, "amount", e.target.value)}
+                                        disabled={disabled || s.is_paid}
+                                        className="h-8 w-32 text-right ml-auto"
+                                        data-testid={`stage-amount-${bucket}-${s.order}`}
+                                    />
+                                    <div className="text-[11px] text-slate-400 mt-0.5">
+                                        {pct.toFixed(1)}% от {currency(basis)}
+                                    </div>
+                                </td>
+                                <td className="py-2">
+                                    <Input
+                                        type="date"
+                                        value={(s.expected_date || "").slice(0, 10)}
+                                        onChange={(e) => onUpdate(idx, "expected_date", e.target.value)}
+                                        disabled={disabled || s.is_paid}
+                                        className="h-8 w-36"
+                                        data-testid={`stage-date-${bucket}-${s.order}`}
+                                    />
+                                </td>
+                                <td className="py-2 text-center">
+                                    {s.is_paid ? (
                                         <button
                                             type="button"
-                                            onClick={() => onRemove(idx)}
-                                            className="text-slate-400 hover:text-rose-600"
-                                            data-testid={`stage-remove-${bucket}-${s.order}`}
+                                            onClick={() => !disabled && onTogglePayment(s)}
+                                            disabled={disabled}
+                                            className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200 hover:bg-emerald-200 transition disabled:opacity-50"
+                                            data-testid={`stage-paid-${bucket}-${s.order}`}
                                         >
-                                            <X className="h-4 w-4" />
+                                            <CheckCircle2 className="h-3.5 w-3.5" />
+                                            {s.paid_date ? new Date(s.paid_date).toLocaleDateString("bg-BG") : "Платено"}
                                         </button>
+                                    ) : (
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => !disabled && onTogglePayment(s)}
+                                            disabled={disabled}
+                                            className="h-7"
+                                            data-testid={`stage-mark-${bucket}-${s.order}`}
+                                        >
+                                            Маркирай
+                                        </Button>
                                     )}
                                 </td>
-                            )}
-                        </tr>
-                    ))}
+                                {!disabled && (
+                                    <td className="py-2 text-right">
+                                        {!s.is_paid && (
+                                            <button
+                                                type="button"
+                                                onClick={() => onRemove(idx)}
+                                                className="text-slate-400 hover:text-rose-600"
+                                                data-testid={`stage-remove-${bucket}-${s.order}`}
+                                            >
+                                                <X className="h-4 w-4" />
+                                            </button>
+                                        )}
+                                    </td>
+                                )}
+                            </tr>
+                        );
+                    })}
                     <tr className="font-medium">
                         <td colSpan={2} className="py-3 text-right text-slate-600">ОБЩО:</td>
-                        <td className="py-3 text-right" data-testid={`schedule-sum-pct-${bucket}`}>{sumPct.toFixed(1)}%</td>
-                        <td className="py-3 text-right">{currency(sumAmt)}</td>
+                        <td className="py-3 text-right" data-testid={`schedule-sum-${bucket}`}>
+                            {currency(sumAmt)}
+                            <div className="text-[11px] text-slate-400 font-normal">
+                                {basis > 0 ? `${(sumAmt * 100 / basis).toFixed(1)}% от базата` : ""}
+                            </div>
+                        </td>
                         <td colSpan={disabled ? 2 : 3} className="py-3 text-xs text-slate-500">
                             Получени: <strong className="text-emerald-700">{currency(paid)}</strong> · Дължими: <strong className="text-slate-900">{currency(due)}</strong>
                         </td>

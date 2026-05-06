@@ -176,7 +176,7 @@ export default function AdminDeals() {
                         )}
                         {!loading && filtered.map((d) => {
                             const items = d.items || [];
-                            const stagesAll = [...(d.bank_stages || []), ...(d.non_bank_stages || [])];
+                            const stagesAll = [...(d.bank_stages || []), ...(d.own_stages || [])];
                             const paid = sumPaidAmount(stagesAll);
                             const total = Number(d.total_with_vat) || 0;
                             const pct = total > 0 ? Math.min(100, (paid / total) * 100) : 0;

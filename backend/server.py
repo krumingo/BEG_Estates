@@ -16,6 +16,7 @@ from routes import auth_routes, projects, reservations, dashboard, audit, profil
 from seed import seed_all
 from migrations.migrate_buyers_to_clients import migrate_buyers_to_clients
 from migrations.cleanup_old_financial import cleanup_old_financial
+from migrations.rename_payment_terminology import rename_payment_terminology
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -74,6 +75,8 @@ async def on_startup():
     # G.1 cleanup: drop legacy financial collections (sales, quotes, payments, etc.)
     # Idempotent — only runs once via marker doc in `_migrations`.
     await cleanup_old_financial()
+    # G.2.1 terminology rename: with_bank → bank_loan, without_bank → own_funds, bucket non_bank → own
+    await rename_payment_terminology()
     logger.info("BEG Estates API ready (seed complete)")
 
 

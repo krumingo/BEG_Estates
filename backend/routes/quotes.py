@@ -454,19 +454,19 @@ async def convert_quote_to_deal(
         client_id=quote.get("client_id"),
         property_ids=property_ids,
         agreed_prices=agreed_prices,
-        payment_mode_str="without_bank",
+        payment_mode_str="own_funds",
         source_quote_id=quote.get("id"),
         user_id=user["id"],
     )
 
-    # Import quote schedule into non_bank_stages
+    # Import quote schedule into own_stages
     sched = quote.get("payment_schedule") or {}
     if sched.get("stages"):
-        non_bank_stages = _stages_from_scheme(sched, "non_bank")
+        own_stages = _stages_from_scheme(sched, "own")
         await db.deals.update_one(
             {"id": deal["id"]},
             {"$set": {
-                "non_bank_stages": non_bank_stages,
+                "own_stages": own_stages,
                 "updated_at": _now_iso(),
             }},
         )

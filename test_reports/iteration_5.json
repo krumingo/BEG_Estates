@@ -1,0 +1,73 @@
+{
+  "summary": "G.2.1 Terminology Rename Testing Complete - 16/16 backend tests passed (100%), all frontend UI tests passed. Verified new terminology (bank_loan/own_funds/combined, bucket=own) works correctly. Fixed bug in AdminDeals.jsx (non_bank_stages → own_stages).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_deals_g21.py",
+    "/app/test_reports/pytest/pytest_deals_g21.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "FIXED: AdminDeals.jsx line 179 used 'd.non_bank_stages' instead of 'd.own_stages' - progress bar calculation was broken for migrated deals",
+    "Backend migration (rename_payment_terminology) ran successfully on boot - migrated 5 deals",
+    "Migration marker 'g2_1_rename_payment_terminology' correctly stored in _migrations collection",
+    "All new testids verified: pm-radio-bank_loan, pm-radio-own_funds, pm-radio-combined, pm-bank-section, pm-own-section, pm-combined-breakdown, schedule-section-own, schedule-section-bank, stage-amount-{bucket}-{order}",
+    "No old testids found (pm-radio-with_bank, pm-radio-without_bank, schedule-section-non_bank)",
+    "PAYMENT_MODE_LABELS correctly shows: Банков кредит, Лични средства, Комбиниран",
+    "Schedule sections correctly titled: 'Вноски — Лични средства' and 'Вноски — Банков кредит'",
+    "Schedule has NO editable % column - only Сума column with '(X% от basis)' info text below",
+    "Auto-generate creates 8 stages for own bucket (standard preset), 4 stages for bank bucket (with_bank preset)",
+    "suggest-distribution endpoint works correctly for all field combinations",
+    "Quote→Deal conversion creates deal with payment_mode='own_funds' and imports schedule into own_stages"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_deals_g21.py",
+    "/app/frontend/src/pages/admin/AdminDeals.jsx"
+  ],
+  "success_rate": {
+    "backend": "100% (16/16 tests passed)",
+    "frontend": "100% (all UI tests passed)"
+  },
+  "test_credentials": {
+    "super_admin": "admin@begestates.bg / BegEstates2026!Admin",
+    "sales": "sales@begestates.bg / BegEstates2026!Sales"
+  },
+  "seed_data_creation": "Created test deals during backend tests (cleaned up). Created D-2026-007 with bank_loan mode during UI testing.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "G.2.1 terminology rename fully tested. Backend test file at /app/backend/tests/test_deals_g21.py covers: new terminology accepted (bank_loan/own_funds/combined), old terminology rejected (with_bank/without_bank returns 422), bucket=own works (bucket=non_bank returns 422), suggest-distribution auto-fill, own_stages key in PUT, percent recomputation from amount, quote→deal conversion. Frontend verified: all new testids present, no old testids, correct Bulgarian labels, schedule without editable % column, auto-generate with correct stage counts. Fixed bug in AdminDeals.jsx progress bar calculation.",
+  "verified_features": [
+    "Backend: POST /api/deals with payment_mode='bank_loan' or 'own_funds' or 'combined' accepted",
+    "Backend: Old values 'with_bank'/'without_bank' return 422",
+    "Backend: New deal payment_mode contains: mode, bank_amount, own_amount, bank_invoice_amount, bank_proforma_amount, own_invoice_amount, own_proforma_amount",
+    "Backend: PUT /api/deals/{id} accepts own_stages key (not non_bank_stages)",
+    "Backend: POST /api/deals/{id}/regenerate-schedule with bucket=own works (bucket=non_bank returns 422)",
+    "Backend: PATCH /api/deals/{id}/stages/{order}/payment with bucket=own works",
+    "Backend: POST /api/deals/{id}/suggest-distribution returns correct auto-fill values",
+    "Backend: Migration ran on boot (rename_payment_terminology) — idempotent",
+    "Backend: Quote→Deal converter creates deal with payment_mode='own_funds', schedule imported into own_stages",
+    "Frontend: AdminDeals shows 'Банков кредит' / 'Лични средства' / 'Комбиниран' in payment_mode column",
+    "Frontend: DealEditor radio buttons (data-testid: pm-radio-bank_loan, pm-radio-own_funds, pm-radio-combined)",
+    "Frontend: PaymentModeSection — 'Банков кредит' mode shows pm-bank-section, 'Лични средства' shows pm-own-section, 'Комбиниран' shows BOTH + pm-combined-breakdown",
+    "Frontend: pm-totals-summary section shows ПО ФАКТУРА / ПО ПРОФОРМА / ОБЩО",
+    "Frontend: ScheduleSection renamed sections: 'Вноски — Лични средства' (own bucket) and 'Вноски — Банков кредит' (bank bucket)",
+    "Frontend: ScheduleSection has NO editable % column — only Сума column with info text '(X% от basis)'",
+    "Frontend: Schedule auto-генерирай creates 8 stages for own bucket (preset=standard), 4 stages for bank bucket (preset=with_bank)",
+    "Frontend: NewDealWizard step 2 radio uses bank_loan/own_funds/combined values (data-testid wizard-pm-bank_loan etc.)"
+  ],
+  "bugs_fixed": [
+    {
+      "file": "/app/frontend/src/pages/admin/AdminDeals.jsx",
+      "line": 179,
+      "issue": "Used 'd.non_bank_stages' instead of 'd.own_stages' for progress bar calculation",
+      "fix": "Changed to 'd.own_stages' to match new terminology"
+    }
+  ]
+}

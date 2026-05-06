@@ -547,9 +547,9 @@ class QuoteStatusUpdate(BaseModel):
 
 
 # ---------- Deals (per-client multi-property sale) ----------
-_DEAL_PAYMENT_MODES = {"with_bank", "without_bank", "combined"}
+_DEAL_PAYMENT_MODES = {"bank_loan", "own_funds", "combined"}
 _DEAL_STATUSES = {"active", "completed", "cancelled"}
-_DEAL_BUCKETS = {"bank", "non_bank"}
+_DEAL_BUCKETS = {"bank", "own"}
 _DEAL_REGEN_PRESETS = {"standard", "with_bank", "custom"}
 
 
@@ -557,7 +557,7 @@ class DealCreate(BaseModel):
     client_id: str
     property_ids: List[str]
     agreed_prices: Optional[Dict[str, float]] = None
-    payment_mode: str = "without_bank"
+    payment_mode: str = "own_funds"
     source_quote_id: Optional[str] = None
 
     @field_validator("property_ids")
@@ -592,10 +592,15 @@ class DealItemUpdate(BaseModel):
 
 class DealPaymentModeInput(BaseModel):
     mode: Optional[str] = None
+    # combined split
     bank_amount: Optional[float] = None
-    non_bank_amount: Optional[float] = None
-    invoice_amount: Optional[float] = None
-    proforma_amount: Optional[float] = None
+    own_amount: Optional[float] = None
+    # bank invoice/proforma split (works for bank_loan + combined)
+    bank_invoice_amount: Optional[float] = None
+    bank_proforma_amount: Optional[float] = None
+    # own invoice/proforma split (works for own_funds + combined)
+    own_invoice_amount: Optional[float] = None
+    own_proforma_amount: Optional[float] = None
 
     @field_validator("mode")
     @classmethod
@@ -606,7 +611,11 @@ class DealPaymentModeInput(BaseModel):
             raise ValueError("Невалиден тип плащане")
         return v
 
-    @field_validator("bank_amount", "non_bank_amount", "invoice_amount", "proforma_amount")
+    @field_validator(
+        "bank_amount", "own_amount",
+        "bank_invoice_amount", "bank_proforma_amount",
+        "own_invoice_amount", "own_proforma_amount",
+    )
     @classmethod
     def _non_negative(cls, v):
         if v is None:
@@ -619,11 +628,11 @@ class DealPaymentModeInput(BaseModel):
 class DealStageInput(BaseModel):
     order: int
     label: str
-    percent: float
+    percent: Optional[float] = None
     amount: Optional[float] = None
     expected_date: Optional[str] = None
     milestone_type: Optional[str] = None
-    bucket: str = "non_bank"
+    bucket: str = "own"
     is_paid: Optional[bool] = None
     paid_date: Optional[str] = None
     paid_amount: Optional[float] = None
@@ -641,7 +650,7 @@ class DealUpdate(BaseModel):
     items: Optional[List[DealItemUpdate]] = None
     payment_mode: Optional[DealPaymentModeInput] = None
     bank_stages: Optional[List[DealStageInput]] = None
-    non_bank_stages: Optional[List[DealStageInput]] = None
+    own_stages: Optional[List[DealStageInput]] = None
     vat_rate: Optional[float] = None
     notes: Optional[str] = None
     expected_act_2_date: Optional[str] = None
@@ -658,14 +667,14 @@ class DealUpdate(BaseModel):
 
 
 class DealRegenerateScheduleRequest(BaseModel):
-    bucket: str = "non_bank"
+    bucket: str = "own"
     preset: str = "standard"
 
     @field_validator("bucket")
     @classmethod
     def _bucket_valid(cls, v):
         if v not in _DEAL_BUCKETS and v != "both":
-            raise ValueError("bucket трябва да е bank, non_bank или both")
+            raise ValueError("bucket трябва да е bank, own или both")
         return v
 
     @field_validator("preset")
@@ -677,7 +686,7 @@ class DealRegenerateScheduleRequest(BaseModel):
 
 
 class DealStagePaymentUpdate(BaseModel):
-    bucket: str = "non_bank"
+    bucket: str = "own"
     is_paid: Optional[bool] = None
     paid_date: Optional[str] = None
     paid_amount: Optional[float] = None
@@ -697,6 +706,30 @@ class DealStagePaymentUpdate(BaseModel):
             return v
         if v < 0:
             raise ValueError("Сумата трябва да е >= 0")
+        return v
+
+
+class DealSuggestRequest(BaseModel):
+    field: str
+    value: float
+
+    @field_validator("field")
+    @classmethod
+    def _field_valid(cls, v):
+        valid = {
+            "bank_amount", "own_amount",
+            "bank_invoice_amount", "bank_proforma_amount",
+            "own_invoice_amount", "own_proforma_amount",
+        }
+        if v not in valid:
+            raise ValueError(f"field трябва да е едно от: {sorted(valid)}")
+        return v
+
+    @field_validator("value")
+    @classmethod
+    def _value_non_negative(cls, v):
+        if v < 0:
+            raise ValueError("value трябва да е >= 0")
         return v
 
 

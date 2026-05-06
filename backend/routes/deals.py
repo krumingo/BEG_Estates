@@ -22,6 +22,7 @@ from models import (
     DealStagePaymentUpdate,
     DealCancelRequest,
     DealDeleteRequest,
+    DealSuggestRequest,
 )
 from routes.audit import log_action
 from services.payment_schemes import build_scheme
@@ -86,19 +87,19 @@ def _calc_totals(items: List[dict], vat_rate: float) -> dict:
 def _bucket_basis(deal: dict, bucket: str) -> float:
     """Pick the amount basis for a bucket based on payment_mode."""
     pm = deal.get("payment_mode") or {}
-    mode = pm.get("mode") or "without_bank"
+    mode = pm.get("mode") or "own_funds"
     total = float(deal.get("total_with_vat") or 0)
     if bucket == "bank":
-        if mode == "with_bank":
+        if mode == "bank_loan":
             return total
         if mode == "combined":
             return float(pm.get("bank_amount") or 0)
         return 0.0
-    # non_bank
-    if mode == "without_bank":
+    # own
+    if mode == "own_funds":
         return total
     if mode == "combined":
-        return float(pm.get("non_bank_amount") or 0)
+        return float(pm.get("own_amount") or 0)
     return 0.0
 
 
@@ -119,6 +120,19 @@ def _stages_from_scheme(scheme: dict, bucket: str) -> List[dict]:
             "payment_notes": None,
         })
     return stages
+
+
+def _recompute_stage_percents(stages: List[dict], basis: float) -> List[dict]:
+    """Recompute `percent` from `amount` for each stage. Backend keeps both in sync."""
+    if basis <= 0:
+        return stages
+    out = []
+    for s in stages:
+        ns = dict(s)
+        amount = float(ns.get("amount") or 0)
+        ns["percent"] = round(amount * 100.0 / basis, 4)
+        out.append(ns)
+    return out
 
 
 async def _next_deal_number(db) -> str:
@@ -265,12 +279,14 @@ async def _create_deal_internal(
         "payment_mode": {
             "mode": payment_mode_str,
             "bank_amount": 0.0,
-            "non_bank_amount": 0.0,
-            "invoice_amount": 0.0,
-            "proforma_amount": 0.0,
+            "own_amount": 0.0,
+            "bank_invoice_amount": 0.0,
+            "bank_proforma_amount": 0.0,
+            "own_invoice_amount": 0.0,
+            "own_proforma_amount": 0.0,
         },
         "bank_stages": [],
-        "non_bank_stages": [],
+        "own_stages": [],
         "expected_act_2_date": (project or {}).get("expected_act_2_date"),
         "construction_duration_months": int((project or {}).get("construction_duration_months") or 30),
         "status": "active",
@@ -363,20 +379,25 @@ async def update_deal(deal_id: str, payload: DealUpdate, user=Depends(_super_adm
     # Payment mode changes
     if payload.payment_mode is not None:
         pm = dict(deal.get("payment_mode") or {})
-        for f in ("mode", "bank_amount", "non_bank_amount", "invoice_amount", "proforma_amount"):
+        for f in (
+            "mode",
+            "bank_amount", "own_amount",
+            "bank_invoice_amount", "bank_proforma_amount",
+            "own_invoice_amount", "own_proforma_amount",
+        ):
             v = getattr(payload.payment_mode, f)
             if v is not None:
                 pm[f] = v
         deal["payment_mode"] = pm
 
-    # Stages — full replacement per bucket
+    # Stages — full replacement per bucket; backend recomputes percents from amount
     if payload.bank_stages is not None:
         deal["bank_stages"] = [
             {**s.model_dump(), "bucket": "bank"} for s in payload.bank_stages
         ]
-    if payload.non_bank_stages is not None:
-        deal["non_bank_stages"] = [
-            {**s.model_dump(), "bucket": "non_bank"} for s in payload.non_bank_stages
+    if payload.own_stages is not None:
+        deal["own_stages"] = [
+            {**s.model_dump(), "bucket": "own"} for s in payload.own_stages
         ]
 
     if payload.notes is not None:
@@ -389,6 +410,14 @@ async def update_deal(deal_id: str, payload: DealUpdate, user=Depends(_super_adm
     vat_rate = float(payload.vat_rate) if payload.vat_rate is not None else float(deal.get("vat_rate") or 20.0)
     totals = _calc_totals(deal.get("items") or [], vat_rate)
     deal.update(totals)
+
+    # Recompute stage percents based on the (possibly new) bucket basis
+    deal["bank_stages"] = _recompute_stage_percents(
+        deal.get("bank_stages") or [], _bucket_basis(deal, "bank"),
+    )
+    deal["own_stages"] = _recompute_stage_percents(
+        deal.get("own_stages") or [], _bucket_basis(deal, "own"),
+    )
 
     deal["updated_at"] = _now_iso()
     deal["last_modified_by"] = user["id"]
@@ -427,7 +456,7 @@ async def regenerate_schedule(
     def _regen_for(bucket: str) -> List[dict]:
         basis = _bucket_basis(deal, bucket)
         # Preserve paid stages (by order) so admin doesn't lose payment info
-        existing = deal.get("bank_stages" if bucket == "bank" else "non_bank_stages") or []
+        existing = deal.get("bank_stages" if bucket == "bank" else "own_stages") or []
         paid_by_order = {int(s.get("order") or 0): s for s in existing if s.get("is_paid")}
         scheme = build_scheme(payload.preset, basis, project)
         new_stages = _stages_from_scheme(scheme, bucket)
@@ -443,8 +472,8 @@ async def regenerate_schedule(
     changes: dict = {"updated_at": _now_iso(), "last_modified_by": user["id"]}
     if payload.bucket in ("bank", "both"):
         changes["bank_stages"] = _regen_for("bank")
-    if payload.bucket in ("non_bank", "both"):
-        changes["non_bank_stages"] = _regen_for("non_bank")
+    if payload.bucket in ("own", "both"):
+        changes["own_stages"] = _regen_for("own")
 
     await db.deals.update_one({"id": deal_id}, {"$set": changes})
     await log_action(
@@ -474,7 +503,7 @@ async def update_stage_payment(
     if deal.get("status") != "active":
         raise HTTPException(status_code=400, detail="Само активни сделки могат да се редактират")
 
-    bucket_key = "bank_stages" if payload.bucket == "bank" else "non_bank_stages"
+    bucket_key = "bank_stages" if payload.bucket == "bank" else "own_stages"
     stages = deal.get(bucket_key) or []
     target = next((s for s in stages if int(s.get("order") or 0) == int(stage_order)), None)
     if not target:
@@ -594,3 +623,72 @@ async def delete_deal(
         },
     )
     return {"deleted": True, "id": deal_id}
+
+
+# ---------- SUGGEST DISTRIBUTION (live UI helper) ----------
+@router.post("/deals/{deal_id}/suggest-distribution")
+async def suggest_distribution(
+    deal_id: str,
+    payload: DealSuggestRequest,
+    _=Depends(_super_admin_dep()),
+):
+    db = get_db()
+    deal = await db.deals.find_one({"id": deal_id}, {"_id": 0})
+    if not deal:
+        raise HTTPException(status_code=404, detail="Сделката не е намерена")
+
+    pm = dict(deal.get("payment_mode") or {})
+    mode = pm.get("mode") or "own_funds"
+    total = float(deal.get("total_with_vat") or 0)
+    new = dict(pm)
+    new[payload.field] = float(payload.value)
+
+    def maxz(x: float) -> float:
+        return round(max(0.0, x), 2)
+
+    field, val = payload.field, float(payload.value)
+
+    if mode == "combined":
+        if field == "bank_amount":
+            new["own_amount"] = maxz(total - val)
+        elif field == "own_amount":
+            new["bank_amount"] = maxz(total - val)
+        elif field == "bank_invoice_amount":
+            new["bank_proforma_amount"] = maxz(float(new.get("bank_amount") or 0) - val)
+        elif field == "bank_proforma_amount":
+            new["bank_invoice_amount"] = maxz(float(new.get("bank_amount") or 0) - val)
+        elif field == "own_invoice_amount":
+            new["own_proforma_amount"] = maxz(float(new.get("own_amount") or 0) - val)
+        elif field == "own_proforma_amount":
+            new["own_invoice_amount"] = maxz(float(new.get("own_amount") or 0) - val)
+    elif mode == "bank_loan":
+        if field == "bank_invoice_amount":
+            new["bank_proforma_amount"] = maxz(total - val)
+        elif field == "bank_proforma_amount":
+            new["bank_invoice_amount"] = maxz(total - val)
+    elif mode == "own_funds":
+        if field == "own_invoice_amount":
+            new["own_proforma_amount"] = maxz(total - val)
+        elif field == "own_proforma_amount":
+            new["own_invoice_amount"] = maxz(total - val)
+
+    # Validation
+    warnings: List[str] = []
+    tol = 0.01
+    if mode == "combined":
+        if abs(float(new.get("bank_amount") or 0) + float(new.get("own_amount") or 0) - total) > tol:
+            warnings.append("Банков кредит + Лични средства ≠ обща сума")
+    elif mode == "own_funds":
+        if abs(float(new.get("own_invoice_amount") or 0) + float(new.get("own_proforma_amount") or 0) - total) > tol:
+            warnings.append("Фактура + Проформа ≠ обща сума")
+    elif mode == "bank_loan":
+        if abs(float(new.get("bank_invoice_amount") or 0) + float(new.get("bank_proforma_amount") or 0) - total) > tol:
+            warnings.append("Фактура + Проформа ≠ обща сума")
+
+    return {
+        "current": pm,
+        "suggested": new,
+        "valid": len(warnings) == 0,
+        "warnings": warnings,
+    }
+
