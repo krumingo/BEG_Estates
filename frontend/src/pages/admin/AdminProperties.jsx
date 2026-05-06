@@ -637,6 +637,19 @@ export default function AdminProperties() {
                         <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving} data-testid="pf-cancel">
                             Отказ
                         </Button>
+                        {mode === "edit" && form.id && (form.status === "available" || form.status === "reserved_zero_deposit") && (
+                            <Button
+                                variant="outline"
+                                onClick={() => {
+                                    setDialogOpen(false);
+                                    window.location.href = `/admin/quotes/new?property_id=${form.id}`;
+                                }}
+                                data-testid="pf-add-to-quote"
+                                className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                            >
+                                Добави в нова оферта
+                            </Button>
+                        )}
                         <Button onClick={submit} disabled={saving} data-testid="pf-save" className="bg-slate-900 hover:bg-slate-800 text-white">
                             {saving ? "Запазване…" : mode === "create" ? "Създай" : "Запази"}
                         </Button>

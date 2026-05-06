@@ -1,0 +1,634 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams, useSearchParams, Link } from "react-router-dom";
+import { ArrowLeft, Download, Save, Send, Trash2, Plus, X } from "lucide-react";
+import { api, currency, formatDate, formatApiError } from "../../lib/api";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
+import { Textarea } from "../../components/ui/textarea";
+import {
+    Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+} from "../../components/ui/select";
+import { Checkbox } from "../../components/ui/checkbox";
+import {
+    Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "../../components/ui/dialog";
+import { toast } from "sonner";
+import { QUOTE_STATUS_LABELS, QUOTE_STATUS_BADGE } from "./AdminQuotes";
+
+function floorLabel(f) {
+    if (f === undefined || f === null) return "";
+    if (f > 0) return `Етаж ${f}`;
+    if (f === 0) return "Партер";
+    return "Сутерен";
+}
+
+export default function QuoteEditor() {
+    const { id } = useParams();
+    const isNew = !id || id === "new";
+    const navigate = useNavigate();
+    const [params] = useSearchParams();
+    const initialPropertyId = params.get("property_id") || null;
+
+    if (isNew) return <NewQuoteWizard initialPropertyId={initialPropertyId} />;
+    return <EditQuoteScreen id={id} />;
+}
+
+// =====================================================
+// STEP 1 — Wizard for new quote
+// =====================================================
+function NewQuoteWizard({ initialPropertyId }) {
+    const navigate = useNavigate();
+    const [clients, setClients] = useState([]);
+    const [clientId, setClientId] = useState("");
+    const [projects, setProjects] = useState([]);
+    const [projectId, setProjectId] = useState("");
+    const [properties, setProperties] = useState([]);
+    const [selected, setSelected] = useState(new Set(initialPropertyId ? [initialPropertyId] : []));
+    const [vatMode, setVatMode] = useState("with_vat");
+    const [creating, setCreating] = useState(false);
+
+    useEffect(() => {
+        api.get("/clients", { params: { active: "true" } }).then((r) => setClients(r.data)).catch(() => {});
+        api.get("/projects").then((r) => {
+            setProjects(r.data);
+            const primary = r.data.find((p) => p.is_primary) || r.data[0];
+            if (primary) setProjectId(primary.id);
+        });
+    }, []);
+
+    useEffect(() => {
+        if (!projectId) return;
+        api.get(`/projects/${projectId}/properties`).then((r) => setProperties(r.data));
+    }, [projectId]);
+
+    const available = useMemo(
+        () => properties.filter((p) => p.status === "available" || p.status === "reserved_zero_deposit"),
+        [properties]
+    );
+
+    const groupedByFloor = useMemo(() => {
+        const groups = new Map();
+        for (const p of available) {
+            const key = p.floor ?? -99;
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(p);
+        }
+        return Array.from(groups.entries()).sort((a, b) => b[0] - a[0]);
+    }, [available]);
+
+    const toggle = (id) => {
+        setSelected((s) => {
+            const n = new Set(s);
+            if (n.has(id)) n.delete(id); else n.add(id);
+            return n;
+        });
+    };
+
+    const submit = async () => {
+        if (!clientId) {
+            toast.error("Изберете клиент");
+            return;
+        }
+        if (selected.size === 0) {
+            toast.error("Изберете поне един имот");
+            return;
+        }
+        setCreating(true);
+        try {
+            const { data } = await api.post("/quotes", {
+                client_id: clientId,
+                property_ids: Array.from(selected),
+                vat_mode: vatMode,
+            });
+            toast.success(`Оферта ${data.quote_number} създадена`);
+            navigate(`/admin/quotes/${data.id}`);
+        } catch (e) {
+            toast.error(formatApiError(e.response?.data?.detail));
+        } finally {
+            setCreating(false);
+        }
+    };
+
+    return (
+        <div className="space-y-6 max-w-4xl mx-auto">
+            <div className="flex items-center justify-between">
+                <Link to="/admin/quotes" className="text-sm text-slate-500 hover:text-slate-900 inline-flex items-center gap-1">
+                    <ArrowLeft className="h-4 w-4" /> Назад към списъка
+                </Link>
+            </div>
+            <div>
+                <div className="overline mb-2">Нова оферта</div>
+                <h1 className="font-serif text-4xl text-slate-900">Стъпка 1 — Клиент и имоти</h1>
+            </div>
+
+            <div className="space-y-4 p-6 rounded-xl border hairline bg-white">
+                <div>
+                    <Label>Клиент *</Label>
+                    <Select value={clientId} onValueChange={setClientId}>
+                        <SelectTrigger data-testid="quote-wizard-client"><SelectValue placeholder="Изберете клиент…" /></SelectTrigger>
+                        <SelectContent>
+                            {clients.map((c) => (
+                                <SelectItem key={c.id} value={c.id}>{c.name}{c.email ? ` · ${c.email}` : ""}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <Label>Проект</Label>
+                        <Select value={projectId} onValueChange={setProjectId}>
+                            <SelectTrigger data-testid="quote-wizard-project"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                {projects.map((p) => (
+                                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div>
+                        <Label>ДДС режим</Label>
+                        <Select value={vatMode} onValueChange={setVatMode}>
+                            <SelectTrigger data-testid="quote-wizard-vat"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="with_vat">С ДДС</SelectItem>
+                                <SelectItem value="without_vat">Без ДДС</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+            </div>
+
+            <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                    <h2 className="font-serif text-xl text-slate-900">Изберете имоти</h2>
+                    <span className="text-sm text-slate-500">Избрани: <span className="font-medium text-slate-900">{selected.size}</span></span>
+                </div>
+                <div className="rounded-xl border hairline bg-white">
+                    {groupedByFloor.map(([floor, props]) => (
+                        <div key={floor} className="border-b hairline last:border-b-0">
+                            <div className="px-4 py-2 bg-stone-50 text-xs font-medium text-slate-700">
+                                {floorLabel(floor)} ({props.length})
+                            </div>
+                            <div className="divide-y hairline">
+                                {props.map((p) => (
+                                    <label
+                                        key={p.id}
+                                        className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 cursor-pointer"
+                                        data-testid={`quote-wizard-prop-${p.id}`}
+                                    >
+                                        <Checkbox checked={selected.has(p.id)} onCheckedChange={() => toggle(p.id)} />
+                                        <div className="flex-1 grid grid-cols-4 gap-2 items-center text-sm">
+                                            <div className="font-medium text-slate-900">{p.code}</div>
+                                            <div className="text-slate-500">{p.area_total ? `${p.area_total} м²` : "—"}</div>
+                                            <div className="text-slate-700">{currency(p.list_price || 0)}</div>
+                                            <div className="text-xs text-emerald-700">Свободен</div>
+                                        </div>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                    {groupedByFloor.length === 0 && (
+                        <div className="p-8 text-center text-sm text-slate-500">Няма свободни имоти.</div>
+                    )}
+                </div>
+            </div>
+
+            <div className="flex justify-end gap-2 sticky bottom-4">
+                <Link to="/admin/quotes">
+                    <Button variant="outline">Отказ</Button>
+                </Link>
+                <Button
+                    onClick={submit}
+                    disabled={creating || selected.size === 0 || !clientId}
+                    className="bg-slate-900 text-white hover:bg-slate-800"
+                    data-testid="quote-wizard-submit"
+                >
+                    {creating ? "Създаване…" : "Продължи →"}
+                </Button>
+            </div>
+        </div>
+    );
+}
+
+// =====================================================
+// STEP 2 — Edit existing quote
+// =====================================================
+function EditQuoteScreen({ id }) {
+    const navigate = useNavigate();
+    const [quote, setQuote] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [confirmAction, setConfirmAction] = useState(null); // {type:'send'|'accept'|'reject'|'delete'}
+
+    const load = () => {
+        setLoading(true);
+        api.get(`/quotes/${id}`).then((r) => setQuote(r.data)).finally(() => setLoading(false));
+    };
+    useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
+
+    const previewTotals = useMemo(() => {
+        if (!quote) return { subtotal: 0, vat: 0, total: 0 };
+        const subtotal = (quote.items || []).reduce((s, it) => {
+            const p = parseFloat(it.custom_price || 0);
+            const d = parseFloat(it.discount_percent || 0);
+            return s + p * (1 - d / 100);
+        }, 0);
+        const discount = parseFloat(quote.discount_amount || 0);
+        const base = Math.max(subtotal - discount, 0);
+        const vat = quote.vat_mode === "with_vat" ? base * (parseFloat(quote.vat_rate || 20) / 100) : 0;
+        const total = base + vat;
+        return { subtotal, vat, total };
+    }, [quote]);
+
+    if (loading) return <div className="text-sm text-slate-500">Зареждане…</div>;
+    if (!quote) return <div className="text-sm text-slate-500">Офертата не е намерена.</div>;
+
+    const isDraft = quote.status === "draft";
+    const editable = isDraft;
+
+    const updateItem = (idx, patch) => {
+        setQuote((q) => {
+            const items = [...q.items];
+            items[idx] = { ...items[idx], ...patch };
+            return { ...q, items };
+        });
+    };
+    const removeItem = (idx) => {
+        setQuote((q) => ({ ...q, items: q.items.filter((_, i) => i !== idx) }));
+    };
+
+    const save = async () => {
+        if (!editable) return;
+        setSaving(true);
+        try {
+            const payload = {
+                items: (quote.items || []).map((it) => ({
+                    property_id: it.property_id,
+                    custom_price: parseFloat(it.custom_price || 0),
+                    discount_percent: parseFloat(it.discount_percent || 0),
+                    notes: it.notes || null,
+                })),
+                vat_mode: quote.vat_mode,
+                vat_rate: parseFloat(quote.vat_rate || 20),
+                discount_amount: parseFloat(quote.discount_amount || 0),
+                valid_until: quote.valid_until,
+                payment_terms: quote.payment_terms,
+                delivery_terms: quote.delivery_terms,
+                additional_notes: quote.additional_notes,
+            };
+            const { data } = await api.put(`/quotes/${id}`, payload);
+            setQuote(data);
+            toast.success("Офертата е запазена");
+            return data;
+        } catch (e) {
+            toast.error(formatApiError(e.response?.data?.detail));
+            throw e;
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const downloadPdf = async () => {
+        try {
+            const r = await api.get(`/quotes/${id}/pdf`, { responseType: "blob" });
+            const blob = new Blob([r.data], { type: "application/pdf" });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `oferta-${quote.quote_number}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+            toast.success("PDF свален");
+        } catch (e) {
+            toast.error(formatApiError(e.response?.data?.detail));
+        }
+    };
+    const saveAndPdf = async () => {
+        try { await save(); } catch { return; }
+        await downloadPdf();
+    };
+
+    const setStatus = async (newStatus) => {
+        try {
+            const { data } = await api.patch(`/quotes/${id}/status`, { status: newStatus });
+            setQuote(data);
+            toast.success(`Статусът е променен на „${QUOTE_STATUS_LABELS[newStatus]}"`);
+        } catch (e) {
+            toast.error(formatApiError(e.response?.data?.detail));
+        }
+    };
+
+    const doDelete = async () => {
+        try {
+            await api.delete(`/quotes/${id}`);
+            toast.success("Офертата е изтрита");
+            navigate("/admin/quotes");
+        } catch (e) {
+            toast.error(formatApiError(e.response?.data?.detail));
+        }
+    };
+
+    return (
+        <div className="space-y-6 max-w-5xl mx-auto pb-24">
+            <Link to="/admin/quotes" className="text-sm text-slate-500 hover:text-slate-900 inline-flex items-center gap-1">
+                <ArrowLeft className="h-4 w-4" /> Назад към списъка
+            </Link>
+
+            {/* Header */}
+            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+                <div>
+                    <div className="overline mb-2">Оферта</div>
+                    <h1 className="font-serif text-4xl text-slate-900">{quote.quote_number}</h1>
+                    <div className="flex items-center gap-3 mt-2">
+                        <span className={`inline-flex items-center text-[11px] px-2 py-0.5 rounded-full border ${QUOTE_STATUS_BADGE[quote.status]}`} data-testid="quote-status-badge">
+                            {QUOTE_STATUS_LABELS[quote.status]}
+                        </span>
+                        <span className="text-sm text-slate-500">Клиент: <span className="font-medium text-slate-900">{quote.client_name}</span></span>
+                        <span className="text-sm text-slate-500">Създадена: {formatDate(quote.created_at)}</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Items */}
+            <div className="space-y-3">
+                <h2 className="font-serif text-xl text-slate-900">Обекти</h2>
+                {(quote.items || []).map((it, idx) => (
+                    <div key={it.property_id} className="rounded-lg border hairline bg-white p-4" data-testid={`quote-item-${idx}`}>
+                        <div className="flex items-start justify-between gap-4">
+                            <div>
+                                <div className="font-medium text-slate-900">{it.property_code} · {it.property_label}</div>
+                                <div className="text-xs text-slate-500 mt-0.5">
+                                    F1: {it.f1_area || "—"} м² · F1+F2: {it.total_area || it.f2_area || "—"} м² · Листова: {currency(it.list_price)}
+                                </div>
+                            </div>
+                            {editable && (
+                                <Button size="sm" variant="outline" onClick={() => removeItem(idx)} title="Премахни от офертата" data-testid={`quote-item-remove-${idx}`}>
+                                    <X className="h-3.5 w-3.5" />
+                                </Button>
+                            )}
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                            <div>
+                                <Label>Цена (€)</Label>
+                                <Input
+                                    type="number"
+                                    step="0.01"
+                                    value={it.custom_price ?? ""}
+                                    disabled={!editable}
+                                    onChange={(e) => updateItem(idx, { custom_price: e.target.value })}
+                                    data-testid={`quote-item-price-${idx}`}
+                                />
+                            </div>
+                            <div>
+                                <Label>Отстъпка (%)</Label>
+                                <Input
+                                    type="number"
+                                    step="0.5"
+                                    min="0"
+                                    max="100"
+                                    value={it.discount_percent ?? 0}
+                                    disabled={!editable}
+                                    onChange={(e) => updateItem(idx, { discount_percent: e.target.value })}
+                                    data-testid={`quote-item-discount-${idx}`}
+                                />
+                            </div>
+                            <div>
+                                <Label>Бележки</Label>
+                                <Input
+                                    value={it.notes || ""}
+                                    disabled={!editable}
+                                    onChange={(e) => updateItem(idx, { notes: e.target.value })}
+                                    placeholder="—"
+                                    data-testid={`quote-item-notes-${idx}`}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                ))}
+                {(quote.items || []).length === 0 && (
+                    <div className="rounded-lg border hairline bg-white p-6 text-sm text-slate-500 text-center">
+                        Няма обекти. Тази оферта не може да се изпрати.
+                    </div>
+                )}
+            </div>
+
+            {/* Financial */}
+            <div className="space-y-3">
+                <h2 className="font-serif text-xl text-slate-900">Финансово</h2>
+                <div className="rounded-lg border hairline bg-white p-4 space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <Label>ДДС режим</Label>
+                            <Select
+                                value={quote.vat_mode}
+                                onValueChange={(v) => setQuote((q) => ({ ...q, vat_mode: v }))}
+                                disabled={!editable}
+                            >
+                                <SelectTrigger data-testid="quote-vat-mode"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="with_vat">С ДДС</SelectItem>
+                                    <SelectItem value="without_vat">Без ДДС</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div>
+                            <Label>ДДС ставка (%)</Label>
+                            <Input
+                                type="number"
+                                step="1"
+                                value={quote.vat_rate ?? 20}
+                                disabled={!editable}
+                                onChange={(e) => setQuote((q) => ({ ...q, vat_rate: e.target.value }))}
+                                data-testid="quote-vat-rate"
+                            />
+                        </div>
+                    </div>
+                    <div>
+                        <Label>Допълнителна обща отстъпка (€)</Label>
+                        <Input
+                            type="number"
+                            step="0.01"
+                            value={quote.discount_amount ?? 0}
+                            disabled={!editable}
+                            onChange={(e) => setQuote((q) => ({ ...q, discount_amount: e.target.value }))}
+                            data-testid="quote-discount"
+                        />
+                    </div>
+
+                    <div className="border-t hairline pt-3 space-y-1">
+                        <div className="flex justify-between text-sm">
+                            <span className="text-slate-600">Subtotal:</span>
+                            <span className="font-medium" data-testid="quote-subtotal">{currency(previewTotals.subtotal)}</span>
+                        </div>
+                        {quote.vat_mode === "with_vat" && (
+                            <div className="flex justify-between text-sm">
+                                <span className="text-slate-600">ДДС ({quote.vat_rate || 20}%):</span>
+                                <span>{currency(previewTotals.vat)}</span>
+                            </div>
+                        )}
+                        <div className="flex justify-between text-base pt-1 border-t hairline">
+                            <span className="font-serif text-slate-900">Общо за плащане:</span>
+                            <span className="font-medium text-slate-900" data-testid="quote-total">{currency(previewTotals.total)}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Validity */}
+            <div className="space-y-3">
+                <h2 className="font-serif text-xl text-slate-900">Валидност</h2>
+                <div className="rounded-lg border hairline bg-white p-4">
+                    <Label>Валидна до</Label>
+                    <Input
+                        type="date"
+                        value={(quote.valid_until || "").substring(0, 10)}
+                        disabled={!editable}
+                        onChange={(e) => setQuote((q) => ({ ...q, valid_until: e.target.value }))}
+                        data-testid="quote-valid-until"
+                    />
+                </div>
+            </div>
+
+            {/* Terms */}
+            <div className="space-y-3">
+                <h2 className="font-serif text-xl text-slate-900">Условия</h2>
+                <div className="rounded-lg border hairline bg-white p-4 space-y-3">
+                    <div>
+                        <Label>Условия на плащане</Label>
+                        <Textarea
+                            rows={5}
+                            value={quote.payment_terms || ""}
+                            disabled={!editable}
+                            onChange={(e) => setQuote((q) => ({ ...q, payment_terms: e.target.value }))}
+                            data-testid="quote-payment-terms"
+                        />
+                    </div>
+                    <div>
+                        <Label>Срок и предаване</Label>
+                        <Textarea
+                            rows={4}
+                            value={quote.delivery_terms || ""}
+                            disabled={!editable}
+                            onChange={(e) => setQuote((q) => ({ ...q, delivery_terms: e.target.value }))}
+                            data-testid="quote-delivery-terms"
+                        />
+                    </div>
+                    <div>
+                        <Label>Допълнителни бележки</Label>
+                        <Textarea
+                            rows={3}
+                            value={quote.additional_notes || ""}
+                            disabled={!editable}
+                            onChange={(e) => setQuote((q) => ({ ...q, additional_notes: e.target.value }))}
+                            data-testid="quote-additional-notes"
+                        />
+                    </div>
+                </div>
+            </div>
+
+            {/* Action bar */}
+            <div className="flex flex-wrap gap-2 justify-end sticky bottom-4 bg-white/90 backdrop-blur p-3 rounded-lg border hairline">
+                {editable && (
+                    <Button
+                        variant="outline"
+                        onClick={() => setConfirmAction({ type: "delete" })}
+                        data-testid="quote-delete-btn"
+                    >
+                        <Trash2 className="h-4 w-4 mr-1.5" /> Изтрий
+                    </Button>
+                )}
+                <Button variant="outline" onClick={downloadPdf} data-testid="quote-pdf-btn">
+                    <Download className="h-4 w-4 mr-1.5" /> PDF
+                </Button>
+                {editable && (
+                    <>
+                        <Button onClick={save} disabled={saving} data-testid="quote-save-btn" className="bg-slate-900 text-white hover:bg-slate-800">
+                            <Save className="h-4 w-4 mr-1.5" /> {saving ? "Запис…" : "Запази"}
+                        </Button>
+                        <Button onClick={saveAndPdf} disabled={saving} data-testid="quote-save-pdf-btn" className="bg-emerald-700 text-white hover:bg-emerald-800">
+                            <Download className="h-4 w-4 mr-1.5" /> Запази + PDF
+                        </Button>
+                        <Button
+                            onClick={() => setConfirmAction({ type: "send" })}
+                            data-testid="quote-send-btn"
+                            className="bg-sky-700 text-white hover:bg-sky-800"
+                        >
+                            <Send className="h-4 w-4 mr-1.5" /> Маркирай като изпратена
+                        </Button>
+                    </>
+                )}
+                {quote.status === "sent" && (
+                    <>
+                        <Button
+                            onClick={() => setConfirmAction({ type: "accept" })}
+                            className="bg-emerald-700 text-white hover:bg-emerald-800"
+                            data-testid="quote-accept-btn"
+                        >
+                            Маркирай като приета
+                        </Button>
+                        <Button
+                            onClick={() => setConfirmAction({ type: "reject" })}
+                            variant="outline"
+                            className="border-rose-300 text-rose-700 hover:bg-rose-50"
+                            data-testid="quote-reject-btn"
+                        >
+                            Маркирай като отказана
+                        </Button>
+                        <Button
+                            onClick={() => setConfirmAction({ type: "expire" })}
+                            variant="outline"
+                            data-testid="quote-expire-btn"
+                        >
+                            Маркирай като изтекла
+                        </Button>
+                    </>
+                )}
+            </div>
+
+            {/* Confirm dialog */}
+            <Dialog open={!!confirmAction} onOpenChange={(o) => !o && setConfirmAction(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle className="font-serif text-2xl">
+                            {confirmAction?.type === "delete" && "Изтриване"}
+                            {confirmAction?.type === "send" && "Маркирай като изпратена"}
+                            {confirmAction?.type === "accept" && "Маркирай като приета"}
+                            {confirmAction?.type === "reject" && "Маркирай като отказана"}
+                            {confirmAction?.type === "expire" && "Маркирай като изтекла"}
+                        </DialogTitle>
+                        <DialogDescription>
+                            {confirmAction?.type === "delete" && `Сигурни ли сте, че искате да изтриете оферта ${quote.quote_number}? Това действие е необратимо.`}
+                            {confirmAction?.type === "send" && "След маркиране като изпратена, офертата ще стане непроменяема. Продължавате ли?"}
+                            {confirmAction?.type === "accept" && "Офертата ще стане финална. Продължавате ли?"}
+                            {confirmAction?.type === "reject" && "Офертата ще се запази с маркер „отказана\". Продължавате ли?"}
+                            {confirmAction?.type === "expire" && "Офертата ще се маркира като изтекла."}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setConfirmAction(null)}>Отказ</Button>
+                        <Button
+                            className="bg-slate-900 text-white hover:bg-slate-800"
+                            onClick={async () => {
+                                const t = confirmAction.type;
+                                setConfirmAction(null);
+                                if (t === "delete") await doDelete();
+                                if (t === "send") await setStatus("sent");
+                                if (t === "accept") await setStatus("accepted");
+                                if (t === "reject") await setStatus("rejected");
+                                if (t === "expire") await setStatus("expired");
+                            }}
+                            data-testid="quote-confirm-action-ok"
+                        >
+                            Потвърди
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </div>
+    );
+}

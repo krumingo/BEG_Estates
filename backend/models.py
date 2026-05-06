@@ -405,3 +405,97 @@ class ClientUpdate(BaseModel):
         if v not in _CLIENT_TYPES:
             raise ValueError("Невалиден тип клиент")
         return v
+
+
+# ---------- Quotes ----------
+_QUOTE_VAT_MODES = {"with_vat", "without_vat"}
+_QUOTE_STATUSES = {"draft", "sent", "accepted", "rejected", "expired"}
+
+
+class QuoteItemInput(BaseModel):
+    """Per-item inputs accepted on PUT (admin overrides)."""
+    property_id: str
+    custom_price: Optional[float] = None
+    discount_percent: Optional[float] = None
+    notes: Optional[str] = None
+
+    @field_validator("custom_price")
+    @classmethod
+    def _price_non_negative(cls, v):
+        if v is None:
+            return v
+        if v < 0:
+            raise ValueError("Цената трябва да е >= 0")
+        return v
+
+    @field_validator("discount_percent")
+    @classmethod
+    def _discount_range(cls, v):
+        if v is None:
+            return v
+        if v < 0 or v > 100:
+            raise ValueError("Отстъпката трябва да е 0-100%")
+        return v
+
+
+class QuoteCreate(BaseModel):
+    client_id: str
+    property_ids: List[str]
+    vat_mode: str = "with_vat"
+    valid_until: Optional[str] = None  # ISO date; if None → today + 14 days
+    discount_amount: Optional[float] = 0.0
+    additional_notes: Optional[str] = None
+
+    @field_validator("vat_mode")
+    @classmethod
+    def _vat_mode_valid(cls, v):
+        if v not in _QUOTE_VAT_MODES:
+            raise ValueError("Невалиден ДДС режим")
+        return v
+
+    @field_validator("property_ids")
+    @classmethod
+    def _at_least_one(cls, v):
+        if not v:
+            raise ValueError("Трябва да изберете поне един имот")
+        return v
+
+
+class QuoteUpdate(BaseModel):
+    items: Optional[List[QuoteItemInput]] = None
+    vat_mode: Optional[str] = None
+    vat_rate: Optional[float] = None
+    discount_amount: Optional[float] = None
+    valid_until: Optional[str] = None
+    payment_terms: Optional[str] = None
+    delivery_terms: Optional[str] = None
+    additional_notes: Optional[str] = None
+
+    @field_validator("vat_mode")
+    @classmethod
+    def _vat_mode_valid(cls, v):
+        if v is None:
+            return v
+        if v not in _QUOTE_VAT_MODES:
+            raise ValueError("Невалиден ДДС режим")
+        return v
+
+    @field_validator("vat_rate", "discount_amount")
+    @classmethod
+    def _non_negative(cls, v):
+        if v is None:
+            return v
+        if v < 0:
+            raise ValueError("Стойността трябва да е >= 0")
+        return v
+
+
+class QuoteStatusUpdate(BaseModel):
+    status: str
+
+    @field_validator("status")
+    @classmethod
+    def _status_valid(cls, v):
+        if v not in _QUOTE_STATUSES:
+            raise ValueError("Невалиден статус")
+        return v

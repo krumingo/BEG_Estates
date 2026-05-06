@@ -6,6 +6,7 @@ import {
     Home,
     CalendarClock,
     Users,
+    FileText,
     Receipt,
     ClipboardList,
     LogOut,
@@ -18,6 +19,7 @@ const NAV = [
     { to: "/admin/projects", label: "Проекти", icon: Building2, id: "admin-nav-projects" },
     { to: "/admin/properties", label: "Имоти", icon: Home, id: "admin-nav-properties" },
     { to: "/admin/reservations", label: "Резервации & Запитвания", icon: CalendarClock, id: "admin-nav-reservations" },
+    { to: "/admin/quotes", label: "Оферти", icon: FileText, id: "admin-nav-quotes" },
     { to: "/admin/clients", label: "Клиенти", icon: Users, id: "admin-nav-clients" },
     { to: "/admin/audit", label: "Audit log", icon: ClipboardList, id: "admin-nav-audit" },
 ];

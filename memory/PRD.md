@@ -13,7 +13,14 @@
 - **v0.7 (2026-04-21)** — admin floor-plan mapping + public clickable floor-plan overlay (REMOVED in v0.8)
 - **v0.8 (2026-05-05)** — UI refactor: removed floor-plans entirely, merged inquiries into reservations (tabs), Smart Diff bulk import endpoint + UI, hadji dimitar 52 units canonicalised
 - **v0.9 (2026-05-06)** — Brand Integration Pack B.1: 5 SVG logos + favicon, AdminSidebar / PublicHeader / StaffLogin / new PublicFooter wired up
-- **v1.0 (2026-05-06)** — **Clients Unification Pack C**: unified `db.users(role=client)` as single clients directory (db.buyers DROPPED), full CRUD endpoints, AdminClients UI rewrite, Brand fix "Building Express Group"
+# BEG Estates / EstateFlow — Product Requirements Document
+
+**Last updated:** 2026-05-06 (iteration 11)
+**Status:** Iteration 11 — Quote Builder Pack D (v1.1) ⭐ game-changer
+
+## Iterations
+- **v1.0 (2026-05-06)** — Clients Unification Pack C: unified `db.users(role=client)` as single clients directory, full CRUD endpoints, AdminClients UI rewrite, Brand fix "Building Express Group"
+- **v1.1 (2026-05-06)** — **Quote Builder Pack D**: full quote lifecycle (draft → sent → accepted/rejected/expired), reportlab PDF generator with Cyrillic, AdminQuotes list + QuoteEditor wizard, sidebar nav, "Добави в оферта" property action
 
 ## Original problem statement
 Modern web SaaS/CRM for selling new-construction real estate in Bulgaria.
