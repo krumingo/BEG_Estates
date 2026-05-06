@@ -27,7 +27,8 @@
 
 ## Iterations
 - **v1.1 (2026-05-06)** — Quote Builder Pack D: full quote lifecycle, reportlab PDF generator with Cyrillic, AdminQuotes list + QuoteEditor wizard
-- **v1.2 (2026-05-06)** — **Quote Schemes Pack E.1**: 3 структурирани payment schemes (standard/with_bank/custom), stop-deposit auto-deduct, project Акт 2 date as base for milestone dates, PDF секция "Схема за плащане", inline-editable PaymentScheduleEditor
+- **v1.2 (2026-05-06)** — Quote Schemes Pack E.1: structured payment schemes
+- **v1.3 (2026-05-06)** — **Sales Foundation Pack F.1**: Sale model + super_admin endpoints + ДДС helper + auto-seed migration + status hook (auto-create on sold, archive on revert)
 
 ## Original problem statement
 Modern web SaaS/CRM for selling new-construction real estate in Bulgaria.
