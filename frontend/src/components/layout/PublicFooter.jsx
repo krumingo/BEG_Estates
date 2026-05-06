@@ -15,7 +15,7 @@ export default function PublicFooter() {
                         data-testid="public-footer-logo"
                     />
                     <div className="text-xs text-slate-400 tracking-wide">
-                        © {new Date().getFullYear()} Building Express 90R · Всички права запазени
+                        © {new Date().getFullYear()} Building Express Group · Всички права запазени
                     </div>
                 </div>
             </div>

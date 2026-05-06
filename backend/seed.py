@@ -120,9 +120,11 @@ async def seed_all():
     for col in [
         "projects", "buildings", "properties", "property_links",
         "reservations", "payment_plans", "payment_installments", "payments",
-        "documents", "inquiries", "project_updates", "buyers", "status_history",
+        "documents", "inquiries", "project_updates", "status_history",
     ]:
         await db[col].delete_many({})
+    # Wipe legacy buyer-only client users (those without password_hash) so re-seed is clean.
+    await db.users.delete_many({"role": "client", "password_hash": {"$exists": False}})
 
     # =====================================================
     # PROJECT 1 — BEG Estates / Хаджи Димитър (source-driven)
@@ -181,24 +183,30 @@ async def seed_all():
         }
     )
 
-    # ---- buyers from source ----
+    # ---- buyers from source → unified clients directory (db.users role=client, no password) ----
     buyer_id_by_key: dict[str, str] = {}
     for b in src.get("buyers", []):
         bid = str(uuid.uuid4())
         buyer_id_by_key[b["buyer_key"]] = bid
-        await db.buyers.insert_one(
-            {
-                "id": bid,
-                "project_id": hd_id,
-                "name": b["name"],
-                "phone": b.get("phone"),
-                "email": b.get("email"),
-                "relation": b.get("relation"),
-                "notes": b.get("notes", ""),
-                "buyer_key": b["buyer_key"],
-                "created_at": _utcnow().isoformat(),
-            }
-        )
+        relation = (b.get("relation") or "").strip().lower()
+        client_type = "compensation" if "обезщет" in relation else "buyer"
+        doc: dict = {
+            "id": bid,
+            "role": Role.CLIENT.value,
+            "name": b["name"],
+            "client_type": client_type,
+            "is_active": True,
+            "two_factor_enabled": False,
+            "buyer_key": b["buyer_key"],
+            "notes": b.get("notes", ""),
+            "created_at": _utcnow().isoformat(),
+            "updated_at": _utcnow().isoformat(),
+        }
+        if b.get("email"):
+            doc["email"] = b["email"].lower()
+        if b.get("phone"):
+            doc["phone"] = b["phone"]
+        await db.users.insert_one(doc)
 
     # ---- units from source ----
     units = [

@@ -103,19 +103,6 @@ async def client_dashboard(user: dict = Depends(get_current_user)):
     }
 
 
-@router.get("/clients")
-async def list_clients(user=Depends(require_staff())):
-    db = get_db()
-    clients = await db.users.find(
-        {"role": "client"}, {"_id": 0, "password_hash": 0, "totp_secret": 0}
-    ).to_list(500)
-    for c in clients:
-        c["reservation_count"] = await db.reservations.count_documents(
-            {"client_id": c["id"], "status": {"$in": ["active", "converted"]}}
-        )
-    return clients
-
-
 @router.post("/inquiries")
 async def create_inquiry(payload: InquiryCreate):
     db = get_db()

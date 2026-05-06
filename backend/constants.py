@@ -128,5 +128,22 @@ PUBLIC_PROPERTY_FIELDS = {
     "description", "plan_url", "gallery", "status", "linked_unit_ids", "created_at",
 }
 
+class ClientType(str, Enum):
+    BUYER = "buyer"
+    INVESTOR = "investor"
+    COMPANY = "company"
+    COMPENSATION = "compensation"
+
+
+CLIENT_TYPE_VALUES = {t.value for t in ClientType}
+
+CLIENT_TYPE_LABELS = {
+    ClientType.BUYER.value: "Купувач",
+    ClientType.INVESTOR.value: "Инвеститор",
+    ClientType.COMPANY.value: "Фирма",
+    ClientType.COMPENSATION.value: "Обезщетение",
+}
+
+
 # Schema version tag — bump to force reseed
 SEED_VERSION = "hd-v2-source-driven-r1"

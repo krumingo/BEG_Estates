@@ -163,7 +163,10 @@ async def get_property(property_id: str, request: Request):
     # Admin extras (buyer info)
     payload: dict = {"property": prop, "project": project, "linked": linked}
     if is_staff and prop.get("buyer_id"):
-        buyer = await db.buyers.find_one({"id": prop["buyer_id"]}, {"_id": 0})
+        buyer = await db.users.find_one(
+            {"id": prop["buyer_id"], "role": "client"},
+            {"_id": 0, "password_hash": 0, "totp_secret": 0},
+        )
         payload["buyer"] = buyer
     return payload
 
@@ -263,16 +266,14 @@ async def create_property(payload: PropertyCreate, user=Depends(require_staff())
     if status not in {s.value for s in PropertyStatus}:
         raise HTTPException(status_code=400, detail="Невалиден статус")
 
-    # 5. buyer_id, if provided, must exist and belong to same project
+    # 5. buyer_id, if provided, must exist (unified clients directory; project scope dropped)
     buyer_id = payload.buyer_id or None
     if buyer_id:
-        buyer = await db.buyers.find_one({"id": buyer_id}, {"_id": 0, "project_id": 1})
+        buyer = await db.users.find_one(
+            {"id": buyer_id, "role": "client"}, {"_id": 0, "id": 1}
+        )
         if not buyer:
             raise HTTPException(status_code=400, detail="Купувачът не е намерен")
-        if buyer.get("project_id") and buyer["project_id"] != payload.project_id:
-            raise HTTPException(
-                status_code=400, detail="Купувачът принадлежи на друг проект"
-            )
 
     # 6. duplicate code within project
     dup = await db.properties.find_one(
@@ -374,18 +375,15 @@ async def update_property(
     if "property_type" in changes and changes["property_type"] not in {t.value for t in PropertyType}:
         raise HTTPException(status_code=400, detail="Невалиден тип имот")
 
-    # buyer_id validation — allow null to detach; if provided, must exist & same project
+    # buyer_id validation — allow null to detach; if provided, must exist (unified clients)
     if "buyer_id" in changes:
         bid = changes["buyer_id"]
         if bid:
-            buyer = await db.buyers.find_one({"id": bid}, {"_id": 0, "project_id": 1})
+            buyer = await db.users.find_one(
+                {"id": bid, "role": "client"}, {"_id": 0, "id": 1}
+            )
             if not buyer:
                 raise HTTPException(status_code=400, detail="Купувачът не е намерен")
-            if buyer.get("project_id") and buyer["project_id"] != existing.get("project_id"):
-                raise HTTPException(
-                    status_code=400,
-                    detail="Купувачът принадлежи на друг проект",
-                )
 
     old_status = existing.get("status")
     new_status = changes.get("status")
@@ -418,8 +416,30 @@ async def update_property(
 # ---------- Admin helpers ----------
 @router.get("/buyers")
 async def list_buyers(_=Depends(require_staff())):
+    """DEPRECATED: use /api/clients?type=buyer or /api/clients?active=true.
+    Kept for backwards compatibility — returns active clients of type buyer/compensation."""
     db = get_db()
-    return await db.buyers.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    rows = await db.users.find(
+        {
+            "role": "client",
+            "$or": [{"is_active": True}, {"is_active": {"$exists": False}}],
+            "client_type": {"$in": ["buyer", "compensation"]},
+        },
+        {"_id": 0, "password_hash": 0, "totp_secret": 0},
+    ).sort("created_at", -1).to_list(500)
+    # Map to legacy buyer shape for any frontend still reading `relation`
+    out = []
+    for r in rows:
+        out.append({
+            "id": r.get("id"),
+            "name": r.get("name"),
+            "email": r.get("email"),
+            "phone": r.get("phone"),
+            "relation": "обезщетение" if r.get("client_type") == "compensation" else "купувач",
+            "notes": r.get("notes"),
+            "created_at": r.get("created_at"),
+        })
+    return out
 
 
 @router.get("/property-statuses")
@@ -652,7 +672,10 @@ async def property_finance_summary(
     )
     buyer = None
     if prop.get("buyer_id"):
-        buyer = await db.buyers.find_one({"id": prop["buyer_id"]}, {"_id": 0})
+        buyer = await db.users.find_one(
+            {"id": prop["buyer_id"], "role": "client"},
+            {"_id": 0, "password_hash": 0, "totp_secret": 0},
+        )
 
     final_price = float(prop.get("final_contract_price") or 0)
     deposit_amount = float(prop.get("reservation_price") or 0)
@@ -811,16 +834,14 @@ async def update_property_finance_plan(
     if not prop:
         raise HTTPException(status_code=404, detail="Имотът не е намерен")
 
-    # buyer_id validation — optional, but if supplied must exist & same project
+    # buyer_id validation — optional, but if supplied must exist (unified clients directory)
     new_buyer_id = payload.buyer_id
     if new_buyer_id:
-        buyer = await db.buyers.find_one({"id": new_buyer_id}, {"_id": 0, "project_id": 1})
+        buyer = await db.users.find_one(
+            {"id": new_buyer_id, "role": "client"}, {"_id": 0, "id": 1}
+        )
         if not buyer:
             raise HTTPException(status_code=400, detail="Купувачът не е намерен")
-        if buyer.get("project_id") and buyer["project_id"] != prop.get("project_id"):
-            raise HTTPException(
-                status_code=400, detail="Купувачът принадлежи на друг проект"
-            )
 
     # 1. Patch property financial fields (+ optional buyer reassignment)
     prop_changes: dict = {

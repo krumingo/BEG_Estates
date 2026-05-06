@@ -48,7 +48,10 @@ async def export_properties(
 
     buyer_ids = [p.get("buyer_id") for p in props if p.get("buyer_id")]
     buyers = (
-        await db.buyers.find({"id": {"$in": buyer_ids}}, {"_id": 0}).to_list(500)
+        await db.users.find(
+            {"id": {"$in": buyer_ids}, "role": "client"},
+            {"_id": 0, "id": 1, "name": 1},
+        ).to_list(500)
         if buyer_ids
         else []
     )

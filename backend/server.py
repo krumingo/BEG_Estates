@@ -12,8 +12,9 @@ from fastapi import FastAPI, APIRouter
 from starlette.middleware.cors import CORSMiddleware
 
 from db import close_db, get_db
-from routes import auth_routes, projects, reservations, dashboard, audit, profile, imports, exports
+from routes import auth_routes, projects, reservations, dashboard, audit, profile, imports, exports, clients
 from seed import seed_all
+from migrations.migrate_buyers_to_clients import migrate_buyers_to_clients
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ api_router.include_router(audit.router)
 api_router.include_router(profile.router)
 api_router.include_router(imports.router)
 api_router.include_router(exports.router)
+api_router.include_router(clients.router)
 
 app.include_router(api_router)
 
@@ -51,13 +53,20 @@ app.add_middleware(
 @app.on_event("startup")
 async def on_startup():
     db = get_db()
-    await db.users.create_index("email", unique=True)
+    # Email index: sparse so users without email (buyer-only clients) don't conflict.
+    try:
+        await db.users.drop_index("email_1")
+    except Exception:
+        pass
+    await db.users.create_index("email", unique=True, sparse=True)
     await db.properties.create_index("project_id")
     await db.reservations.create_index("client_id")
     await db.reservations.create_index("property_id")
     await db.audit_logs.create_index("at")
     await db.messages.create_index("client_id")
     await db.messages.create_index("created_at")
+    # Migrate legacy db.buyers → db.users(role=client) BEFORE seed (idempotent).
+    await migrate_buyers_to_clients()
     await seed_all()
     logger.info("BEG Estates API ready (seed complete)")
 

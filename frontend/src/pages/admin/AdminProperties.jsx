@@ -135,8 +135,26 @@ export default function AdminProperties() {
             const primary = r.data.find((p) => p.is_primary) || r.data[0];
             if (primary) setProjectId(primary.id);
         });
-        api.get("/buyers").then((r) => setBuyers(r.data)).catch(() => {});
-        api.get("/clients").then((r) => setClients(r.data)).catch(() => {});
+        // Unified clients directory — includes former buyers + login clients.
+        // active=all so the lookup map can render names of deactivated clients in the table.
+        api.get("/clients", { params: { active: "all" } })
+            .then((r) => {
+                const mapped = (r.data || []).map((c) => ({
+                    ...c,
+                    // Backward-compat label for legacy UI bits that read `relation`.
+                    relation:
+                        c.client_type === "compensation"
+                            ? "обезщетение"
+                            : c.client_type === "investor"
+                              ? "инвеститор"
+                              : c.client_type === "company"
+                                ? "фирма"
+                                : "купувач",
+                }));
+                setBuyers(mapped);
+                setClients(mapped);
+            })
+            .catch(() => {});
     }, []);
 
     const load = (pid) => {
@@ -520,7 +538,12 @@ export default function AdminProperties() {
                                             <td className="p-3 text-slate-700 whitespace-nowrap">
                                                 {buyer ? (
                                                     <div>
-                                                        <div className="font-medium text-slate-900">{buyer.name}</div>
+                                                        <div className={`font-medium ${buyer.is_active === false ? "text-slate-500" : "text-slate-900"}`}>
+                                                            {buyer.name}
+                                                            {buyer.is_active === false && (
+                                                                <span className="ml-1 text-xs text-slate-400">(деактивиран)</span>
+                                                            )}
+                                                        </div>
                                                         <div className="text-xs text-slate-500">{buyer.relation}</div>
                                                     </div>
                                                 ) : (
@@ -833,9 +856,14 @@ function PropertyFormBody({ form, setField, buyers, mode, projects, buildings })
                         <SelectTrigger data-testid="pf-buyer"><SelectValue /></SelectTrigger>
                         <SelectContent>
                             <SelectItem value="__none__">— без купувач —</SelectItem>
-                            {buyers.map((b) => (
-                                <SelectItem key={b.id} value={b.id}>{b.name} · {b.relation}</SelectItem>
-                            ))}
+                            {buyers
+                                .filter((b) => b.is_active !== false || b.id === form.buyer_id)
+                                .map((b) => (
+                                    <SelectItem key={b.id} value={b.id}>
+                                        {b.name}
+                                        {b.is_active === false ? " (деактивиран)" : ""} · {b.relation}
+                                    </SelectItem>
+                                ))}
                         </SelectContent>
                     </Select>
                 </div>
@@ -1157,9 +1185,14 @@ function FinanceSection({ propertyId, buyers }) {
                             <SelectTrigger data-testid="plan-buyer"><SelectValue /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="__none__">— без купувач —</SelectItem>
-                                {buyers.map((b) => (
-                                    <SelectItem key={b.id} value={b.id}>{b.name} · {b.relation}</SelectItem>
-                                ))}
+                                {buyers
+                                    .filter((b) => b.is_active !== false || b.id === plan.buyer_id)
+                                    .map((b) => (
+                                        <SelectItem key={b.id} value={b.id}>
+                                            {b.name}
+                                            {b.is_active === false ? " (деактивиран)" : ""} · {b.relation}
+                                        </SelectItem>
+                                    ))}
                             </SelectContent>
                         </Select>
                     </div>

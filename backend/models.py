@@ -347,3 +347,61 @@ class PropertyPaymentCreate(BaseModel):
         if not v or not v.strip():
             raise ValueError("paid_at е задължителен")
         return v.strip()
+
+
+# ---------- Clients (unified buyer + login client directory) ----------
+_CLIENT_TYPES = {"buyer", "investor", "company", "compensation"}
+
+
+class ClientCreate(BaseModel):
+    name: str
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    egn: Optional[str] = None
+    address: Optional[str] = None
+    notes: Optional[str] = None
+    client_type: str = "buyer"
+
+    @field_validator("name")
+    @classmethod
+    def _name_not_empty(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("Името е задължително")
+        return v
+
+    @field_validator("client_type")
+    @classmethod
+    def _client_type_valid(cls, v: str) -> str:
+        if v not in _CLIENT_TYPES:
+            raise ValueError("Невалиден тип клиент")
+        return v
+
+
+class ClientUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    egn: Optional[str] = None
+    address: Optional[str] = None
+    notes: Optional[str] = None
+    client_type: Optional[str] = None
+
+    @field_validator("name")
+    @classmethod
+    def _name_not_empty(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError("Името не може да е празно")
+        return v
+
+    @field_validator("client_type")
+    @classmethod
+    def _client_type_valid(cls, v):
+        if v is None:
+            return v
+        if v not in _CLIENT_TYPES:
+            raise ValueError("Невалиден тип клиент")
+        return v
