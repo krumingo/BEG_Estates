@@ -1,0 +1,77 @@
+{
+  "summary": "G.2 Deal Editor Full UI Testing Complete - All 17 backend tests passed (100%), all frontend UI tests passed. Full AdminDeals list, NewDealWizard, DealEditor, PaymentMarkDialog, and Quote-to-Deal conversion verified.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "DealEditor - Payment Mode Section",
+        "issues": ["Validation error panel shows when invoice+proforma don't match total - this is correct behavior but the error message could be more prominent"]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_deals_g2.py",
+    "/app/test_reports/pytest/pytest_deals_g2.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "AdminDeals page correctly shows table with all required columns (Number/Client/Properties/Type/Total/Paid/Progress/Status/Actions)",
+    "Counts at top correctly display: Активни/Завършени/Отказани",
+    "Filters work correctly: status, client, search by deal_number or client_name",
+    "Progress bar correctly reflects sumPaidAmount / total_with_vat (0% when no payments)",
+    "Cancelled deals correctly show delete (Trash) button with confirm dialog requiring reason",
+    "NewDealWizard Step 1 correctly lists ONLY available properties, grouped by floor",
+    "NewDealWizard Step 2 correctly shows agreed_price inputs initialized to listprice, payment_mode radios, auto-schedule checkbox",
+    "DealEditor header correctly shows deal_number, client_name, status badge, source_quote indicator ('От оферта')",
+    "DealEditor items table supports inline edit of agreed_price with live recalc of totals",
+    "DealEditor payment mode section correctly toggles visibility based on mode (invoice/proforma for without_bank, bank/non-bank breakdown for combined)",
+    "DealEditor schedule sections show auto-regen buttons with correct presets (8 етапа for non_bank, 4 етапа for bank)",
+    "DealEditor per-stage inline editing works for label/percent/date with auto-recalc of amount",
+    "PaymentMarkDialog correctly opens with date/amount/notes prefilled and 'Маркирай платено' button",
+    "Cancelled deals correctly show alert banner with reason and all inputs disabled",
+    "Quote-to-Deal conversion button ('Преобразувай в Сделка') visible for accepted quotes and super_admin",
+    "Backend cleanup verified: /api/sales/* endpoints return 404 (router removed)",
+    "Sidebar tab 'Сделки / Плащания' correctly visible ONLY for super_admin (not visible for sales role)"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_deals_g2.py"
+  ],
+  "success_rate": {
+    "backend": "100% (17/17 tests passed)",
+    "frontend": "100% (all UI tests passed)"
+  },
+  "test_credentials": {
+    "super_admin": "admin@begestates.bg / BegEstates2026!Admin",
+    "sales": "sales@begestates.bg / BegEstates2026!Sales"
+  },
+  "seed_data_creation": "Used existing deals from G.1 testing. Created and cleaned up test deals during backend tests.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "G.2 Deals module fully tested. Backend test file at /app/backend/tests/test_deals_g2.py covers all deals CRUD, wizard flow, schedule regeneration, payment tracking, and quote conversion. Frontend UI verified: AdminDeals list with filters/counts/progress, NewDealWizard 2-step flow, DealEditor with all sections (header, items, payment mode, schedules, summary), PaymentMarkDialog, cancelled deal read-only view, and sidebar visibility for super_admin only. All Bulgarian UI labels working correctly.",
+  "verified_features": [
+    "AdminDeals: /admin/deals shows table with columns (Number/Client/Properties/Type/Total/Paid/Progress/Status/Actions)",
+    "AdminDeals: Counts at top: Активни/Завършени/Отказани",
+    "AdminDeals: filters by status, by client, search by deal_number or client_name",
+    "AdminDeals: progress bar reflects sumPaidAmount / total_with_vat",
+    "AdminDeals: cancelled deals show delete (Trash) button — clicking opens confirm dialog with reason",
+    "NewDealWizard: /admin/deals/new — Step 1 lists ONLY available properties, grouped by floor, with checkboxes",
+    "NewDealWizard: Step 2 — agreed_price inputs initialized to listprice, total auto-recalculates, payment_mode radio, auto-schedule checkbox",
+    "NewDealWizard: Create → POST /deals + regenerate-schedule with preset=standard|with_bank",
+    "DealEditor: header shows deal_number, client_name, status badge, source_quote indicator ('От оферта')",
+    "DealEditor: items table — inline edit agreed_price triggers live recalc of totals",
+    "DealEditor: payment mode radio toggles — 'Без банка' shows invoice/proforma split, 'Комбиниран' shows bank/non-bank breakdown",
+    "DealEditor: schedule sections with Auto-генерирай buttons (8 етапа for non_bank, 4 етапа for bank)",
+    "DealEditor: per-stage inline editing of label/percent/date — % change auto-recalculates amount",
+    "DealEditor: 'Маркирай' button on unpaid stage opens PaymentMarkDialog with date/amount/notes prefilled",
+    "DealEditor: 'Откажи сделка' opens confirm dialog with reason",
+    "DealEditor: cancelled deals show alert banner + all inputs disabled",
+    "Convert Quote→Deal: from accepted Quote, super_admin sees 'Преобразувай в Сделка' button",
+    "Backend cleanup: /api/sales/* endpoints return 404 (router removed)",
+    "Sidebar tab 'Сделки / Плащания' visible ONLY for super_admin (not visible for sales role)"
+  ]
+}

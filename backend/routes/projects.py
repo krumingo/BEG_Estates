@@ -400,26 +400,6 @@ async def update_property_status(
         user["id"], "property_status_change", "property", property_id,
         {"from": existing.get("status"), "to": payload.status},
     )
-
-    # ---- Sale lifecycle hook ----
-    from routes.sales import (
-        auto_create_sale_for_property,
-        archive_active_sale_for_property,
-    )
-    sold_like = {"sold", "compensation"}
-    old_was_sold_like = existing.get("status") in sold_like
-    new_is_sold_like = payload.status in sold_like
-    if new_is_sold_like and not old_was_sold_like:
-        # Just became sold/compensation — auto-create Sale if buyer is set
-        full_prop = await db.properties.find_one({"id": property_id}, {"_id": 0})
-        if full_prop:
-            await auto_create_sale_for_property(full_prop, user["id"])
-    elif old_was_sold_like and not new_is_sold_like:
-        # Reverted out of sold state — archive active sale
-        await archive_active_sale_for_property(
-            property_id, user["id"],
-            reason=f"Status reverted from {existing.get('status')} to {payload.status}",
-        )
     return {"ok": True}
 
 

@@ -12,7 +12,7 @@ from fastapi import FastAPI, APIRouter
 from starlette.middleware.cors import CORSMiddleware
 
 from db import close_db, get_db
-from routes import auth_routes, projects, reservations, dashboard, audit, profile, imports, exports, clients, quotes, sales, deals
+from routes import auth_routes, projects, reservations, dashboard, audit, profile, imports, exports, clients, quotes, deals
 from seed import seed_all
 from migrations.migrate_buyers_to_clients import migrate_buyers_to_clients
 from migrations.cleanup_old_financial import cleanup_old_financial
@@ -40,7 +40,6 @@ api_router.include_router(imports.router)
 api_router.include_router(exports.router)
 api_router.include_router(clients.router)
 api_router.include_router(quotes.router)
-api_router.include_router(sales.router)
 api_router.include_router(deals.router)
 
 app.include_router(api_router)

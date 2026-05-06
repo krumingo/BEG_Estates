@@ -546,56 +546,6 @@ class QuoteStatusUpdate(BaseModel):
         return v
 
 
-# ---------- Sales (financial records, super_admin-only) ----------
-class SaleCreate(BaseModel):
-    property_id: str
-    client_id: str
-    invoice_amount: float
-    proforma_amount: float = 0.0
-    vat_rate: float = 20.0
-    sale_date: Optional[str] = None  # ISO date; defaults to today
-    notes: Optional[str] = None
-    source_quote_id: Optional[str] = None
-
-    @field_validator("invoice_amount", "proforma_amount", "vat_rate")
-    @classmethod
-    def _non_negative(cls, v):
-        if v is None:
-            return v
-        if v < 0:
-            raise ValueError("Стойността не може да е отрицателна")
-        return v
-
-
-class SaleUpdate(BaseModel):
-    invoice_amount: Optional[float] = None
-    proforma_amount: Optional[float] = None
-    vat_rate: Optional[float] = None
-    sale_date: Optional[str] = None
-    notes: Optional[str] = None
-
-    @field_validator("invoice_amount", "proforma_amount", "vat_rate")
-    @classmethod
-    def _non_negative_opt(cls, v):
-        if v is None:
-            return v
-        if v < 0:
-            raise ValueError("Стойността не може да е отрицателна")
-        return v
-
-
-class SaleDelete(BaseModel):
-    reason: str
-
-    @field_validator("reason")
-    @classmethod
-    def _reason_required(cls, v):
-        if not v or not v.strip():
-            raise ValueError("Причината е задължителна")
-        return v.strip()
-
-
-
 # ---------- Deals (per-client multi-property sale) ----------
 _DEAL_PAYMENT_MODES = {"with_bank", "without_bank", "combined"}
 _DEAL_STATUSES = {"active", "completed", "cancelled"}
