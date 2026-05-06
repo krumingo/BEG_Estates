@@ -22,15 +22,16 @@
 - **v1.0 (2026-05-06)** — Clients Unification Pack C: unified `db.users(role=client)` as single clients directory, full CRUD endpoints, AdminClients UI rewrite, Brand fix "Building Express Group"
 # BEG Estates / EstateFlow — Product Requirements Document
 
-**Last updated:** 2026-05-06 (iteration 13)
-**Status:** Iteration 13 — Deal Foundation Pack G.1 (v1.4)
+**Last updated:** 2026-05-06 (iteration 14)
+**Status:** Iteration 14 — Deal Editor Full UI Pack G.2 (v1.5)
 
 ## Iterations
 - **v1.0 (2026-05-06)** — Clients Unification Pack C: unified `db.users(role=client)` as single clients directory
 - **v1.1 (2026-05-06)** — Quote Builder Pack D: full quote lifecycle, reportlab PDF, AdminQuotes + QuoteEditor wizard
 - **v1.2 (2026-05-06)** — Quote Schemes Pack E.1: structured payment schemes
 - **v1.3 (2026-05-06)** — Sales Foundation Pack F.1+F.2 (DEPRECATED in G.1)
-- **v1.4 (2026-05-06)** — **Deal Foundation Pack G.1**: replaced Sale model with per-client multi-property `Deal` model, dropped legacy financial collections (sales/quotes/payments), removed finance UI from /admin/properties, new "Сделки / Плащания" sidebar tab + AdminDeals/DealEditor placeholder pages, quote→deal converter
+- **v1.4 (2026-05-06)** — Deal Foundation Pack G.1: replaced Sale model with per-client multi-property `Deal`
+- **v1.5 (2026-05-06)** — **Deal Editor Full UI Pack G.2**: complete AdminDeals list, NewDealWizard, full DealEditor (header/items/payment-mode/schedules/tracking), legacy /api/sales removed
 
 ## Original problem statement
 Modern web SaaS/CRM for selling new-construction real estate in Bulgaria.
@@ -155,6 +156,16 @@ Seed is gated by `system_meta.seed.version` tag so future schema changes force c
 - New Pydantic models: `PropertyFinancePlanUpdate`, `PropertyInstallmentInput`, `PropertyPaymentCreate`
 - Frontend `AdminProperties.jsx`: extracted `PropertyFormBody` + added `FinanceSection` with summary cards, upcoming 1/2/3 block, editable installments table, payment form + history
 
+### v1.5 — G.2 Deal Editor Full UI (2026-05-06)
+- **AdminDeals списък**: filter by status/client + search; counters Активни/Завършени/Отказани; progress bar (sumPaidAmount/total_with_vat); delete button за cancelled сделки с confirmation+reason
+- **NewDealWizard (2 стъпки)**: Step 1 — клиент picker + multi-select имоти (само available, grouped by floor); Step 2 — inline agreed_price inputs (init=listprice) + payment_mode radio + auto-schedule checkbox. На "Create" → POST /deals + (если cb) POST /regenerate-schedule → redirect към editor.
+- **Full DealEditor**: 4 секции — Header (status badge, source quote indicator, Save/Cancel buttons), Items table (inline price edit с live recalc + amber подсветка ако agreed > listprice), PaymentModeSection (mode-dependent visibility за invoice/proforma/bank/non_bank breakdown с live %), ScheduleSection per bucket (auto-regen, inline label/percent/date editing с auto-recalc на amount, drag-add stages, payment tracking via Mark/Unmark buttons), Summary (real/получени/очаквани) + notes.
+- **PaymentMarkDialog**: date+amount+notes (prefilled). Click на платен етап → window.confirm → unmark (revert is_paid=false).
+- **Cancel flow**: confirmation dialog → reason → POST /cancel → имотите се освобождават (status=available, buyer_id=null) + read-only режим.
+- **Validation helpers** (`/app/frontend/src/lib/deal-helpers.js`): `calculateVatSplit`, `validatePaymentMode` (tolerance 0.01), `validateScheduleSum` (warn ако ≠ 100%), `bucketBasis`, `isBucketVisible`, `sumStagesAmount/Percent`, `sumPaidAmount`.
+- **Cleanup на legacy** /api/sales: deregistered router, deleted `routes/sales.py`, `services/sale_calculations.py`, `migrations/auto_seed_sales.py`, removed sale lifecycle hooks от `routes/projects.py:402`, removed Sale models от `models.py`. `/api/sales/*` връща 404.
+- **Тестове:** 17/17 backend + 100% frontend ✅ (виж `/app/test_reports/iteration_4.json` и `/app/backend/tests/test_deals_g2.py`)
+
 ### v1.4 — G.1 Deal Foundation (2026-05-06)
 - **Скрапнат** legacy `Sale` модел и cleanup migration drop-ва: `db.sales` (12), `db.quotes` (2), `db.payment_plans` (2), `db.payment_installments` (6), `db.payments` (2). Marker doc в `db._migrations` гарантира идемпотентност. **52 имота + 19 клиенти запазени.**
 - **Нов модел `Deal`** (per-клиент multi-property сделка): `DealItem`, `DealPaymentMode` (with_bank/without_bank/combined + invoice/proforma split), `DealPaymentStage` (bucket: bank|non_bank, is_paid, paid_date, paid_amount), статуси active/completed/cancelled, auto-инкремент D-YYYY-NNN
@@ -177,13 +188,12 @@ Seed is gated by `system_meta.seed.version` tag so future schema changes force c
 - **Тестове:** 15/15 backend + frontend acceptance тестове ✅ (виж `/app/test_reports/iteration_3.json` и `/app/backend/tests/test_deals_g1.py`)
 
 ## Prioritized backlog
-### P0 — next pack G.2
-- **Deal Editor пълен UI** — payment mode picker (with_bank/without_bank/combined) + invoice/proforma разпределение, schedule builder per bucket с регенерация, drag-and-drop reorder на stages, payment tracking UI с marking is_paid + paid_date + paid_amount, audit timeline
+### P0 — next pack G.3
+- **Financial Dashboard** — агрегирани финансови данни от Deal модела (приход, кеш-флоу, прогнозни маржове, по проект и общо); KPI карти, таблица с просрочени плащания, monthly burn-down
 
 ### P1 — backlog
 - **Email Provider (Resend/SendGrid)** + auto-release scheduler за zero-deposit резервации
 - **Pricing Engine** — coefficient by floor/exposure, отстъпки, payment plans
-- **Financial Dashboard (G.3/G.4)** — агрегирани финансови данни от Deal модела (приход, кеш-флоу, прогнозни маржове, по проект и общо)
 - **Contract Generator** — на базата на Deal payment_schedule
 
 ### P2 — future
