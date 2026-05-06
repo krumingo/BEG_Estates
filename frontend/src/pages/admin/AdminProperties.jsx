@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Pencil, Plus, CalendarPlus, Trash2, AlertTriangle, Upload, Download, RotateCcw } from "lucide-react";
+import { Pencil, Plus, CalendarPlus, Trash2, AlertTriangle, Upload, Download, RotateCcw, Lock } from "lucide-react";
 import { api, currency, formatApiError } from "../../lib/api";
+import { useIsSuperAdmin } from "../../lib/auth";
+import SaleFinanceSection from "../../components/admin/SaleFinanceSection";
 import { StatusBadge } from "../../components/common/StatusBadge";
 import {
     PROPERTY_TYPE_LABELS,
@@ -628,7 +630,12 @@ export default function AdminProperties() {
                                     </TabsContent>
                                     <TabsContent value="finance" className="pt-4">
                                         {editing?.id && (
-                                            <FinanceSection propertyId={editing.id} buyers={buyers} />
+                                            <FinanceSection
+                                                propertyId={editing.id}
+                                                buyers={buyers}
+                                                listPrice={form?.list_price}
+                                                propertyStatus={form?.status}
+                                            />
                                         )}
                                     </TabsContent>
                                 </Tabs>
@@ -916,7 +923,8 @@ function formatBgDate(iso) {
     return d.toLocaleDateString("bg-BG");
 }
 
-function FinanceSection({ propertyId, buyers }) {
+function FinanceSection({ propertyId, buyers, listPrice, propertyStatus }) {
+    const isSuperAdmin = useIsSuperAdmin();
     const [summary, setSummary] = useState(null);
     const [loading, setLoading] = useState(true);
     const [plan, setPlan] = useState(EMPTY_PLAN);
@@ -1070,6 +1078,14 @@ function FinanceSection({ propertyId, buyers }) {
 
     return (
         <div className="space-y-6" data-testid="finance-section">
+            {isSuperAdmin && (propertyStatus === "sold" || propertyStatus === "compensation") && (
+                <SaleFinanceSection
+                    propertyId={propertyId}
+                    listPrice={listPrice}
+                    onSaleChange={() => loadSummary(forecastCost)}
+                />
+            )}
+
             {summary.next_due_alert && summary.next_due_installment && (
                 <div
                     className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"

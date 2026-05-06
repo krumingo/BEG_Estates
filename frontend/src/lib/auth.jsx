@@ -36,6 +36,11 @@ export function AuthProvider({ children }) {
 
 export const useAuth = () => useContext(AuthContext);
 
+export const useIsSuperAdmin = () => {
+    const { user } = useContext(AuthContext) || {};
+    return user && user !== false && user.role === "super_admin";
+};
+
 export const STAFF_ROLES = new Set([
     "super_admin",
     "admin",

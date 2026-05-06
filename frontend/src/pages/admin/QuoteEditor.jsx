@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams, Link } from "react-router-dom";
-import { ArrowLeft, Download, Save, Send, Trash2, Plus, X } from "lucide-react";
+import { ArrowLeft, Download, Save, Send, Trash2, Plus, X, Lock } from "lucide-react";
 import { api, currency, formatDate, formatApiError } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -14,6 +14,7 @@ import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "../../components/ui/dialog";
 import { toast } from "sonner";
+import { useIsSuperAdmin } from "../../lib/auth";
 import { QUOTE_STATUS_LABELS, QUOTE_STATUS_BADGE } from "./AdminQuotes";
 
 function floorLabel(f) {
@@ -248,10 +249,12 @@ function NewQuoteWizard({ initialPropertyId }) {
 // =====================================================
 function EditQuoteScreen({ id }) {
     const navigate = useNavigate();
+    const isSuperAdmin = useIsSuperAdmin();
     const [quote, setQuote] = useState(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [confirmAction, setConfirmAction] = useState(null); // {type:'send'|'accept'|'reject'|'delete'}
+    const [confirmAction, setConfirmAction] = useState(null);
+    const [convertingToSale, setConvertingToSale] = useState(false);
 
     const load = () => {
         setLoading(true);
@@ -377,6 +380,40 @@ function EditQuoteScreen({ id }) {
             navigate("/admin/quotes");
         } catch (e) {
             toast.error(formatApiError(e.response?.data?.detail));
+        }
+    };
+
+    const convertToSale = async () => {
+        if (!quote || quote.status !== "accepted") return;
+        setConvertingToSale(true);
+        let success = 0;
+        let failed = 0;
+        try {
+            for (const it of quote.items || []) {
+                try {
+                    // Mark property sold (auto-creates Sale via backend hook)
+                    await api.patch(`/properties/${it.property_id}/status`, { status: "sold" });
+                    // Find created sale and update with custom_price + source_quote_id
+                    const r = await api.get(`/sales/by-property/${it.property_id}`);
+                    const sale = r.data;
+                    if (sale && it.custom_price) {
+                        await api.put(`/sales/${sale.id}`, {
+                            invoice_amount: parseFloat(it.custom_price),
+                            proforma_amount: 0,
+                            vat_rate: 20,
+                            notes: `Преобразувано от оферта ${quote.quote_number}`,
+                        });
+                    }
+                    success += 1;
+                } catch {
+                    failed += 1;
+                }
+            }
+            if (success > 0) toast.success(`${success} имот${success === 1 ? "" : "а"} преобразуван${success === 1 ? "" : "и"} в продажба`);
+            if (failed > 0) toast.error(`${failed} имот${failed === 1 ? "" : "а"} не успяха да се преобразуват`);
+        } finally {
+            setConvertingToSale(false);
+            setConfirmAction(null);
         }
     };
 
@@ -646,6 +683,17 @@ function EditQuoteScreen({ id }) {
                         </Button>
                     </>
                 )}
+                {quote.status === "accepted" && isSuperAdmin && (
+                    <Button
+                        onClick={() => setConfirmAction({ type: "convert_to_sale" })}
+                        disabled={convertingToSale}
+                        className="bg-amber-700 hover:bg-amber-800 text-white"
+                        data-testid="quote-convert-to-sale-btn"
+                    >
+                        <Lock className="h-4 w-4 mr-1.5" />
+                        {convertingToSale ? "Преобразуване…" : "Преобразувай в Sale"}
+                    </Button>
+                )}
             </div>
 
             {/* Confirm dialog */}
@@ -658,6 +706,7 @@ function EditQuoteScreen({ id }) {
                             {confirmAction?.type === "accept" && "Маркирай като приета"}
                             {confirmAction?.type === "reject" && "Маркирай като отказана"}
                             {confirmAction?.type === "expire" && "Маркирай като изтекла"}
+                            {confirmAction?.type === "convert_to_sale" && "Преобразуване в продажба"}
                         </DialogTitle>
                         <DialogDescription>
                             {confirmAction?.type === "delete" && `Сигурни ли сте, че искате да изтриете оферта ${quote.quote_number}? Това действие е необратимо.`}
@@ -665,6 +714,7 @@ function EditQuoteScreen({ id }) {
                             {confirmAction?.type === "accept" && "Офертата ще стане финална. Продължавате ли?"}
                             {confirmAction?.type === "reject" && "Офертата ще се запази с маркер „отказана\". Продължавате ли?"}
                             {confirmAction?.type === "expire" && "Офертата ще се маркира като изтекла."}
+                            {confirmAction?.type === "convert_to_sale" && "Това действие ще: маркира всички имоти като продадени и ще създаде Sale запис(и) с цените от офертата (100% по фактура default). Можете после да промените разпределението фактура/проформа в /admin/properties."}
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
@@ -679,6 +729,7 @@ function EditQuoteScreen({ id }) {
                                 if (t === "accept") await setStatus("accepted");
                                 if (t === "reject") await setStatus("rejected");
                                 if (t === "expire") await setStatus("expired");
+                                if (t === "convert_to_sale") await convertToSale();
                             }}
                             data-testid="quote-confirm-action-ok"
                         >
