@@ -139,18 +139,21 @@ export default function AdminProperties() {
         // active=all so the lookup map can render names of deactivated clients in the table.
         api.get("/clients", { params: { active: "all" } })
             .then((r) => {
-                const mapped = (r.data || []).map((c) => ({
-                    ...c,
-                    // Backward-compat label for legacy UI bits that read `relation`.
-                    relation:
-                        c.client_type === "compensation"
-                            ? "обезщетение"
-                            : c.client_type === "investor"
-                              ? "инвеститор"
-                              : c.client_type === "company"
-                                ? "фирма"
-                                : "купувач",
-                }));
+                const raw = Array.isArray(r.data) ? r.data : [];
+                const mapped = raw
+                    .filter((c) => c && c.id)
+                    .map((c) => ({
+                        ...c,
+                        // Backward-compat label for legacy UI bits that read `relation`.
+                        relation:
+                            c.client_type === "compensation"
+                                ? "обезщетение"
+                                : c.client_type === "investor"
+                                  ? "инвеститор"
+                                  : c.client_type === "company"
+                                    ? "фирма"
+                                    : "купувач",
+                    }));
                 setBuyers(mapped);
                 setClients(mapped);
             })
@@ -250,7 +253,9 @@ export default function AdminProperties() {
 
     const buyerById = useMemo(() => {
         const m = {};
-        buyers.forEach((b) => { m[b.id] = b; });
+        (buyers || []).forEach((b) => {
+            if (b && b.id) m[b.id] = b;
+        });
         return m;
     }, [buyers]);
 
@@ -637,7 +642,7 @@ export default function AdminProperties() {
                         <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving} data-testid="pf-cancel">
                             Отказ
                         </Button>
-                        {mode === "edit" && form.id && (form.status === "available" || form.status === "reserved_zero_deposit") && (
+                        {mode === "edit" && form?.id && (form?.status === "available" || form?.status === "reserved_zero_deposit") && (
                             <Button
                                 variant="outline"
                                 onClick={() => {
@@ -870,7 +875,7 @@ function PropertyFormBody({ form, setField, buyers, mode, projects, buildings })
                         <SelectContent>
                             <SelectItem value="__none__">— без купувач —</SelectItem>
                             {buyers
-                                .filter((b) => b.is_active !== false || b.id === form.buyer_id)
+                                .filter((b) => b && b.id && (b.is_active !== false || b.id === form.buyer_id))
                                 .map((b) => (
                                     <SelectItem key={b.id} value={b.id}>
                                         {b.name}
@@ -1199,7 +1204,7 @@ function FinanceSection({ propertyId, buyers }) {
                             <SelectContent>
                                 <SelectItem value="__none__">— без купувач —</SelectItem>
                                 {buyers
-                                    .filter((b) => b.is_active !== false || b.id === plan.buyer_id)
+                                    .filter((b) => b && b.id && (b.is_active !== false || b.id === plan.buyer_id))
                                     .map((b) => (
                                         <SelectItem key={b.id} value={b.id}>
                                             {b.name}
