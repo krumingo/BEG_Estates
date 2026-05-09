@@ -22,11 +22,12 @@
 - **v1.0 (2026-05-06)** — Clients Unification Pack C: unified `db.users(role=client)` as single clients directory, full CRUD endpoints, AdminClients UI rewrite, Brand fix "Building Express Group"
 # BEG Estates / EstateFlow — Product Requirements Document
 
-**Last updated:** 2026-05-09 (iteration 19)
-**Status:** Iteration 19 — Refactoring R.2 ЧАСТ 3 (PropertiesSummary footer) (v1.5.5)
+**Last updated:** 2026-05-09 (iteration 20)
+**Status:** Iteration 20 — Refactoring R.3 (Pricing UI преместено в Имоти) (v1.5.6)
 
 ## Iterations
-- **v1.5.5 (2026-05-09)** — **Refactoring R.2 ЧАСТ 3 — PropertiesSummary footer**: добавени 3 финансови cards под inventory таблицата (Общо обекти, Продадени с %/progress bar, Свободни с reserved/compensation indicators). Цените и сумите без/с ДДС (×1.20). Optimistic state update — inline edit ъпдейтва footer-а в реално време. R.2 пакетът е финализиран — Excel-style управление на цените е готово. Тествано 100% pass от testing_agent_v3_fork (iteration_8.json: 52 имота, sold=18 35%, free=17, compensation=17, total 3,856,713€ без ДДС / 4,628,056€ с ДДС).
+- **v1.5.6 (2026-05-09)** — **Refactoring R.3 — Pricing UI move**: Pricing Settings UI се мести от edit dialog на /admin/projects → нов toolbar бутон 'Площообразуване' (Settings icon, role-gated за super_admin) на /admin/properties. AdminProjects.jsx -12 реда, AdminProperties.jsx +35 реда. PricingSettingsTab компонентът остава непроменен. Тествано 100% pass от testing_agent_v3_fork (iteration_9.json) включително R.2 регресии (inline €/м², BulkApply, PropertiesSummary).
+- **v1.5.5 (2026-05-09)** — Refactoring R.2 ЧАСТ 3 — PropertiesSummary footer
 - **v1.5.4 (2026-05-09)** — Refactoring R.2 ЧАСТ 2 — Inline price edit + Bulk apply
 - **v1.5.3 (2026-05-09)** — Refactoring R.1 — Dead Code Cleanup
 
