@@ -22,8 +22,13 @@
 - **v1.0 (2026-05-06)** — Clients Unification Pack C: unified `db.users(role=client)` as single clients directory, full CRUD endpoints, AdminClients UI rewrite, Brand fix "Building Express Group"
 # BEG Estates / EstateFlow — Product Requirements Document
 
-**Last updated:** 2026-05-06 (iteration 15)
-**Status:** Iteration 15 — Terminology Redesign Pack G.2.1 (v1.5.1)
+**Last updated:** 2026-05-09 (iteration 16)
+**Status:** Iteration 16 — Площообразуване Pack G.2.2A (v1.5.2)
+
+## Iterations
+- **v1.5 (2026-05-06)** — Deal Editor Full UI Pack G.2
+- **v1.5.1 (2026-05-06)** — Terminology Redesign Pack G.2.1
+- **v1.5.2 (2026-05-09)** — **Площообразуване Pack G.2.2A**: per-project pricing_settings (base_price_per_sqm, vat_rate, floor_corrections, type_overrides), Pricing Engine с priority resolution (manual → type → floor → base), bulk recalc endpoints (dry_run + apply) + preview-display-prices, PricingSettingsTab UI в редакция на проект (super_admin only)
 
 ## Iterations
 - **v1.5 (2026-05-06)** — Deal Editor Full UI Pack G.2
@@ -159,6 +164,18 @@ Seed is gated by `system_meta.seed.version` tag so future schema changes force c
   - `POST /api/properties/{id}/payments` — inserts payment record keyed by `property_id` + greedy mark-as-paid of oldest unpaid installments it fully covers (no partials in this package); audit `property_payment_recorded`
 - New Pydantic models: `PropertyFinancePlanUpdate`, `PropertyInstallmentInput`, `PropertyPaymentCreate`
 - Frontend `AdminProperties.jsx`: extracted `PropertyFormBody` + added `FinanceSection` with summary cards, upcoming 1/2/3 block, editable installments table, payment form + history
+
+### v1.5.2 — G.2.2A Площообразуване (2026-05-09)
+- **Backend pricing_models.py**: `FloorPriceCorrection`, `TypePriceOverride`, `ProjectPricingSettings`, `BulkRecalcRequest`, `BulkRecalcResultItem`, `BulkRecalcResult`.
+- **Backend services/pricing_engine.py**: `resolve_price_per_sqm` (priority: `manual_override` → `type_override` → `floor_correction` → `base`), `calculate_list_price` (= ppm × area_total, **БЕЗ ДДС**), `calculate_display_price_with_vat` (= net × (1 + vat/100), за публичен display), `bulk_recalc_properties` (pure function), `hadzhi_dimitar_default_pricing` preset.
+- **Backend endpoints (super_admin only)**:
+  - `PUT /api/admin/projects/{id}` extended с `pricing_settings: Optional[dict]`
+  - `POST /api/admin/projects/{id}/pricing/recalc` body `{dry_run, overwrite_overrides, only_codes, apply_to_types}` → `BulkRecalcResult`. Без settings → 400. На apply: audit log `pricing_bulk_recalc`.
+  - `GET /api/admin/projects/{id}/pricing/preview-display-prices` → rows с `list_price` + `display_price_with_vat` + vat_rate.
+- **Frontend `components/admin/PricingSettingsTab.jsx`**: Базови настройки (base/VAT) + table editor за floor_corrections + table editor за type_overrides + бутон „Default Хаджи Димитър" (HADZHI_DIMITAR_DEFAULTS preset) + бутон „Преглед на recalc" с dialog (counters Total/Updated/Skipped + table per имот: код/тип/стара/нова/Δ/source) + бутон „Приложи recalc". Интегрирана в `AdminProjects.jsx` edit dialog **САМО** при `mode==="edit" && editingId && isSuperAdmin`.
+- **Бизнес правило**: list_price в DB е **винаги БЕЗ ДДС**. Display цена за публичен сайт = `list_price × (1 + vat_rate/100)`.
+- **Тестове:** 14/14 backend + 100% frontend ✅ (`/app/test_reports/iteration_6.json`, `/app/backend/tests/test_pricing_g22a.py`)
+- **Smoke test за pricing engine**: 7/7 преминати (Apt 101 → 173316€, Apt 501 → 343980€, Garage → 1212€/м², display_price ratio 1.20 ✓, manual override priority, empty settings handling, apartments игнорират type_override).
 
 ### v1.5.1 — G.2.1 Terminology Redesign (2026-05-06)
 - **Backend model renames**: `DealPaymentMode.mode`: `with_bank`→`bank_loan`, `without_bank`→`own_funds`. Нови полета: `own_amount`, `bank_invoice_amount`, `bank_proforma_amount`, `own_invoice_amount`, `own_proforma_amount` (premahnati: `non_bank_amount`, `invoice_amount`, `proforma_amount`). Bucket: `non_bank`→`own`. Deal field `non_bank_stages`→`own_stages`.
