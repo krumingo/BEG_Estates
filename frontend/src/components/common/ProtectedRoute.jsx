@@ -12,14 +12,10 @@ export function ProtectedRoute({ children, allow }) {
         );
     }
     if (!user) {
-        const target = allow === "client" ? "/login/client" : "/login/staff";
-        return <Navigate to={target} replace />;
+        return <Navigate to="/login/staff" replace />;
     }
     if (allow === "staff" && !STAFF_ROLES.has(user.role)) {
-        return <Navigate to="/portal" replace />;
-    }
-    if (allow === "client" && user.role !== "client") {
-        return <Navigate to="/admin" replace />;
+        return <Navigate to="/" replace />;
     }
     return children;
 }

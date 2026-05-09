@@ -99,7 +99,6 @@ export default function StaffLogin() {
                     </form>
 
                     <div className="mt-8 text-xs text-slate-500 space-y-1">
-                        <div>Клиент? <Link to="/login/client" className="underline text-slate-900">Клиентски вход</Link></div>
                         <div className="opacity-60">Demo: admin@begestates.bg / Admin123!</div>
                     </div>
                 </div>

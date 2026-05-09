@@ -45,16 +45,6 @@ export default function PublicHeader({ dark = false }) {
                 </nav>
 
                 <div className="flex items-center gap-2">
-                    {user && user.role === "client" && (
-                        <Button
-                            size="sm"
-                            variant={dark ? "secondary" : "outline"}
-                            onClick={() => navigate("/portal")}
-                            data-testid="header-goto-portal"
-                        >
-                            Моят портал
-                        </Button>
-                    )}
                     {user && user.role !== "client" && (
                         <Button
                             size="sm"
@@ -70,19 +60,14 @@ export default function PublicHeader({ dark = false }) {
                             Изход
                         </Button>
                     ) : (
-                        <>
-                            <Button size="sm" variant="ghost" onClick={() => navigate("/login/client")} data-testid="header-client-login">
-                                Клиент
-                            </Button>
-                            <Button
-                                size="sm"
-                                className="bg-[#0A0A0A] text-white hover:bg-slate-800"
-                                onClick={() => navigate("/login/staff")}
-                                data-testid="header-staff-login"
-                            >
-                                Вход за екипа
-                            </Button>
-                        </>
+                        <Button
+                            size="sm"
+                            className="bg-[#0A0A0A] text-white hover:bg-slate-800"
+                            onClick={() => navigate("/login/staff")}
+                            data-testid="header-staff-login"
+                        >
+                            Вход за екипа
+                        </Button>
                     )}
                 </div>
             </div>

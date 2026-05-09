@@ -21,23 +21,8 @@ export default function PropertyDetail() {
     useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [id]);
 
     const reserveZero = async () => {
-        if (!user) {
-            navigate(`/login/client?next=/properties/${id}`);
-            return;
-        }
-        setSubmitting(true);
-        try {
-            await api.post("/reservations", {
-                property_id: id,
-                reservation_type: "zero_deposit",
-            });
-            toast.success("Резервацията с капаро 0 е създадена!");
-            navigate("/portal/reservations");
-        } catch (e) {
-            toast.error(formatApiError(e.response?.data?.detail));
-        } finally {
-            setSubmitting(false);
-        }
+        // Без client portal — пренасочваме към запитване форма
+        navigate(`/contact?property=${id}&type=reservation`);
     };
 
     if (!data) return <div className="min-h-screen pt-24 text-center text-slate-500">Зареждане…</div>;
