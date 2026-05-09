@@ -10,15 +10,6 @@ class StaffLoginRequest(BaseModel):
     totp_code: Optional[str] = None
 
 
-class ClientOtpRequest(BaseModel):
-    email: EmailStr
-
-
-class ClientOtpVerify(BaseModel):
-    email: EmailStr
-    code: str
-
-
 class TotpSetupVerify(BaseModel):
     code: str
 

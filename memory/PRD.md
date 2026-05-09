@@ -22,8 +22,12 @@
 - **v1.0 (2026-05-06)** — Clients Unification Pack C: unified `db.users(role=client)` as single clients directory, full CRUD endpoints, AdminClients UI rewrite, Brand fix "Building Express Group"
 # BEG Estates / EstateFlow — Product Requirements Document
 
-**Last updated:** 2026-05-09 (iteration 16)
-**Status:** Iteration 16 — Площообразуване Pack G.2.2A (v1.5.2)
+**Last updated:** 2026-05-09 (iteration 17)
+**Status:** Iteration 17 — Refactoring R.1 (Dead Code Cleanup) (v1.5.3)
+
+## Iterations
+- **v1.5.2 (2026-05-09)** — Площообразуване Pack G.2.2A
+- **v1.5.3 (2026-05-09)** — **Refactoring R.1 — Dead Code Cleanup**: премахнат целият неизползван client portal (9 frontend файла + 2 backend endpoints + 2 Pydantic модела + ~780 реда код). Клиентската концепция остава в DB (19 клиенти ползвани от Quotes/Deals/Reservations) но client OTP login изчезва.
 
 ## Iterations
 - **v1.5 (2026-05-06)** — Deal Editor Full UI Pack G.2
@@ -164,6 +168,30 @@ Seed is gated by `system_meta.seed.version` tag so future schema changes force c
   - `POST /api/properties/{id}/payments` — inserts payment record keyed by `property_id` + greedy mark-as-paid of oldest unpaid installments it fully covers (no partials in this package); audit `property_payment_recorded`
 - New Pydantic models: `PropertyFinancePlanUpdate`, `PropertyInstallmentInput`, `PropertyPaymentCreate`
 - Frontend `AdminProperties.jsx`: extracted `PropertyFormBody` + added `FinanceSection` with summary cards, upcoming 1/2/3 block, editable installments table, payment form + history
+
+### v1.5.3 — R.1 Dead Code Cleanup (2026-05-09)
+- **Frontend изтрити (9 файла):**
+  - `pages/client/` (цяла директория — Dashboard, Reservations, Payments, Documents, Updates, Profile, Messages — 7 файла)
+  - `pages/auth/ClientLogin.jsx`
+  - `components/layout/ClientSidebar.jsx`
+- **Frontend променени (5 файла):**
+  - `App.js` — пренаписан без client/portal routes; запазени backwards-compat redirects (`/login/client` → `/login/staff`, `/portal/*` → `/`)
+  - `components/common/ProtectedRoute.jsx` — пренаписан само за staff (gate `STAFF_ROLES`)
+  - `components/layout/PublicHeader.jsx` — премахнат „Клиент" бутон + dead „Моят портал" бутон
+  - `pages/auth/StaffLogin.jsx` — премахнат „Клиентски вход" линк
+  - `pages/public/PropertyDetail.jsx` — `reserveZero()` пренасочва към `/contact?property=X&type=reservation` (вместо стария portal flow)
+- **Backend изтрити (2 endpoints + 2 модела):**
+  - `POST /api/auth/client/request-otp`
+  - `POST /api/auth/client/verify-otp`
+  - `models.ClientOtpRequest`, `models.ClientOtpVerify`
+  - Premahnat import `generate_otp_code`
+- **Запазено** (важно за бъдещи фийчъри):
+  - `Role.CLIENT` в constants.py (ползва се в Quotes/Deals/Reservations)
+  - 19 клиенти в `db.users(role=client)`
+  - `/api/clients` admin endpoints
+  - `db.otp_codes` колекция (празна, но remains за future TOTP/MFA)
+- **Тестове:** 6/6 verification ✅ (staff login → 200, /api/clients → 200, /api/quotes → 200, client OTP → 404, backend imports clean, frontend webpack compiled successfully)
+- **Резултат:** ~780+ реда мъртъв код премахнати; staff-only architecture; foundation за бъдещ public-only flow.
 
 ### v1.5.2 — G.2.2A Площообразуване (2026-05-09)
 - **Backend pricing_models.py**: `FloorPriceCorrection`, `TypePriceOverride`, `ProjectPricingSettings`, `BulkRecalcRequest`, `BulkRecalcResultItem`, `BulkRecalcResult`.

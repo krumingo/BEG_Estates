@@ -1,4 +1,4 @@
-"""Authentication routes: staff login (pwd+TOTP) and client login (email OTP)."""
+"""Authentication routes: staff login (password + TOTP)."""
 import os
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -9,7 +9,6 @@ from auth.dependencies import get_current_user
 from auth.security import (
     create_access_token,
     create_refresh_token,
-    generate_otp_code,
     generate_totp_secret,
     hash_password,
     totp_uri,
@@ -19,8 +18,6 @@ from auth.security import (
 from constants import STAFF_ROLES, Role
 from db import get_db
 from models import (
-    ClientOtpRequest,
-    ClientOtpVerify,
     StaffLoginRequest,
     TotpSetupVerify,
 )
@@ -107,73 +104,6 @@ async def staff_login(payload: StaffLoginRequest, request: Request, response: Re
     await log_action(user["id"], "staff_login", "user", user["id"], None)
 
     return {"user": _public_user(user), "needs_2fa_setup": not user.get("two_factor_enabled")}
-
-
-# ---------- CLIENT: email OTP ----------
-@router.post("/client/request-otp")
-async def client_request_otp(payload: ClientOtpRequest):
-    db = get_db()
-    email = payload.email.lower().strip()
-    user = await db.users.find_one({"email": email})
-    if not user:
-        # auto-create client on first request for scaffold
-        user = {
-            "id": str(uuid.uuid4()),
-            "email": email,
-            "name": email.split("@")[0].title(),
-            "role": Role.CLIENT.value,
-            "two_factor_enabled": False,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-        await db.users.insert_one(user)
-    elif user["role"] != Role.CLIENT.value:
-        raise HTTPException(status_code=403, detail="Използвайте служебния вход")
-
-    code = generate_otp_code()
-    await db.otp_codes.update_one(
-        {"email": email},
-        {
-            "$set": {
-                "email": email,
-                "code": code,
-                "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(),
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            }
-        },
-        upsert=True,
-    )
-    # In scaffold we return the OTP so frontend can show it / for testing.
-    return {"message": "Кодът е изпратен", "dev_otp": code}
-
-
-@router.post("/client/verify-otp")
-async def client_verify_otp(payload: ClientOtpVerify, request: Request, response: Response):
-    db = get_db()
-    email = payload.email.lower().strip()
-    entry = await db.otp_codes.find_one({"email": email}, {"_id": 0})
-    if not entry or entry.get("code") != payload.code:
-        raise HTTPException(status_code=401, detail="Невалиден код")
-    if datetime.fromisoformat(entry["expires_at"]) < datetime.now(timezone.utc):
-        raise HTTPException(status_code=401, detail="Кодът е изтекъл")
-
-    user = await db.users.find_one({"email": email})
-    if not user:
-        raise HTTPException(status_code=404, detail="Потребителят не е намерен")
-
-    await db.otp_codes.delete_one({"email": email})
-    access = create_access_token(user["id"], user["email"], user["role"])
-    refresh = create_refresh_token(user["id"])
-    _set_auth_cookies(response, access, refresh)
-    await db.login_history.insert_one(
-        {
-            "id": str(uuid.uuid4()),
-            "user_id": user["id"],
-            "ip": request.client.host if request.client else "?",
-            "user_agent": request.headers.get("user-agent", ""),
-            "at": datetime.now(timezone.utc).isoformat(),
-        }
-    )
-    return {"user": _public_user(user)}
 
 
 # ---------- 2FA setup ----------
