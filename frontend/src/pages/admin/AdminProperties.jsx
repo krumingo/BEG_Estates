@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Pencil, Plus, CalendarPlus, Upload, Download, RotateCcw } from "lucide-react";
+import { Pencil, Plus, CalendarPlus, Upload, Download, RotateCcw, Calculator } from "lucide-react";
 import { api, currency, formatApiError } from "../../lib/api";
 import { StatusBadge } from "../../components/common/StatusBadge";
+import { InlinePriceCell, calculateWithVat, calculatePricePerSqm } from "../../components/admin/InlinePriceCell";
+import BulkApplyDialog from "../../components/admin/BulkApplyDialog";
 import {
     PROPERTY_TYPE_LABELS,
     PROPERTY_TYPE_FILTERS,
@@ -102,6 +104,7 @@ export default function AdminProperties() {
     const [props, setProps] = useState([]);
     const [importOpen, setImportOpen] = useState(false);
     const [exporting, setExporting] = useState(false);
+    const [bulkApplyOpen, setBulkApplyOpen] = useState(false);
 
     const [dialogOpen, setDialogOpen] = useState(false);
     const [mode, setMode] = useState("edit"); // "edit" | "create"
@@ -258,6 +261,49 @@ export default function AdminProperties() {
         }
     };
 
+    // R.2: inline edit на цена/м²
+    const updatePropertyPrice = async (propertyId, newPpm, newListPrice) => {
+        try {
+            await api.patch(`/properties/${propertyId}`, {
+                price_per_sqm: newPpm,
+                list_price: newListPrice,
+                base_price: newListPrice,
+            });
+            toast.success("Цената е обновена");
+            setProps((prev) => prev.map((p) =>
+                p.id === propertyId
+                    ? { ...p, price_per_sqm: newPpm, list_price: newListPrice, base_price: newListPrice }
+                    : p
+            ));
+        } catch (e) {
+            toast.error(formatApiError(e.response?.data?.detail) || "Грешка при обновяване");
+            throw e;
+        }
+    };
+
+    // R.2: bulk apply на цена/м² на много имоти
+    const handleBulkApply = async (preview, ppmValue) => {
+        let success = 0;
+        let failed = 0;
+        for (const row of preview) {
+            const prop = props.find((p) => p.code === row.code);
+            if (!prop) { failed++; continue; }
+            try {
+                await api.patch(`/properties/${prop.id}`, {
+                    price_per_sqm: ppmValue,
+                    list_price: row.new_list,
+                    base_price: row.new_list,
+                });
+                success++;
+            } catch (e) {
+                failed++;
+            }
+        }
+        if (success > 0) toast.success(`Обновени ${success} имота`);
+        if (failed > 0) toast.error(`${failed} имота не можаха да се обновят`);
+        load(projectId);
+    };
+
     const openEdit = (p) => {
         setMode("edit");
         setEditing(p);
@@ -369,6 +415,14 @@ export default function AdminProperties() {
                     </p>
                 </div>
                 <div className="flex gap-2">
+                    <Button
+                        variant="outline"
+                        onClick={() => setBulkApplyOpen(true)}
+                        disabled={!projectId}
+                        data-testid="admin-bulk-apply-btn"
+                    >
+                        <Calculator className="h-4 w-4 mr-2" /> Bulk цена/м²
+                    </Button>
                     <Button
                         variant="outline"
                         onClick={exportXlsx}
@@ -492,8 +546,9 @@ export default function AdminProperties() {
                             <th className="text-right p-3 font-medium hidden md:table-cell">F2 м²</th>
                             <th className="text-right p-3 font-medium hidden md:table-cell">F1+F2 м²</th>
                             <th className="text-left p-3 font-medium">Изложение</th>
-                            <th className="text-right p-3 font-medium">Базова</th>
-                            <th className="text-right p-3 font-medium">Листова</th>
+                            <th className="text-right p-3 font-medium">€/м²</th>
+                            <th className="text-right p-3 font-medium">Без ДДС</th>
+                            <th className="text-right p-3 font-medium">С ДДС</th>
                             <th className="text-left p-3 font-medium">Статус</th>
                             <th className="text-left p-3 font-medium">Купувач</th>
                             <th className="text-left p-3 font-medium">Бележки</th>
@@ -505,7 +560,7 @@ export default function AdminProperties() {
                         {groupedByFloor.map((g) => (
                             <React.Fragment key={g.floor}>
                                 <tr className="bg-slate-900 text-white" data-testid={`floor-group-${g.floor}`}>
-                                    <td colSpan={15} className="px-4 py-2">
+                                    <td colSpan={16} className="px-4 py-2">
                                         <div className="flex items-center justify-between gap-3">
                                             <div className="flex items-center gap-3">
                                                 <span className="font-mono text-xs opacity-70">{floorKote(g.floor)}</span>
@@ -517,6 +572,10 @@ export default function AdminProperties() {
                                 </tr>
                                 {g.units.map((p) => {
                                     const buyer = p.buyer_id ? buyerById[p.buyer_id] : null;
+                                    const ppmDisplay = p.price_per_sqm
+                                        ? p.price_per_sqm
+                                        : calculatePricePerSqm(p.list_price, p.area_total);
+                                    const withVat = calculateWithVat(p.list_price, 20);
                                     return (
                                         <tr key={p.id} className="border-t hairline align-top" data-testid={`admin-property-row-${p.code}`}>
                                             <td className="p-3 font-mono font-medium whitespace-nowrap">{p.code}</td>
@@ -527,8 +586,17 @@ export default function AdminProperties() {
                                             <td className="p-3 text-right whitespace-nowrap hidden md:table-cell">{p.ideal_parts_area != null ? p.ideal_parts_area : "—"}</td>
                                             <td className="p-3 text-right whitespace-nowrap hidden md:table-cell">{p.area_total != null ? `${p.area_total} м²` : "—"}</td>
                                             <td className="p-3 text-slate-600 whitespace-nowrap">{p.exposure || "—"}</td>
-                                            <td className="p-3 text-right whitespace-nowrap">{p.base_price ? currency(p.base_price) : "—"}</td>
+                                            <td className="p-3 text-right whitespace-nowrap">
+                                                <InlinePriceCell
+                                                    value={ppmDisplay}
+                                                    area={p.area_total}
+                                                    onSave={(newPpm, newListPrice) => updatePropertyPrice(p.id, newPpm, newListPrice)}
+                                                    testId={`admin-ppm-${p.code}`}
+                                                    disabled={!p.area_total}
+                                                />
+                                            </td>
                                             <td className="p-3 text-right font-medium whitespace-nowrap">{p.list_price ? currency(p.list_price) : "—"}</td>
+                                            <td className="p-3 text-right whitespace-nowrap text-slate-600">{withVat ? currency(withVat) : "—"}</td>
                                             <td className="p-3"><StatusBadge status={p.status} /></td>
                                             <td className="p-3 text-slate-700 whitespace-nowrap">
                                                 {buyer ? (
@@ -586,11 +654,18 @@ export default function AdminProperties() {
                             </React.Fragment>
                         ))}
                         {filtered.length === 0 && (
-                            <tr><td className="p-5 text-sm text-slate-500" colSpan={15}>Няма обекти с избраните филтри.</td></tr>
+                            <tr><td className="p-5 text-sm text-slate-500" colSpan={16}>Няма обекти с избраните филтри.</td></tr>
                         )}
                     </tbody>
                 </table>
             </div>
+
+            <BulkApplyDialog
+                open={bulkApplyOpen}
+                onOpenChange={setBulkApplyOpen}
+                properties={props}
+                onApply={handleBulkApply}
+            />
 
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                 <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto" data-testid="property-edit-dialog">
