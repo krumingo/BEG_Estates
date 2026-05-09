@@ -24,6 +24,8 @@ import {
 } from "../../components/ui/select";
 import { PROJECT_STATUS_LABELS } from "../../lib/constants";
 import { toast } from "sonner";
+import { useIsSuperAdmin } from "../../lib/auth";
+import PricingSettingsTab from "../../components/admin/PricingSettingsTab";
 
 const EMPTY_FORM = {
     name: "",
@@ -93,6 +95,7 @@ function toPayload(form) {
 }
 
 export default function AdminProjects() {
+    const isSuperAdmin = useIsSuperAdmin();
     const [items, setItems] = useState([]);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [mode, setMode] = useState("create"); // "create" | "edit"
@@ -331,6 +334,15 @@ export default function AdminProjects() {
                             />
                         </div>
                     </div>
+
+                    {mode === "edit" && editingId && isSuperAdmin && (
+                        <div className="border-t hairline pt-6 mt-6">
+                            <PricingSettingsTab
+                                project={items.find((p) => p.id === editingId)}
+                                onSaved={load}
+                            />
+                        </div>
+                    )}
 
                     <DialogFooter>
                         <Button

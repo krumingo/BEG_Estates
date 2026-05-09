@@ -1,0 +1,68 @@
+{
+  "summary": "G.2.2A Pricing Settings + Bulk Recalc Testing Complete - 14/14 backend tests passed (100%), all frontend UI tests passed. Verified pricing_settings persistence, recalc dry_run/apply, preview-display-prices, role-based access (super_admin only), and all PricingSettingsTab UI elements.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_pricing_g22a.py",
+    "/app/test_reports/pytest/pytest_pricing_g22a.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Backend: PUT /api/admin/projects/{id} correctly accepts pricing_settings dict and persists base_price_per_sqm, vat_rate, floor_corrections, type_overrides",
+    "Backend: POST /api/admin/projects/{id}/pricing/recalc with dry_run=true returns BulkRecalcResult with 52 items including code, property_type, floor, area_total, old_list_price, new_list_price, delta, used_pricing_source, skipped, skip_reason",
+    "Backend: POST /api/admin/projects/{id}/pricing/recalc with dry_run=false applies updates to db.properties.list_price + base_price",
+    "Backend: GET /api/admin/projects/{id}/pricing/preview-display-prices returns rows with list_price and display_price_with_vat (= list_price × (1+vat_rate/100))",
+    "Backend: All 3 pricing endpoints correctly reject sales role with 403 and anonymous with 401",
+    "Backend: Pricing engine resolution priority working: manual_override → type_override → floor_correction → base",
+    "Frontend: PricingSettingsTab visible only for super_admin in edit mode (mode='edit' && editingId && isSuperAdmin)",
+    "Frontend: PricingSettingsTab NOT visible for sales role (correct)",
+    "Frontend: PricingSettingsTab NOT visible in create mode (Нов проект) (correct)",
+    "Frontend: All data-testid attributes present and working: pricing-settings-tab, pricing-base-ppm, pricing-vat-rate, pricing-load-defaults, pricing-save, pricing-preview-recalc, add-floor-correction, add-type-override, floor-correction-floor-{idx}, floor-correction-ppm-{idx}, floor-correction-remove-{idx}, type-override-type-{idx}, type-override-ppm-{idx}, type-override-remove-{idx}, pricing-recalc-dialog, recalc-total-count, recalc-updated-count, recalc-skipped-count, pricing-apply-recalc",
+    "Frontend: 'Default Хаджи Димитър' button loads HADZHI_DIMITAR_DEFAULTS (6 floor_corrections + 5 type_overrides) with confirm dialog",
+    "Frontend: Add/remove rows in floor_corrections and type_overrides working correctly",
+    "Frontend: 'Запази настройките' button PUTs payload and shows success toast",
+    "Frontend: 'Преглед на recalc' opens dialog with counters (52 total, 52 updated, 0 skipped) and table",
+    "Frontend: 'Приложи recalc' applies changes and shows 'Updated 52 имота' toast"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_pricing_g22a.py"
+  ],
+  "success_rate": {
+    "backend": "100% (14/14 tests passed)",
+    "frontend": "100% (all UI tests passed)"
+  },
+  "test_credentials": {
+    "super_admin": "admin@begestates.bg / BegEstates2026!Admin",
+    "sales": "sales@begestates.bg / BegEstates2026!Sales"
+  },
+  "seed_data_creation": "No new seed data created. Used existing Хаджи Димитър project (ID: 530a81a9-0b56-4b9b-a447-47170ff29cc2) with 52 properties.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "G.2.2A pricing settings fully tested. Backend test file at /app/backend/tests/test_pricing_g22a.py covers: PUT pricing_settings persistence, recalc dry_run returns BulkRecalcResult, recalc without settings returns 400, recalc apply updates DB, preview-display-prices returns VAT-inclusive prices, role-based access (super_admin only, sales 403, anonymous 401), non-existent project 404. Frontend verified: PricingSettingsTab visible only for super_admin in edit mode, all testids present, load defaults button, add/remove floor corrections and type overrides, save button, preview recalc dialog with counters and table, apply recalc button.",
+  "verified_features": [
+    "Backend: PUT /api/admin/projects/{id} accepts pricing_settings dict and persists",
+    "Backend: POST /api/admin/projects/{id}/pricing/recalc with dry_run=true returns BulkRecalcResult",
+    "Backend: POST /api/admin/projects/{id}/pricing/recalc with dry_run=false applies updates",
+    "Backend: GET /api/admin/projects/{id}/pricing/preview-display-prices returns VAT-inclusive prices",
+    "Backend: All pricing endpoints reject sales role with 403",
+    "Backend: All pricing endpoints reject anonymous with 401",
+    "Backend: Recalc without pricing_settings returns 400",
+    "Backend: Non-existent project returns 404",
+    "Frontend: super_admin sees pricing-settings-tab in edit mode",
+    "Frontend: sales role does NOT see pricing-settings-tab",
+    "Frontend: create mode does NOT show pricing-settings-tab",
+    "Frontend: pricing-load-defaults button loads HADZHI_DIMITAR_DEFAULTS with confirm",
+    "Frontend: add-floor-correction and add-type-override buttons work",
+    "Frontend: floor-correction-remove-{idx} and type-override-remove-{idx} buttons work",
+    "Frontend: pricing-save button PUTs and shows success toast",
+    "Frontend: pricing-preview-recalc opens dialog with counters and table",
+    "Frontend: pricing-apply-recalc applies changes and shows success toast"
+  ]
+}
