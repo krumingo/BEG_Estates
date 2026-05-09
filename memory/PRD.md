@@ -22,11 +22,12 @@
 - **v1.0 (2026-05-06)** — Clients Unification Pack C: unified `db.users(role=client)` as single clients directory, full CRUD endpoints, AdminClients UI rewrite, Brand fix "Building Express Group"
 # BEG Estates / EstateFlow — Product Requirements Document
 
-**Last updated:** 2026-05-09 (iteration 20)
-**Status:** Iteration 20 — Refactoring R.3 (Pricing UI преместено в Имоти) (v1.5.6)
+**Last updated:** 2026-05-09 (iteration 21)
+**Status:** Iteration 21 — Refactoring R.4 (Public сайт показва цени С ДДС) (v1.5.7)
 
 ## Iterations
-- **v1.5.6 (2026-05-09)** — **Refactoring R.3 — Pricing UI move**: Pricing Settings UI се мести от edit dialog на /admin/projects → нов toolbar бутон 'Площообразуване' (Settings icon, role-gated за super_admin) на /admin/properties. AdminProjects.jsx -12 реда, AdminProperties.jsx +35 реда. PricingSettingsTab компонентът остава непроменен. Тествано 100% pass от testing_agent_v3_fork (iteration_9.json) включително R.2 регресии (inline €/м², BulkApply, PropertiesSummary).
+- **v1.5.7 (2026-05-09)** — **Refactoring R.4 — Public VAT display**: публичните страници (ProjectDetail PropertyCell + PropertyDetail) сега показват цените С ДДС 20% (× 1.20). Нов `PublicPriceCell` в PropertyDetail (голяма С ДДС цена + малка БЕЗ ДДС референция). Премахната е "Цена / м²" клетка от PropertyDetail (купувачът не я вижда). Добавен disclaimer "Всички показани цени са с включен ДДС 20%" под имотите в ProjectDetail. Backend НЕ е променян — list_price в DB остава БЕЗ ДДС. Тествано 100% pass от testing_agent_v3_fork (iteration_10.json) — пример апартамент 601: 280,696€ без ДДС → 336,835€ с ДДС.
+- **v1.5.6 (2026-05-09)** — Refactoring R.3 — Pricing UI move
 - **v1.5.5 (2026-05-09)** — Refactoring R.2 ЧАСТ 3 — PropertiesSummary footer
 - **v1.5.4 (2026-05-09)** — Refactoring R.2 ЧАСТ 2 — Inline price edit + Bulk apply
 - **v1.5.3 (2026-05-09)** — Refactoring R.1 — Dead Code Cleanup
