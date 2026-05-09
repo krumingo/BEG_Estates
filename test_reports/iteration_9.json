@@ -1,0 +1,124 @@
+{
+  "summary": "R.3 Testing Complete - Pricing Settings UI successfully moved from Projects edit dialog to Properties toolbar. All features verified: (1) 'Площообразуване' section removed from Projects edit dialog, (2) New 'Площообразуване' button added as FIRST button in Properties toolbar with Settings icon, (3) Button opens Dialog with PricingSettingsTab component, (4) Role gating working - button NOT visible for sales users, only for super_admin, (5) All R.2 features (inline €/м² edit, BulkApply, PropertiesSummary footer) working correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_9.json"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "AdminProjects.jsx (357 lines): PricingSettingsTab import and usage correctly removed from edit dialog",
+    "AdminProperties.jsx (1251 lines): Settings icon, PricingSettingsTab, useIsSuperAdmin imports added correctly",
+    "AdminProperties.jsx: pricingDialogOpen state and isSuperAdmin local var added correctly",
+    "AdminProperties.jsx: Pricing toolbar button with role gating (isSuperAdmin &&) positioned as FIRST button in toolbar",
+    "AdminProperties.jsx: New Dialog with PricingSettingsTab placed between BulkApplyDialog and edit Dialog",
+    "PricingSettingsTab.jsx: Component unchanged, reused without modifications",
+    "useIsSuperAdmin hook: Correctly checks user.role === 'super_admin'",
+    "Button disabled state: Correctly disabled when !projectId (no project selected)",
+    "Dialog data-testid='pricing-settings-dialog' present for testing",
+    "Button data-testid='admin-pricing-settings-btn' present for testing"
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (frontend only testing)",
+    "frontend": "100% (all R.3 features working)"
+  },
+  "test_credentials": {
+    "super_admin": "admin@begestates.bg / BegEstates2026!Admin",
+    "sales": "sales@begestates.bg / BegEstates2026!Sales"
+  },
+  "seed_data_creation": "No new seed data. Used existing Хаджи Димитър project with 52 properties.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "R.3 fully tested. Pricing Settings UI moved from Projects → Properties. Key test points: (1) Projects edit dialog NO LONGER has 'Площообразуване' section, (2) Properties toolbar has new 'Площообразуване' button as FIRST button with Settings icon, (3) Button opens Dialog with full PricingSettingsTab (base_price_per_sqm, vat_rate, floor_corrections, type_overrides), (4) Role gating: button visible ONLY for super_admin, NOT for sales, (5) Button disabled when no project selected, (6) All R.2 features (inline €/м² edit, BulkApply, PropertiesSummary footer) continue working.",
+  "verified_features": [
+    {
+      "feature": "Login as super_admin (admin@begestates.bg / BegEstates2026!Admin)",
+      "status": "PASS"
+    },
+    {
+      "feature": "Navigate to /admin/projects → Edit 'Хаджи Димитър' → Verify 'Площообразуване' section REMOVED",
+      "status": "PASS",
+      "details": "Dialog content does NOT contain 'Площообразуване', pricing-settings-tab NOT in DOM"
+    },
+    {
+      "feature": "Navigate to /admin/properties → Verify new 'Площообразуване' button in toolbar",
+      "status": "PASS",
+      "details": "Button found with data-testid='admin-pricing-settings-btn', text 'Площообразуване', Settings icon (svg) present"
+    },
+    {
+      "feature": "Verify 'Площообразуване' button is FIRST in toolbar",
+      "status": "PASS",
+      "details": "Button order: 1. Площообразуване, 2. Bulk цена/м², 3. Експорт Excel, 4. Импорт от JSON, 5. Нов обект"
+    },
+    {
+      "feature": "Button disabled when no project selected",
+      "status": "PASS",
+      "details": "Button has disabled attribute when projectId is empty"
+    },
+    {
+      "feature": "Select project 'Хаджи Димитър' → Button enabled → Click opens Dialog",
+      "status": "PASS",
+      "details": "Dialog opens with data-testid='pricing-settings-dialog'"
+    },
+    {
+      "feature": "Dialog contains PricingSettingsTab component",
+      "status": "PASS",
+      "details": "pricing-settings-tab found in dialog, base_price_per_sqm=2200, vat_rate=20, floor_corrections (6 floors), type_overrides (5 types)"
+    },
+    {
+      "feature": "Modify base_price_per_sqm and Save → Toast success",
+      "status": "PASS",
+      "details": "Changed 2200 → 2250, save completed, dialog remains open (expected behavior)"
+    },
+    {
+      "feature": "Logout and Login as sales (sales@begestates.bg / BegEstates2026!Sales)",
+      "status": "PASS"
+    },
+    {
+      "feature": "Sales on /admin/properties → 'Площообразуване' button NOT visible (role gating)",
+      "status": "PASS",
+      "details": "Button NOT found in DOM for sales user"
+    },
+    {
+      "feature": "Sales sees other buttons (Bulk цена/м², Експорт Excel, Импорт от JSON, Нов обект)",
+      "status": "PASS",
+      "details": "All 4 buttons visible and functional for sales"
+    },
+    {
+      "feature": "Regression: Inline €/м² edit (R.2 ЧАСТ 2)",
+      "status": "PASS",
+      "details": "Click on price cell → input appears → Escape cancels"
+    },
+    {
+      "feature": "Regression: BulkApply dialog (R.2 ЧАСТ 2)",
+      "status": "PASS",
+      "details": "Bulk цена/м² button opens dialog with bulk-ppm-input"
+    },
+    {
+      "feature": "Regression: PropertiesSummary footer (R.2 ЧАСТ 3)",
+      "status": "PASS",
+      "details": "Footer visible with 3 cards: Общо обекти (52), Продадени 35% (18), Свободни (17), VAT display (Без ДДС / С ДДС)"
+    }
+  ],
+  "test_data": {
+    "project": "BEG Estates / Хаджи Димитър",
+    "total_properties": 52,
+    "sold_count": 18,
+    "available_count": 17,
+    "sold_percent": 35,
+    "pricing_settings": {
+      "base_price_per_sqm": 2200,
+      "vat_rate": 20,
+      "floor_corrections_count": 6,
+      "type_overrides_count": 5
+    }
+  }
+}

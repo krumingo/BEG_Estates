@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Pencil, Plus, CalendarPlus, Upload, Download, RotateCcw, Calculator } from "lucide-react";
+import { Pencil, Plus, CalendarPlus, Upload, Download, RotateCcw, Calculator, Settings } from "lucide-react";
 import { api, currency, formatApiError } from "../../lib/api";
 import { StatusBadge } from "../../components/common/StatusBadge";
 import { InlinePriceCell, calculateWithVat, calculatePricePerSqm } from "../../components/admin/InlinePriceCell";
 import BulkApplyDialog from "../../components/admin/BulkApplyDialog";
+import PricingSettingsTab from "../../components/admin/PricingSettingsTab";
+import { useIsSuperAdmin } from "../../lib/auth";
 import {
     PROPERTY_TYPE_LABELS,
     PROPERTY_TYPE_FILTERS,
@@ -105,6 +107,8 @@ export default function AdminProperties() {
     const [importOpen, setImportOpen] = useState(false);
     const [exporting, setExporting] = useState(false);
     const [bulkApplyOpen, setBulkApplyOpen] = useState(false);
+    const [pricingDialogOpen, setPricingDialogOpen] = useState(false);
+    const isSuperAdmin = useIsSuperAdmin();
 
     const [dialogOpen, setDialogOpen] = useState(false);
     const [mode, setMode] = useState("edit"); // "edit" | "create"
@@ -415,6 +419,16 @@ export default function AdminProperties() {
                     </p>
                 </div>
                 <div className="flex gap-2">
+                    {isSuperAdmin && (
+                        <Button
+                            variant="outline"
+                            onClick={() => setPricingDialogOpen(true)}
+                            disabled={!projectId}
+                            data-testid="admin-pricing-settings-btn"
+                        >
+                            <Settings className="h-4 w-4 mr-2" /> Площообразуване
+                        </Button>
+                    )}
                     <Button
                         variant="outline"
                         onClick={() => setBulkApplyOpen(true)}
@@ -669,6 +683,27 @@ export default function AdminProperties() {
                 properties={props}
                 onApply={handleBulkApply}
             />
+
+            {/* R.3: Pricing Settings Dialog (само за super_admin) */}
+            <Dialog open={pricingDialogOpen} onOpenChange={setPricingDialogOpen}>
+                <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto" data-testid="pricing-settings-dialog">
+                    <DialogHeader>
+                        <DialogTitle className="font-serif text-2xl">Площообразуване</DialogTitle>
+                        <DialogDescription>
+                            Настройки за автоматично изчисление на цени по етаж и тип имот.
+                            Цените са БЕЗ ДДС. Прилагат се само при ползване на „Преглед на recalc".
+                        </DialogDescription>
+                    </DialogHeader>
+                    {projectId && (
+                        <PricingSettingsTab
+                            project={projects.find((p) => p.id === projectId)}
+                            onSaved={() => {
+                                load(projectId);
+                            }}
+                        />
+                    )}
+                </DialogContent>
+            </Dialog>
 
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                 <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto" data-testid="property-edit-dialog">
