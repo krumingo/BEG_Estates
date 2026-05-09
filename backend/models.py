@@ -100,6 +100,7 @@ class ProjectUpdate(BaseModel):
     construction_duration_months: Optional[int] = None
     expense_estimate: Optional[ProjectExpenseEstimate] = None
     total_rzp_area: Optional[float] = None
+    pricing_settings: Optional[dict] = None  # G.2.2A pricing engine settings
 
     @field_validator("slug")
     @classmethod

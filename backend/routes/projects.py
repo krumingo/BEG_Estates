@@ -281,6 +281,144 @@ async def admin_update_project(
     return updated
 
 
+# === G.2.2A: Pricing recalc endpoints ===
+from services.pricing_engine import bulk_recalc_properties  # noqa: E402
+from pricing_models import BulkRecalcRequest, BulkRecalcResult, BulkRecalcResultItem  # noqa: E402
+
+
+@router.post("/admin/projects/{project_id}/pricing/recalc", response_model=BulkRecalcResult)
+async def recalc_project_pricing(
+    project_id: str,
+    payload: BulkRecalcRequest,
+    user=Depends(require_staff()),
+):
+    """Bulk recalc цените на имотите. dry_run=True за preview."""
+    from constants import Role
+    if user.get("role") != Role.SUPER_ADMIN.value:
+        raise HTTPException(status_code=403, detail="Достъп само за super_admin")
+
+    db = get_db()
+    project = await db.projects.find_one({"id": project_id}, {"_id": 0})
+    if not project:
+        raise HTTPException(status_code=404, detail="Проектът не е намерен")
+
+    pricing_settings = project.get("pricing_settings") or {}
+    if (not pricing_settings.get("base_price_per_sqm")
+            and not pricing_settings.get("floor_corrections")
+            and not pricing_settings.get("type_overrides")):
+        raise HTTPException(
+            status_code=400,
+            detail="Няма pricing settings зададени за проекта",
+        )
+
+    cursor = db.properties.find({"project_id": project_id}, {"_id": 0})
+    properties = await cursor.to_list(length=None)
+
+    results = bulk_recalc_properties(
+        properties,
+        pricing_settings,
+        apply_to_types=payload.apply_to_types,
+        overwrite_overrides=payload.overwrite_overrides,
+        only_codes=payload.only_codes,
+    )
+
+    items = []
+    updated_count = 0
+    skipped_count = 0
+
+    for r in results:
+        items.append(BulkRecalcResultItem(
+            code=r["code"],
+            property_type=r["property_type"],
+            floor=r.get("floor"),
+            area_total=r.get("area_total"),
+            old_list_price=r.get("old_list_price"),
+            new_list_price=r.get("new_list_price"),
+            delta=r.get("delta"),
+            used_pricing_source=r["used_pricing_source"],
+            skipped=r["skipped"],
+            skip_reason=r.get("skip_reason"),
+        ))
+        if r["skipped"]:
+            skipped_count += 1
+        else:
+            updated_count += 1
+
+    if not payload.dry_run:
+        for r in results:
+            if r["skipped"] or r.get("new_list_price") is None:
+                continue
+            await db.properties.update_one(
+                {"project_id": project_id, "code": r["code"]},
+                {"$set": {
+                    "list_price": r["new_list_price"],
+                    "base_price": r["new_list_price"],
+                }},
+            )
+
+        await log_action(
+            user["id"],
+            "pricing_bulk_recalc",
+            "project",
+            project_id,
+            {
+                "updated_count": updated_count,
+                "skipped_count": skipped_count,
+                "overwrite_overrides": payload.overwrite_overrides,
+            },
+        )
+
+    return BulkRecalcResult(
+        project_id=project_id,
+        dry_run=payload.dry_run,
+        total_properties=len(results),
+        updated_count=updated_count,
+        skipped_count=skipped_count,
+        items=items,
+    )
+
+
+@router.get("/admin/projects/{project_id}/pricing/preview-display-prices")
+async def preview_display_prices(
+    project_id: str,
+    user=Depends(require_staff()),
+):
+    """Preview на цените С ДДС (за публичен display)."""
+    from constants import Role
+    if user.get("role") != Role.SUPER_ADMIN.value:
+        raise HTTPException(status_code=403, detail="Достъп само за super_admin")
+
+    db = get_db()
+    project = await db.projects.find_one({"id": project_id}, {"_id": 0})
+    if not project:
+        raise HTTPException(status_code=404, detail="Проектът не е намерен")
+
+    vat_rate = (project.get("pricing_settings") or {}).get("vat_rate", 20.0)
+
+    cursor = db.properties.find(
+        {"project_id": project_id},
+        {"_id": 0, "code": 1, "property_type": 1, "list_price": 1,
+         "area_total": 1, "floor": 1},
+    )
+    properties = await cursor.to_list(length=None)
+
+    rows = []
+    for p in properties:
+        lp = p.get("list_price")
+        display = round(lp * (1 + vat_rate / 100), 2) if lp is not None else None
+        rows.append({
+            "code": p.get("code"),
+            "property_type": p.get("property_type"),
+            "floor": p.get("floor"),
+            "area_total": p.get("area_total"),
+            "list_price": lp,
+            "display_price_with_vat": display,
+            "vat_rate": vat_rate,
+        })
+
+    return {"project_id": project_id, "vat_rate": vat_rate, "rows": rows}
+
+
 @router.post("/properties")
 async def create_property(payload: PropertyCreate, user=Depends(require_staff())):
     db = get_db()
