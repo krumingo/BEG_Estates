@@ -15,16 +15,6 @@ import Contact from "./pages/public/Contact";
 
 // Auth
 import StaffLogin from "./pages/auth/StaffLogin";
-import ClientLogin from "./pages/auth/ClientLogin";
-
-// Client
-import ClientDashboard, { ClientLayout } from "./pages/client/ClientDashboard";
-import ClientReservations from "./pages/client/ClientReservations";
-import ClientPayments from "./pages/client/ClientPayments";
-import ClientDocuments from "./pages/client/ClientDocuments";
-import ClientUpdates from "./pages/client/ClientUpdates";
-import ClientProfile from "./pages/client/ClientProfile";
-import ClientMessages from "./pages/client/ClientMessages";
 
 // Admin
 import AdminDashboard, { AdminLayout } from "./pages/admin/AdminDashboard";
@@ -54,28 +44,10 @@ function App() {
                         <Route path="/properties/:id" element={<PropertyDetail />} />
                         <Route path="/contact" element={<Contact />} />
 
-                        {/* Auth */}
+                        {/* Auth — staff only */}
                         <Route path="/login/staff" element={<StaffLogin />} />
-                        <Route path="/login/client" element={<ClientLogin />} />
                         <Route path="/login" element={<Navigate to="/login/staff" replace />} />
-
-                        {/* Client portal */}
-                        <Route
-                            path="/portal"
-                            element={
-                                <ProtectedRoute allow="client">
-                                    <ClientLayout />
-                                </ProtectedRoute>
-                            }
-                        >
-                            <Route index element={<ClientDashboard />} />
-                            <Route path="reservations" element={<ClientReservations />} />
-                            <Route path="payments" element={<ClientPayments />} />
-                            <Route path="documents" element={<ClientDocuments />} />
-                            <Route path="updates" element={<ClientUpdates />} />
-                            <Route path="profile" element={<ClientProfile />} />
-                            <Route path="messages" element={<ClientMessages />} />
-                        </Route>
+                        <Route path="/login/client" element={<Navigate to="/login/staff" replace />} />
 
                         {/* Admin */}
                         <Route
@@ -101,6 +73,9 @@ function App() {
                             <Route path="floor-plans" element={<Navigate to="/admin/properties" replace />} />
                             <Route path="audit" element={<AdminAudit />} />
                         </Route>
+
+                        {/* /portal* → home */}
+                        <Route path="/portal/*" element={<Navigate to="/" replace />} />
 
                         <Route path="*" element={<NotFound />} />
                     </Routes>
