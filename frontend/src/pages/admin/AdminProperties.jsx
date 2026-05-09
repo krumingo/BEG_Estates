@@ -660,6 +660,9 @@ export default function AdminProperties() {
                 </table>
             </div>
 
+            {/* R.2: Footer със суми */}
+            <PropertiesSummary properties={props} />
+
             <BulkApplyDialog
                 open={bulkApplyOpen}
                 onOpenChange={setBulkApplyOpen}
@@ -810,6 +813,94 @@ function NumInput({ label, value, onChange, testId }) {
                 onChange={onChange}
                 data-testid={testId}
             />
+        </div>
+    );
+}
+
+// R.2: Footer със финансови суми
+function PropertiesSummary({ properties }) {
+    const summary = useMemo(() => {
+        const all = properties || [];
+
+        const sumLp = (list) => list.reduce((acc, p) => acc + (parseFloat(p.list_price) || 0), 0);
+        const sumWithVat = (list) => sumLp(list) * 1.20;
+
+        const sold = all.filter((p) => p.status === "sold");
+        const free = all.filter((p) => p.status === "available");
+        const reserved = all.filter((p) =>
+            p.status === "reserved_zero_deposit" || p.status === "reserved_paid_deposit"
+        );
+        const compensation = all.filter((p) => p.status === "compensation");
+
+        return {
+            totalCount: all.length,
+            soldCount: sold.length,
+            freeCount: free.length,
+            reservedCount: reserved.length,
+            compensationCount: compensation.length,
+            totalLp: sumLp(all),
+            totalWithVat: sumWithVat(all),
+            soldLp: sumLp(sold),
+            soldWithVat: sumWithVat(sold),
+            freeLp: sumLp(free),
+            freeWithVat: sumWithVat(free),
+            soldPercent: all.length > 0 ? Math.round((sold.length / all.length) * 100) : 0,
+        };
+    }, [properties]);
+
+    if (summary.totalCount === 0) return null;
+
+    return (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4" data-testid="properties-summary">
+            {/* Общо */}
+            <div className="rounded-xl border hairline bg-white p-5">
+                <div className="overline text-slate-500 mb-2">Общо обекти</div>
+                <div className="text-3xl font-serif text-slate-900">
+                    {summary.totalCount}
+                </div>
+                <div className="mt-3 text-xs text-slate-500 space-y-0.5">
+                    <div>Без ДДС: <span className="font-medium text-slate-700">{currency(summary.totalLp)}</span></div>
+                    <div>С ДДС: <span className="font-medium text-slate-700">{currency(summary.totalWithVat)}</span></div>
+                </div>
+            </div>
+
+            {/* Продадени */}
+            <div className="rounded-xl border hairline bg-emerald-50/50 p-5" data-testid="summary-sold">
+                <div className="overline text-emerald-700 mb-2">Продадени ({summary.soldPercent}%)</div>
+                <div className="text-3xl font-serif text-emerald-900">
+                    {summary.soldCount}
+                </div>
+                <div className="mt-3 text-xs text-slate-500 space-y-0.5">
+                    <div>Без ДДС: <span className="font-medium text-slate-700">{currency(summary.soldLp)}</span></div>
+                    <div>С ДДС: <span className="font-medium text-slate-700">{currency(summary.soldWithVat)}</span></div>
+                </div>
+                <div className="mt-3 h-1.5 bg-emerald-100 rounded-full overflow-hidden">
+                    <div
+                        className="h-full bg-emerald-600 transition-all"
+                        style={{ width: `${summary.soldPercent}%` }}
+                    />
+                </div>
+            </div>
+
+            {/* Свободни */}
+            <div className="rounded-xl border hairline bg-stone-50 p-5">
+                <div className="overline text-slate-600 mb-2">Свободни</div>
+                <div className="text-3xl font-serif text-slate-900">
+                    {summary.freeCount}
+                    {summary.reservedCount > 0 && (
+                        <span className="text-base text-amber-600 ml-2">
+                            (+{summary.reservedCount} резерв.)
+                        </span>
+                    )}
+                </div>
+                <div className="mt-3 text-xs text-slate-500 space-y-0.5">
+                    <div>Без ДДС: <span className="font-medium text-slate-700">{currency(summary.freeLp)}</span></div>
+                    <div>С ДДС: <span className="font-medium text-slate-700">{currency(summary.freeWithVat)}</span></div>
+                    {summary.compensationCount > 0 && (
+                        <div className="text-violet-600">Обезщетение: {summary.compensationCount}</div>
+                    )}
+                </div>
+            </div>
         </div>
     );
 }
