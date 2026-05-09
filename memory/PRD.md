@@ -22,11 +22,12 @@
 - **v1.0 (2026-05-06)** — Clients Unification Pack C: unified `db.users(role=client)` as single clients directory, full CRUD endpoints, AdminClients UI rewrite, Brand fix "Building Express Group"
 # BEG Estates / EstateFlow — Product Requirements Document
 
-**Last updated:** 2026-05-09 (iteration 18)
-**Status:** Iteration 18 — Refactoring R.2 ЧАСТ 2 (Inline Excel-style price edit) (v1.5.4)
+**Last updated:** 2026-05-09 (iteration 19)
+**Status:** Iteration 19 — Refactoring R.2 ЧАСТ 3 (PropertiesSummary footer) (v1.5.5)
 
 ## Iterations
-- **v1.5.4 (2026-05-09)** — **Refactoring R.2 ЧАСТ 2 — Inline price edit + Bulk apply**: създаден `InlinePriceCell.jsx` (Excel-style €/м² редакция със Tab/Enter/blur save), `BulkApplyDialog.jsx` (preview таблица + filter тип/етаж/статус); интегрирани в `AdminProperties.jsx` — нова колона "€/м²" (inline editable), нова колона "С ДДС" (динамично × 1.20), бутон "Bulk цена/м²" в toolbar. Optimistic state update при inline edit. Тествано 100% pass от testing_agent_v3_fork (iteration_7.json).
+- **v1.5.5 (2026-05-09)** — **Refactoring R.2 ЧАСТ 3 — PropertiesSummary footer**: добавени 3 финансови cards под inventory таблицата (Общо обекти, Продадени с %/progress bar, Свободни с reserved/compensation indicators). Цените и сумите без/с ДДС (×1.20). Optimistic state update — inline edit ъпдейтва footer-а в реално време. R.2 пакетът е финализиран — Excel-style управление на цените е готово. Тествано 100% pass от testing_agent_v3_fork (iteration_8.json: 52 имота, sold=18 35%, free=17, compensation=17, total 3,856,713€ без ДДС / 4,628,056€ с ДДС).
+- **v1.5.4 (2026-05-09)** — Refactoring R.2 ЧАСТ 2 — Inline price edit + Bulk apply
 - **v1.5.3 (2026-05-09)** — Refactoring R.1 — Dead Code Cleanup
 
 ## Iterations
