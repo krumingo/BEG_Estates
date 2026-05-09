@@ -5,6 +5,7 @@ import PublicHeader from "../../components/layout/PublicHeader";
 import PublicFooter from "../../components/layout/PublicFooter";
 import { StatusBadge } from "../../components/common/StatusBadge";
 import { api, currency, formatApiError } from "../../lib/api";
+import { calculateWithVat } from "../../components/admin/InlinePriceCell";
 import { PROPERTY_TYPE_LABELS } from "../../lib/constants";
 import { Button } from "../../components/ui/button";
 import { useAuth } from "../../lib/auth";
@@ -69,9 +70,8 @@ export default function PropertyDetail() {
                             {p.area_total != null && <Spec label="Обща площ" value={`${p.area_total} м²`} />}
                             {p.floor != null && <Spec label="Етаж" value={p.floor > 0 ? p.floor : "паркинг"} />}
                             {p.exposure && <Spec label="Изложение" value={p.exposure} />}
-                            {p.price_per_sqm != null && <Spec label="Цена / м²" value={currency(p.price_per_sqm)} />}
                             {(p.list_price ?? p.base_price) != null && (
-                                <Spec label="Цена" value={currency(p.list_price ?? p.base_price)} highlight />
+                                <PublicPriceCell listPrice={p.list_price ?? p.base_price} />
                             )}
                         </div>
 
@@ -117,6 +117,23 @@ function Spec({ label, value, highlight }) {
         <div className={`rounded-lg border hairline p-4 ${highlight ? "bg-slate-900 text-white border-slate-900" : "bg-white"}`}>
             <div className={`overline ${highlight ? "text-white/60" : ""}`}>{label}</div>
             <div className={`mt-1 text-lg font-medium ${highlight ? "text-white" : "text-slate-900"}`}>{value}</div>
+        </div>
+    );
+}
+
+// R.4: Цена за публичен display — голяма С ДДС, малка Без ДДС отдолу
+function PublicPriceCell({ listPrice }) {
+    const withVat = calculateWithVat(listPrice, 20);
+    return (
+        <div className="rounded-lg border bg-slate-900 text-white border-slate-900 p-4 col-span-2">
+            <div className="overline text-white/60">Цена</div>
+            <div className="mt-1 font-serif text-3xl text-white">
+                {currency(withVat)}
+                <span className="text-sm font-normal text-white/60 ml-2">с ДДС</span>
+            </div>
+            <div className="mt-1 text-xs text-white/50">
+                {currency(listPrice)} без ДДС · ДДС 20%
+            </div>
         </div>
     );
 }

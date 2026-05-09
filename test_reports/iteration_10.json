@@ -1,0 +1,111 @@
+{
+  "summary": "R.4 Testing Complete - Public pages now show VAT prices (С ДДС). All features verified: (1) ProjectDetail PropertyCell cards show prices with 'с ДДС' suffix, (2) PropertyDetail shows large VAT price in dark card with small 'без ДДС' price below, (3) VAT disclaimer 'Всички показани цени са с включен ДДС 20%' visible after property listing, (4) 'Цена / м²' removed from PropertyDetail, (5) Sold/compensation properties don't show prices, (6) Капаро 0 button works correctly, (7) Admin pages still show separate 'Без ДДС' and 'С ДДС' columns (R.2 regression OK).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_10.json"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "ProjectDetail.jsx: calculateWithVat import and usage correct (line 17, 300)",
+    "ProjectDetail.jsx: PropertyCell correctly calculates displayPriceWithVat = calculateWithVat(displayPriceNet, 20)",
+    "ProjectDetail.jsx: VAT suffix 'с ДДС' displayed in small text (text-xs text-slate-500) after price",
+    "ProjectDetail.jsx: VAT disclaimer added after </Tabs> (line 232-234)",
+    "PropertyDetail.jsx: calculateWithVat import correct (line 8)",
+    "PropertyDetail.jsx: PublicPriceCell component correctly shows large VAT price + small 'без ДДС' price",
+    "PropertyDetail.jsx: 'Цена / м²' Spec cell correctly removed (not in code)",
+    "PropertyDetail.jsx: PublicPriceCell uses col-span-2 for full width in grid",
+    "InlinePriceCell.jsx: calculateWithVat helper unchanged, correctly multiplies by (1 + vatRate/100)"
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (frontend only testing)",
+    "frontend": "100% (all R.4 features working)"
+  },
+  "test_credentials": {
+    "super_admin": "admin@begestates.bg / BegEstates2026!Admin"
+  },
+  "seed_data_creation": "No new seed data. Used existing Хаджи Димитър project with 52 properties.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "R.4 fully tested. Public pages now show VAT prices. Key test points: (1) ProjectDetail PropertyCell shows price with 'с ДДС' suffix (e.g., '336 835 € с ДДС'), (2) PropertyDetail PublicPriceCell shows large VAT price in dark card + small 'без ДДС · ДДС 20%' text below, (3) VAT disclaimer visible after property listing, (4) 'Цена / м²' removed from PropertyDetail, (5) Sold properties don't show prices, (6) Admin pages unchanged (R.2 regression OK).",
+  "verified_features": [
+    {
+      "feature": "Navigate to /projects → Click 'Хаджи Димитър' project",
+      "status": "PASS"
+    },
+    {
+      "feature": "ProjectDetail: PropertyCell cards show prices with 'с ДДС' suffix",
+      "status": "PASS",
+      "details": "Available properties show prices like '336 835 € с ДДС', '9000 € с ДДС'"
+    },
+    {
+      "feature": "ProjectDetail: VAT calculation correct (list_price × 1.20)",
+      "status": "PASS",
+      "details": "Apartment 601: 280,696 × 1.20 = 336,835.2 ≈ 336,835 € (displayed correctly)"
+    },
+    {
+      "feature": "ProjectDetail: Sold/compensation properties don't show prices",
+      "status": "PASS",
+      "details": "Sold properties (Продаден) show no price, only area and rooms"
+    },
+    {
+      "feature": "ProjectDetail: VAT disclaimer visible after property listing",
+      "status": "PASS",
+      "details": "Text 'Всички показани цени са с включен ДДС 20%' visible in small font below Tabs"
+    },
+    {
+      "feature": "Click available property → Navigate to PropertyDetail",
+      "status": "PASS",
+      "details": "Clicked apartment 601 → navigated to /properties/{id}"
+    },
+    {
+      "feature": "PropertyDetail: Large VAT price in dark card (col-span-2)",
+      "status": "PASS",
+      "details": "Shows '336 835 € с ДДС' in large font in dark bg-slate-900 card"
+    },
+    {
+      "feature": "PropertyDetail: Small 'без ДДС · ДДС 20%' text below price",
+      "status": "PASS",
+      "details": "Shows '280 696 € без ДДС · ДДС 20%' in small text-xs text-white/50"
+    },
+    {
+      "feature": "PropertyDetail: 'Цена / м²' cell NOT present",
+      "status": "PASS",
+      "details": "Price per sqm cell correctly removed per R.4 requirement"
+    },
+    {
+      "feature": "PropertyDetail: Other spec cells present (Стаи, Чиста площ, Общи части, Обща площ, Етаж, Изложение)",
+      "status": "PASS"
+    },
+    {
+      "feature": "PropertyDetail: 'Капаро 0' button works for available properties",
+      "status": "PASS",
+      "details": "Button navigates to /contact?property={id}&type=reservation"
+    },
+    {
+      "feature": "Regression: Admin /admin/properties shows 'Без ДДС' and 'С ДДС' columns",
+      "status": "PASS",
+      "details": "Both columns visible with correct values (R.2 functionality preserved)"
+    }
+  ],
+  "test_data": {
+    "project": "BEG Estates / Хаджи Димитър",
+    "project_id": "530a81a9-0b56-4b9b-a447-47170ff29cc2",
+    "total_properties": 52,
+    "example_property": {
+      "code": "601",
+      "id": "52580a7f-6da8-4a1f-ba27-e977b1868ac7",
+      "list_price_bez_dds": 280696,
+      "price_s_dds": 336835,
+      "vat_rate": 20
+    }
+  }
+}

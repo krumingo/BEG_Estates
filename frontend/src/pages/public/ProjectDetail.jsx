@@ -14,6 +14,7 @@ import PublicHeader from "../../components/layout/PublicHeader";
 import PublicFooter from "../../components/layout/PublicFooter";
 import { StatusBadge } from "../../components/common/StatusBadge";
 import { api, currency, formatDate } from "../../lib/api";
+import { calculateWithVat } from "../../components/admin/InlinePriceCell";
 import {
     PROPERTY_STATUS,
     PROPERTY_TYPE_FILTERS,
@@ -226,6 +227,11 @@ export default function ProjectDetail() {
                         ))}
                     </TabsContent>
                 </Tabs>
+
+                {/* R.4: VAT disclaimer */}
+                <div className="mt-6 text-xs text-slate-500 text-center">
+                    Всички показани цени са с включен ДДС 20%
+                </div>
             </section>
 
             {/* Construction progress */}
@@ -290,7 +296,8 @@ function PropertyCell({ p }) {
     const publicStatus = p.status === "compensation" ? "sold" : p.status;
     const isSold = publicStatus === "sold";
     const disabled = publicStatus !== "available";
-    const displayPrice = p.list_price ?? p.base_price;
+    const displayPriceNet = p.list_price ?? p.base_price;
+    const displayPriceWithVat = calculateWithVat(displayPriceNet, 20);
 
     const onClick = () => {
         try { sessionStorage.setItem(`pd-scroll-${p.project_id || ""}`, String(window.scrollY)); } catch {}
@@ -320,8 +327,12 @@ function PropertyCell({ p }) {
                     <div className="text-slate-600"><Ruler className="inline h-3.5 w-3.5 mr-1" /> {p.area_total} м²</div>
                 )}
             </div>
-            {displayPrice != null && !isSold && (
-                <div className="mt-3 text-lg font-medium text-slate-900">{currency(displayPrice)}</div>
+            {displayPriceWithVat != null && !isSold && (
+                <div className="mt-3">
+                    <div className="text-lg font-medium text-slate-900">
+                        {currency(displayPriceWithVat)} <span className="text-xs text-slate-500 font-normal">с ДДС</span>
+                    </div>
+                </div>
             )}
         </Link>
     );
