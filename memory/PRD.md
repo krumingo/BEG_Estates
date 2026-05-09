@@ -22,12 +22,12 @@
 - **v1.0 (2026-05-06)** — Clients Unification Pack C: unified `db.users(role=client)` as single clients directory, full CRUD endpoints, AdminClients UI rewrite, Brand fix "Building Express Group"
 # BEG Estates / EstateFlow — Product Requirements Document
 
-**Last updated:** 2026-05-09 (iteration 17)
-**Status:** Iteration 17 — Refactoring R.1 (Dead Code Cleanup) (v1.5.3)
+**Last updated:** 2026-05-09 (iteration 18)
+**Status:** Iteration 18 — Refactoring R.2 ЧАСТ 2 (Inline Excel-style price edit) (v1.5.4)
 
 ## Iterations
-- **v1.5.2 (2026-05-09)** — Площообразуване Pack G.2.2A
-- **v1.5.3 (2026-05-09)** — **Refactoring R.1 — Dead Code Cleanup**: премахнат целият неизползван client portal (9 frontend файла + 2 backend endpoints + 2 Pydantic модела + ~780 реда код). Клиентската концепция остава в DB (19 клиенти ползвани от Quotes/Deals/Reservations) но client OTP login изчезва.
+- **v1.5.4 (2026-05-09)** — **Refactoring R.2 ЧАСТ 2 — Inline price edit + Bulk apply**: създаден `InlinePriceCell.jsx` (Excel-style €/м² редакция със Tab/Enter/blur save), `BulkApplyDialog.jsx` (preview таблица + filter тип/етаж/статус); интегрирани в `AdminProperties.jsx` — нова колона "€/м²" (inline editable), нова колона "С ДДС" (динамично × 1.20), бутон "Bulk цена/м²" в toolbar. Optimistic state update при inline edit. Тествано 100% pass от testing_agent_v3_fork (iteration_7.json).
+- **v1.5.3 (2026-05-09)** — Refactoring R.1 — Dead Code Cleanup
 
 ## Iterations
 - **v1.5 (2026-05-06)** — Deal Editor Full UI Pack G.2
