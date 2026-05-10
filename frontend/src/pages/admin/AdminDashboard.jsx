@@ -7,6 +7,9 @@ import ProjectFilter from "../../components/admin/ProjectFilter";
 import SalesCards from "../../components/admin/SalesCards";
 import SalesByTypeTable from "../../components/admin/SalesByTypeTable";
 import RecentSalesTable from "../../components/admin/RecentSalesTable";
+import CalendarSection from "../../components/admin/CalendarSection";
+import TopClientsTable from "../../components/admin/TopClientsTable";
+import AlertsList from "../../components/admin/AlertsList";
 
 export function AdminLayout() {
     return (
@@ -20,15 +23,17 @@ export function AdminLayout() {
 }
 
 /**
- * R.5: Финансов дашборд.
+ * R.5: Финансов дашборд (финална версия).
  *
  * Секции (по ред):
  *   1. Header + Project filter
- *   2. Кеш днес (Част 2): 3 карти платено/очаквано/закъснели
- *   3. Статус на продажбите (Част 3): 3 карти продадено/остава/общо
- *   4. По тип имот (Част 3): таблица
- *   5. Последни продажби (Част 3): таблица
- *   6. Calendar / Top clients / Alerts: идват в Част 4
+ *   2. Кеш днес — 3 карти (Част 2, finance only)
+ *   3. Статус на продажбите — 3 карти (Част 3)
+ *   4. По тип имот — таблица (Част 3)
+ *   5. Последни продажби — таблица (Част 3)
+ *   6. Календар на вноски — карти + bar chart + upcoming таблица (Част 4, finance only)
+ *   7. Топ клиенти — таблица (Част 4, finance only)
+ *   8. Алерти — списък по severity (Част 4)
  */
 export default function AdminDashboard() {
     const [data, setData] = useState(null);
@@ -83,7 +88,7 @@ export default function AdminDashboard() {
                 </div>
             )}
 
-            {/* СЕКЦИЯ 1: КЕШ (Част 2) */}
+            {/* СЕКЦИЯ 1: КЕШ (Част 2, finance only) */}
             {(loading || (data && isFinanceVisible)) && (
                 <section data-testid="dashboard-cash-section">
                     <h2 className="font-serif text-2xl text-slate-900 mb-4">
@@ -98,7 +103,7 @@ export default function AdminDashboard() {
                 </section>
             )}
 
-            {/* СЕКЦИЯ 2: СТАТУС НА ПРОДАЖБИТЕ (Част 3 — карти) */}
+            {/* СЕКЦИЯ 2: СТАТУС НА ПРОДАЖБИТЕ (Част 3) */}
             <section data-testid="dashboard-sales-section">
                 <h2 className="font-serif text-2xl text-slate-900 mb-4">
                     Статус на продажбите
@@ -110,7 +115,7 @@ export default function AdminDashboard() {
                 />
             </section>
 
-            {/* СЕКЦИЯ 3: ПО ТИП ИМОТ (Част 3 — таблица) */}
+            {/* СЕКЦИЯ 3: ПО ТИП ИМОТ (Част 3) */}
             <section data-testid="dashboard-by-type-section">
                 <h2 className="font-serif text-2xl text-slate-900 mb-4">
                     По тип имот
@@ -122,7 +127,7 @@ export default function AdminDashboard() {
                 />
             </section>
 
-            {/* СЕКЦИЯ 4: ПОСЛЕДНИ ПРОДАЖБИ (Част 3 — таблица) */}
+            {/* СЕКЦИЯ 4: ПОСЛЕДНИ ПРОДАЖБИ (Част 3) */}
             <section data-testid="dashboard-recent-sales-section">
                 <h2 className="font-serif text-2xl text-slate-900 mb-4">
                     Последни продажби
@@ -134,17 +139,43 @@ export default function AdminDashboard() {
                 />
             </section>
 
-            {/* PLACEHOLDER за Part 4 секциите */}
-            {!loading && data && (
-                <section
-                    className="rounded-xl border border-dashed border-stone-300 bg-stone-50 p-8 text-center"
-                    data-testid="dashboard-coming-soon"
-                >
-                    <div className="text-sm text-slate-500">
-                        Календар на вноски, Топ клиенти и Алерти идват в Част 4.
-                    </div>
+            {/* СЕКЦИЯ 5: КАЛЕНДАР НА ВНОСКИ (Част 4, finance only) */}
+            {(loading || (data && isFinanceVisible)) && (
+                <section data-testid="dashboard-calendar-section">
+                    <h2 className="font-serif text-2xl text-slate-900 mb-4">
+                        Календар на вноски
+                    </h2>
+                    <CalendarSection
+                        calendar={data?.calendar}
+                        loading={loading}
+                    />
                 </section>
             )}
+
+            {/* СЕКЦИЯ 6: ТОП КЛИЕНТИ (Част 4, finance only) */}
+            {(loading || (data && isFinanceVisible)) && (
+                <section data-testid="dashboard-top-clients-section">
+                    <h2 className="font-serif text-2xl text-slate-900 mb-4">
+                        Топ клиенти
+                    </h2>
+                    <TopClientsTable
+                        clients={data?.top_clients}
+                        loading={loading}
+                    />
+                </section>
+            )}
+
+            {/* СЕКЦИЯ 7: АЛЕРТИ (Част 4, всички роли) */}
+            <section data-testid="dashboard-alerts-section">
+                <h2 className="font-serif text-2xl text-slate-900 mb-4">
+                    Алерти
+                </h2>
+                <AlertsList
+                    alerts={data?.alerts}
+                    isFinanceVisible={isFinanceVisible}
+                    loading={loading}
+                />
+            </section>
         </div>
     );
 }
