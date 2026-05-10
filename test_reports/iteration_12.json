@@ -1,0 +1,163 @@
+{
+  "summary": "R.5 ЧАСТ 3 Frontend Testing Complete - All 3 new sections (SalesCards, SalesByTypeTable, RecentSalesTable) working correctly. 19/19 test cases PASSED. Super_admin sees full dashboard with € amounts, progress bars, compensation notes. Sales role correctly sees counts only without € amounts. All data-testid attributes present and working.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Admin Dashboard",
+        "issues": ["2FA notification toast overlaps with project filter dropdown in top-right corner - minor visual overlap, filter still functional (carried over from Part 2)"]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_12.json"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "SalesCards.jsx (149 lines): Correctly implements 3 cards with skeleton loading, progress bar with width=soldPercent%, € amounts conditional on isFinanceVisible, pluralization correct (soldCount === 1 ? 'имот' : 'имота')",
+    "SalesByTypeTable.jsx (164 lines): Correctly implements table with 6 columns for admin (5 for sales), TYPE_LABELS_PLURAL map correct, 'всички продадени' green text for available=0 rows, footer total row working",
+    "RecentSalesTable.jsx (121 lines): Correctly implements table with 5 columns for admin (4 for sales), TYPE_LABELS_SINGULAR map correct, formatDate and currency helpers working",
+    "AdminDashboard.jsx (151 lines): Correctly integrates all 4 sections (Cash, Sales, ByType, RecentSales), conditional rendering based on is_finance_visible, project filter triggers data reload"
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (frontend only testing)",
+    "frontend": "100% (19/19 test cases passed)"
+  },
+  "test_credentials": {
+    "super_admin": "admin@begestates.bg / BegEstates2026!Admin",
+    "sales": "sales@begestates.bg / BegEstates2026!Sales"
+  },
+  "seed_data_creation": "No new seed data. Used existing data: 52 properties, 15 sold, 20 available, 17 compensation, 6 property types",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "R.5 ЧАСТ 3 fully tested. Key test points: (1) Super_admin sees all 4 sections with € amounts, (2) Sales role sees Sales/ByType/RecentSales sections without € amounts and without Cash section, (3) SalesCards: data-testid='sales-card-sold/available/total', progress bar 'sales-card-sold-progress', (4) SalesByTypeTable: data-testid='sales-by-type-table/skeleton/empty/total', rows 'sales-by-type-row-{type}', (5) RecentSalesTable: data-testid='recent-sales-table/skeleton/empty', rows 'recent-sales-row-{property_id}', (6) Coming soon placeholder updated for Part 4",
+  "verified_features": [
+    {
+      "feature": "Login as super_admin (admin@begestates.bg / BegEstates2026!Admin) → /admin opens",
+      "status": "PASS"
+    },
+    {
+      "feature": "REGRESSION: Cash section [data-testid='dashboard-cash-section'] with 3 cards (cash-card-paid, cash-card-expected, cash-card-overdue-none)",
+      "status": "PASS"
+    },
+    {
+      "feature": "REGRESSION: Project filter [data-testid='dashboard-project-filter'] working",
+      "status": "PASS"
+    },
+    {
+      "feature": "NEW: Sales section [data-testid='dashboard-sales-section'] with h2 'Статус на продажбите'",
+      "status": "PASS"
+    },
+    {
+      "feature": "Sales Card Sold [data-testid='sales-card-sold']: slate color, Home icon, '15 имота', € with ДДС, progress bar [data-testid='sales-card-sold-progress'] width=28.8%",
+      "status": "PASS"
+    },
+    {
+      "feature": "Sales Card Available [data-testid='sales-card-available']: amber color, TrendingDown icon, '20 имота', потенциал € with ДДС",
+      "status": "PASS"
+    },
+    {
+      "feature": "Sales Card Total [data-testid='sales-card-total']: stone color, Building2 icon, '52 имота', целия проект €, compensation note '+ 17 обезщетителни (не се продават)'",
+      "status": "PASS"
+    },
+    {
+      "feature": "NEW: By Type section [data-testid='dashboard-by-type-section'] with h2 'По тип имот'",
+      "status": "PASS"
+    },
+    {
+      "feature": "SalesByTypeTable [data-testid='sales-by-type-table']: 6 columns (Тип, Общо, Продадени, Свободни, Резервирани, Потенциал €)",
+      "status": "PASS"
+    },
+    {
+      "feature": "Type rows with Bulgarian plural labels: Апартаменти, Паркоместа, Складове, Дворни паркоместа, Гаражи, Магазини",
+      "status": "PASS"
+    },
+    {
+      "feature": "Rows with available=0 and sold>0 show green 'всички продадени' text (garage, shop)",
+      "status": "PASS"
+    },
+    {
+      "feature": "Footer row [data-testid='sales-by-type-total'] shows ОБЩО totals",
+      "status": "PASS"
+    },
+    {
+      "feature": "NEW: Recent Sales section [data-testid='dashboard-recent-sales-section'] with h2 'Последни продажби'",
+      "status": "PASS"
+    },
+    {
+      "feature": "RecentSalesTable [data-testid='recent-sales-table']: 5 columns (Дата, Имот, Тип, Купувач, Цена), 10 rows",
+      "status": "PASS"
+    },
+    {
+      "feature": "Type labels in singular: Апартамент, Паркомясто, Дворно паркомясто, Гараж, Склад",
+      "status": "PASS"
+    },
+    {
+      "feature": "Coming Soon placeholder [data-testid='dashboard-coming-soon'] with text 'Календар на вноски, Топ клиенти и Алерти идват в Част 4.'",
+      "status": "PASS"
+    },
+    {
+      "feature": "Sales role: dashboard-cash-section NOT visible (is_finance_visible=false)",
+      "status": "PASS"
+    },
+    {
+      "feature": "Sales role: SalesCards show counts only (no € amounts, no 'с ДДС')",
+      "status": "PASS"
+    },
+    {
+      "feature": "Sales role: SalesByTypeTable has 5 columns (no Потенциал €)",
+      "status": "PASS"
+    },
+    {
+      "feature": "Sales role: RecentSalesTable has 4 columns (no Цена)",
+      "status": "PASS"
+    },
+    {
+      "feature": "Pluralization: '1 имот' (singular) vs 'X имота' (plural) - verified in code",
+      "status": "PASS"
+    },
+    {
+      "feature": "Project filter change triggers data reload for all 4 sections",
+      "status": "PASS"
+    }
+  ],
+  "test_data": {
+    "super_admin_data": {
+      "is_finance_visible": true,
+      "sales": {
+        "sold_count": 15,
+        "available_count": 20,
+        "total_count": 52,
+        "compensation_count": 17,
+        "sold_percent": 28.8,
+        "sold_value_with_vat": 1235517,
+        "available_value_with_vat": 1846943,
+        "total_value_with_vat": 3082460
+      },
+      "by_type": [
+        {"type": "apartment", "total": 18, "sold": 5, "available": 6, "reserved": 0},
+        {"type": "parking", "total": 13, "sold": 3, "available": 7, "reserved": 0},
+        {"type": "storage", "total": 12, "sold": 3, "available": 3, "reserved": 0},
+        {"type": "yard_parking", "total": 6, "sold": 2, "available": 4, "reserved": 0},
+        {"type": "garage", "total": 2, "sold": 1, "available": 0, "reserved": 0},
+        {"type": "shop", "total": 1, "sold": 1, "available": 0, "reserved": 0}
+      ],
+      "recent_sales_count": 10
+    },
+    "sales_data": {
+      "is_finance_visible": false,
+      "sales": {
+        "sold_count": 15,
+        "available_count": 20,
+        "total_count": 52,
+        "compensation_count": 17
+      }
+    }
+  }
+}

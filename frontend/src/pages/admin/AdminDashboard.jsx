@@ -4,6 +4,9 @@ import AdminSidebar from "../../components/layout/AdminSidebar";
 import { api } from "../../lib/api";
 import CashCards from "../../components/admin/CashCards";
 import ProjectFilter from "../../components/admin/ProjectFilter";
+import SalesCards from "../../components/admin/SalesCards";
+import SalesByTypeTable from "../../components/admin/SalesByTypeTable";
+import RecentSalesTable from "../../components/admin/RecentSalesTable";
 
 export function AdminLayout() {
     return (
@@ -17,11 +20,15 @@ export function AdminLayout() {
 }
 
 /**
- * R.5 Част 2: Нов финансов дашборд.
+ * R.5: Финансов дашборд.
  *
- * Този commit добавя само Кеш секция + Project filter.
- * Останалите секции (Sales, Calendar, Top clients, Recent sales, Alerts)
- * идват в Част 3 и Част 4.
+ * Секции (по ред):
+ *   1. Header + Project filter
+ *   2. Кеш днес (Част 2): 3 карти платено/очаквано/закъснели
+ *   3. Статус на продажбите (Част 3): 3 карти продадено/остава/общо
+ *   4. По тип имот (Част 3): таблица
+ *   5. Последни продажби (Част 3): таблица
+ *   6. Calendar / Top clients / Alerts: идват в Част 4
  */
 export default function AdminDashboard() {
     const [data, setData] = useState(null);
@@ -52,6 +59,8 @@ export default function AdminDashboard() {
         };
     }, [projectId]);
 
+    const isFinanceVisible = data?.is_finance_visible ?? false;
+
     return (
         <div className="space-y-8">
             {/* HEADER + PROJECT FILTER */}
@@ -74,8 +83,8 @@ export default function AdminDashboard() {
                 </div>
             )}
 
-            {/* СЕКЦИЯ 1: КЕШ */}
-            {(loading || (data && data.is_finance_visible)) && (
+            {/* СЕКЦИЯ 1: КЕШ (Част 2) */}
+            {(loading || (data && isFinanceVisible)) && (
                 <section data-testid="dashboard-cash-section">
                     <h2 className="font-serif text-2xl text-slate-900 mb-4">
                         Кеш днес
@@ -89,33 +98,50 @@ export default function AdminDashboard() {
                 </section>
             )}
 
-            {/* Ако потребителят НЕ е финансов — показваме само бройки */}
-            {!loading && data && !data.is_finance_visible && (
-                <section
-                    className="rounded-xl border border-stone-200 bg-white p-6"
-                    data-testid="dashboard-non-finance-summary"
-                >
-                    <div className="text-xs uppercase tracking-wider font-medium text-slate-500 mb-2">
-                        Продажби
-                    </div>
-                    <div className="text-3xl font-medium text-slate-900">
-                        {data.sales?.sold_count ?? 0} продадени имота
-                    </div>
-                    <div className="text-sm text-slate-600 mt-1">
-                        от общо {data.sales?.total_count ?? 0} в проекта
-                    </div>
-                </section>
-            )}
+            {/* СЕКЦИЯ 2: СТАТУС НА ПРОДАЖБИТЕ (Част 3 — карти) */}
+            <section data-testid="dashboard-sales-section">
+                <h2 className="font-serif text-2xl text-slate-900 mb-4">
+                    Статус на продажбите
+                </h2>
+                <SalesCards
+                    sales={data?.sales}
+                    isFinanceVisible={isFinanceVisible}
+                    loading={loading}
+                />
+            </section>
 
-            {/* PLACEHOLDER за следващите секции — за да се вижда че идват */}
+            {/* СЕКЦИЯ 3: ПО ТИП ИМОТ (Част 3 — таблица) */}
+            <section data-testid="dashboard-by-type-section">
+                <h2 className="font-serif text-2xl text-slate-900 mb-4">
+                    По тип имот
+                </h2>
+                <SalesByTypeTable
+                    byType={data?.sales?.by_type}
+                    isFinanceVisible={isFinanceVisible}
+                    loading={loading}
+                />
+            </section>
+
+            {/* СЕКЦИЯ 4: ПОСЛЕДНИ ПРОДАЖБИ (Част 3 — таблица) */}
+            <section data-testid="dashboard-recent-sales-section">
+                <h2 className="font-serif text-2xl text-slate-900 mb-4">
+                    Последни продажби
+                </h2>
+                <RecentSalesTable
+                    sales={data?.recent_sales}
+                    isFinanceVisible={isFinanceVisible}
+                    loading={loading}
+                />
+            </section>
+
+            {/* PLACEHOLDER за Part 4 секциите */}
             {!loading && data && (
                 <section
                     className="rounded-xl border border-dashed border-stone-300 bg-stone-50 p-8 text-center"
                     data-testid="dashboard-coming-soon"
                 >
                     <div className="text-sm text-slate-500">
-                        Останалите секции (Продажби по тип, Календар, Топ клиенти,
-                        Последни продажби, Алерти) идват в следващите части.
+                        Календар на вноски, Топ клиенти и Алерти идват в Част 4.
                     </div>
                 </section>
             )}
