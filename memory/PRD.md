@@ -22,11 +22,12 @@
 - **v1.0 (2026-05-06)** — Clients Unification Pack C: unified `db.users(role=client)` as single clients directory, full CRUD endpoints, AdminClients UI rewrite, Brand fix "Building Express Group"
 # BEG Estates / EstateFlow — Product Requirements Document
 
-**Last updated:** 2026-05-09 (iteration 22)
-**Status:** Iteration 22 — R.5 ЧАСТ 1 (Backend dashboard endpoint) (v1.5.8)
+**Last updated:** 2026-05-09 (iteration 23)
+**Status:** Iteration 23 — R.5 ЧАСТ 2 (Frontend Cash Section + Project Filter) (v1.5.9)
 
 ## Iterations
-- **v1.5.8 (2026-05-09)** — **R.5 ЧАСТ 1 — Backend financial dashboard**: нов endpoint `GET /api/dashboard/admin/full` с пълна финансова статистика (cash paid/expected/overdue, sales by type/total, calendar 12M, top 5 clients, recent_sales, alerts: overdue/expiring/long_standing/new_inquiries). Поддържа `?project_id=` филтър. Role-gated `is_finance_visible` (super_admin/admin виждат финансите; sales — само counts). Премахнат мъртвия `/dashboard/client` endpoint (от R.1). Запазен legacy `/dashboard/admin` за обратна съвместимост (frontend ще го подменим в Част 2-4). Тествано curl: admin=$1,235,516.83 sold С ДДС за 15 продадени имота, sales role коректно skipped.
+- **v1.5.9 (2026-05-09)** — **R.5 ЧАСТ 2 — Frontend Cash + Project filter**: нови компоненти `CashCards.jsx` (3 карти: Влязло в касата с progress bar, Очаквано, Закъснели — червена ако > 0, зелена ако = 0) и `ProjectFilter.jsx` (native select dropdown с 'Всички проекти' + всички проекти). AdminDashboard.jsx изцяло заменен — преминава от `/dashboard/admin` (legacy KPIs) към `/dashboard/admin/full` с реактивен projectId-зависим useEffect. Sales role → виждат само 'X продадени имота от общо Y' без € суми. Placeholder за следващите Part 3-4 секции (Sales by type, Calendar, Top clients, Recent sales, Alerts). Тествано 100% pass от testing_agent_v3_fork (iteration_11.json: 15/15 cases).
+- **v1.5.8 (2026-05-09)** — R.5 ЧАСТ 1 — Backend financial dashboard endpoint
 - **v1.5.7 (2026-05-09)** — Refactoring R.4 — Public VAT display
 - **v1.5.6 (2026-05-09)** — Refactoring R.3 — Pricing UI move
 - **v1.5.5 (2026-05-09)** — Refactoring R.2 ЧАСТ 3 — PropertiesSummary footer
