@@ -22,11 +22,12 @@
 - **v1.0 (2026-05-06)** — Clients Unification Pack C: unified `db.users(role=client)` as single clients directory, full CRUD endpoints, AdminClients UI rewrite, Brand fix "Building Express Group"
 # BEG Estates / EstateFlow — Product Requirements Document
 
-**Last updated:** 2026-05-09 (iteration 23)
-**Status:** Iteration 23 — R.5 ЧАСТ 2 (Frontend Cash Section + Project Filter) (v1.5.9)
+**Last updated:** 2026-05-09 (iteration 24)
+**Status:** Iteration 24 — R.5 ЧАСТ 3 (Sales секция + Recent Sales таблица) (v1.5.10)
 
 ## Iterations
-- **v1.5.9 (2026-05-09)** — **R.5 ЧАСТ 2 — Frontend Cash + Project filter**: нови компоненти `CashCards.jsx` (3 карти: Влязло в касата с progress bar, Очаквано, Закъснели — червена ако > 0, зелена ако = 0) и `ProjectFilter.jsx` (native select dropdown с 'Всички проекти' + всички проекти). AdminDashboard.jsx изцяло заменен — преминава от `/dashboard/admin` (legacy KPIs) към `/dashboard/admin/full` с реактивен projectId-зависим useEffect. Sales role → виждат само 'X продадени имота от общо Y' без € суми. Placeholder за следващите Part 3-4 секции (Sales by type, Calendar, Top clients, Recent sales, Alerts). Тествано 100% pass от testing_agent_v3_fork (iteration_11.json: 15/15 cases).
+- **v1.5.10 (2026-05-09)** — **R.5 ЧАСТ 3 — Sales section + Recent Sales table**: 3 нови frontend компонента: `SalesCards.jsx` (3 карти Продадено/Остава/Общо с прогрес бар + compensation бележка), `SalesByTypeTable.jsx` (таблица с 6 колони + footer ОБЩО, BG plural labels, "всички продадени" зелен текст), `RecentSalesTable.jsx` (таблица 5 колони, последни 10 продажби, BG singular labels). AdminDashboard.jsx интегрира 4 секции (Cash + Sales + ByType + RecentSales). Sales role: вижда броеве БЕЗ € (5 колони ByType, 4 колони RecentSales). Тествано 100% pass от testing_agent_v3_fork (iteration_12.json: 19/19 cases).
+- **v1.5.9 (2026-05-09)** — R.5 ЧАСТ 2 — Frontend Cash + Project filter
 - **v1.5.8 (2026-05-09)** — R.5 ЧАСТ 1 — Backend financial dashboard endpoint
 - **v1.5.7 (2026-05-09)** — Refactoring R.4 — Public VAT display
 - **v1.5.6 (2026-05-09)** — Refactoring R.3 — Pricing UI move
