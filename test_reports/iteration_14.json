@@ -1,0 +1,83 @@
+{
+  "summary": "R.6 Dashboard Tab-Based Management Tool - Complete Testing. 38/39 test cases PASSED. Fixed 1 bug: CalendarTab was missing isFinanceVisible check for sales role. All 6 tabs working correctly for super_admin. Sales role correctly restricted from Finance, Calendar, Clients tabs and € amounts hidden in Overview/Sales tabs.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Admin Dashboard",
+        "issues": ["2FA notification toast overlaps with filters in top-right corner - minor visual overlap, filters still functional"]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_14.json"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "dashboard_aggregations.py (867 lines): Comprehensive aggregation service with proper deal-based calculations. Uses deals.items.agreed_price for sold values, not properties.list_price. Correctly handles bank_stages and own_stages for payments.",
+    "DashboardTabs.jsx (700 lines): Well-structured with 6 tab components. StatCard, SectionCard, BreakdownTable reusable. Recharts integration for bar/pie charts. All data-testid attributes correctly implemented.",
+    "DashboardFilters.jsx (163 lines): Clean filter implementation with controlled components. Properly handles __all__ value for reset.",
+    "AdminDashboard.jsx (152 lines): Clean tab-based layout with proper filter state management and API integration."
+  ],
+  "updated_files": [
+    "/app/frontend/src/components/admin/DashboardTabs.jsx",
+    "/app/frontend/src/pages/admin/AdminDashboard.jsx"
+  ],
+  "success_rate": {
+    "backend": "100% (API verified via curl)",
+    "frontend": "100% (38/38 UI tests passed after fix)"
+  },
+  "test_credentials": {
+    "super_admin": "admin@begestates.bg / BegEstates2026!Admin",
+    "sales": "sales@begestates.bg / BegEstates2026!Sales"
+  },
+  "seed_data_creation": "No new seed data. Used existing: 52 properties, 15 sold, 20 available, 5 active deals, 2 clients with deals, 8 overdue installments (26,570€)",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "R.6 fully tested. Key test points: (1) Title 'Управление' not 'Преглед', (2) 7 filters in dashboard-filters bar, (3) 6 tabs with correct data-testid, (4) Overview: 4 stat cards + pipeline funnel + action items + recent sales/inquiries, (5) Sales: 2 bar charts + 3 tables (type/floor/building), (6) Finance: 6 stat cards + 3 expected cards + 2 month charts + pie chart, (7) Calendar: 3 period cards + bar chart + 2 tables, (8) Clients: table with 8 columns + status badges, (9) Unsold: 4 stat cards + table with risk column. Sales role: Finance/Calendar/Clients show no-access, Overview hides paid/overdue cards, Sales table hides Потенциал column.",
+  "verified_features": [
+    {"feature": "Login as super_admin → /admin shows 'Управление' title", "status": "PASS"},
+    {"feature": "Global filter bar with 7 filters (project, type, status, client, period, only_overdue, only_available)", "status": "PASS"},
+    {"feature": "6 tabs: Обзор, Продажби, Финанси, Календар, Клиенти, Непродадени", "status": "PASS"},
+    {"feature": "Overview tab: 4 stat cards (sold, available, paid, overdue)", "status": "PASS"},
+    {"feature": "Overview tab: Pipeline funnel with 5 steps", "status": "PASS"},
+    {"feature": "Overview tab: Action items section with overdue alert", "status": "PASS"},
+    {"feature": "Overview tab: Recent sales and inquiries mini tables", "status": "PASS"},
+    {"feature": "Sales tab: Bar charts by type and floor", "status": "PASS"},
+    {"feature": "Sales tab: 3 breakdown tables (type, floor, building)", "status": "PASS"},
+    {"feature": "Sales tab: Type row click applies filter and returns to Overview", "status": "PASS"},
+    {"feature": "Finance tab: 6 stat cards (contracted, paid, deposit, remaining, expected, overdue)", "status": "PASS"},
+    {"feature": "Finance tab: 3 expected cards (7d, 30d, 90d)", "status": "PASS"},
+    {"feature": "Finance tab: 2 month bar charts (paid, expected)", "status": "PASS"},
+    {"feature": "Finance tab: Pie chart for payment mode breakdown", "status": "PASS"},
+    {"feature": "Calendar tab: 3 period cards (week, month, quarter)", "status": "PASS"},
+    {"feature": "Calendar tab: Bar chart and 2 tables (upcoming, overdue)", "status": "PASS"},
+    {"feature": "Clients tab: Table with 8 columns and status badges", "status": "PASS"},
+    {"feature": "Unsold tab: 4 stat cards (count, potential, avg, long-standing)", "status": "PASS"},
+    {"feature": "Unsold tab: Table with risk column for > 90 days", "status": "PASS"},
+    {"feature": "Filter change triggers API call with query params", "status": "PASS"},
+    {"feature": "Only overdue checkbox filters calendar upcoming table", "status": "PASS"},
+    {"feature": "Reset filters button appears and works", "status": "PASS"},
+    {"feature": "Sales role: Finance tab shows no-access message", "status": "PASS"},
+    {"feature": "Sales role: Calendar tab shows no-access message", "status": "PASS", "note": "Fixed by adding isFinanceVisible check"},
+    {"feature": "Sales role: Clients tab shows no-access message", "status": "PASS"},
+    {"feature": "Sales role: Overview hides paid and overdue cards", "status": "PASS"},
+    {"feature": "Sales role: Sales table has 5 columns (no Потенциал €)", "status": "PASS"},
+    {"feature": "Backend: property_type=apartment filter reduces overview.total_count from 52 to 18", "status": "PASS"},
+    {"feature": "Backend: Legacy keys (cash, sales, calendar, top_clients, recent_sales, alerts) present", "status": "PASS"}
+  ],
+  "bug_fixed": {
+    "issue": "CalendarTab was visible for sales role instead of showing no-access message",
+    "root_cause": "CalendarTab component was only checking if money_calendar data exists, not checking isFinanceVisible prop",
+    "fix": "Added isFinanceVisible prop to CalendarTab and check it before rendering content",
+    "files_modified": [
+      "/app/frontend/src/components/admin/DashboardTabs.jsx",
+      "/app/frontend/src/pages/admin/AdminDashboard.jsx"
+    ]
+  }
+}

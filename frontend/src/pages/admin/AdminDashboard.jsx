@@ -2,14 +2,16 @@ import React, { useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
 import AdminSidebar from "../../components/layout/AdminSidebar";
 import { api } from "../../lib/api";
-import CashCards from "../../components/admin/CashCards";
-import ProjectFilter from "../../components/admin/ProjectFilter";
-import SalesCards from "../../components/admin/SalesCards";
-import SalesByTypeTable from "../../components/admin/SalesByTypeTable";
-import RecentSalesTable from "../../components/admin/RecentSalesTable";
-import CalendarSection from "../../components/admin/CalendarSection";
-import TopClientsTable from "../../components/admin/TopClientsTable";
-import AlertsList from "../../components/admin/AlertsList";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "../../components/ui/tabs";
+import DashboardFilters from "../../components/admin/DashboardFilters";
+import {
+    OverviewTab,
+    SalesTab,
+    FinanceTab,
+    CalendarTab,
+    ClientsTab,
+    UnsoldTab,
+} from "../../components/admin/DashboardTabs";
 
 export function AdminLayout() {
     return (
@@ -22,62 +24,81 @@ export function AdminLayout() {
     );
 }
 
+const INITIAL_FILTERS = {
+    project_id: null,
+    building_id: null,
+    property_type: null,
+    status: null,
+    client_id: null,
+    period: null,
+    only_overdue: false,
+    only_available: false,
+};
+
 /**
- * R.5: Финансов дашборд (финална версия).
+ * R.6: Tab-based management dashboard.
  *
- * Секции (по ред):
- *   1. Header + Project filter
- *   2. Кеш днес — 3 карти (Част 2, finance only)
- *   3. Статус на продажбите — 3 карти (Част 3)
- *   4. По тип имот — таблица (Част 3)
- *   5. Последни продажби — таблица (Част 3)
- *   6. Календар на вноски — карти + bar chart + upcoming таблица (Част 4, finance only)
- *   7. Топ клиенти — таблица (Част 4, finance only)
- *   8. Алерти — списък по severity (Част 4)
+ * Tabs: Обзор / Продажби / Финанси / Календар / Клиенти / Непродадени.
+ * Глобални филтри (горе): проект, сграда, тип, статус, клиент, период,
+ *                         only_overdue, only_available.
+ *
+ * Изпраща филтрите като query params към /dashboard/admin/full.
  */
 export default function AdminDashboard() {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [projectId, setProjectId] = useState(null);
+    const [filters, setFilters] = useState(INITIAL_FILTERS);
+    const [tab, setTab] = useState("overview");
 
     useEffect(() => {
         let cancelled = false;
         setLoading(true);
         setError(null);
-        const params = projectId ? { project_id: projectId } : {};
+        const params = {};
+        Object.entries(filters).forEach(([k, v]) => {
+            if (v !== null && v !== "" && v !== false) params[k] = v;
+        });
         api.get("/dashboard/admin/full", { params })
-            .then((r) => {
-                if (!cancelled) setData(r.data);
-            })
+            .then((r) => { if (!cancelled) setData(r.data); })
             .catch((e) => {
                 if (!cancelled) {
-                    setError(e?.response?.data?.detail || "Грешка при зареждане");
+                    setError(e?.response?.data?.detail || "Грешка при зареждане на dashboard-а");
                     setData(null);
                 }
             })
-            .finally(() => {
-                if (!cancelled) setLoading(false);
-            });
-        return () => {
-            cancelled = true;
-        };
-    }, [projectId]);
+            .finally(() => { if (!cancelled) setLoading(false); });
+        return () => { cancelled = true; };
+    }, [filters]);
 
     const isFinanceVisible = data?.is_finance_visible ?? false;
 
+    const handleTypeClick = (type) => {
+        setFilters((f) => ({ ...f, property_type: type }));
+        setTab("overview");
+    };
+
     return (
-        <div className="space-y-8">
-            {/* HEADER + PROJECT FILTER */}
+        <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
                 <div>
                     <div className="text-xs uppercase tracking-wider font-medium text-slate-500 mb-2">
                         Dashboard
                     </div>
-                    <h1 className="font-serif text-4xl text-slate-900">Преглед</h1>
+                    <h1 className="font-serif text-4xl text-slate-900">Управление</h1>
                 </div>
-                <ProjectFilter value={projectId} onChange={setProjectId} />
+                {(filters.project_id || filters.property_type || filters.status || filters.client_id || filters.only_overdue || filters.only_available) && (
+                    <button
+                        onClick={() => setFilters(INITIAL_FILTERS)}
+                        className="text-sm text-slate-600 hover:text-slate-900 underline"
+                        data-testid="dashboard-reset-filters"
+                    >
+                        Изчисти филтрите
+                    </button>
+                )}
             </div>
+
+            <DashboardFilters filters={filters} onChange={setFilters} />
 
             {error && (
                 <div
@@ -88,94 +109,43 @@ export default function AdminDashboard() {
                 </div>
             )}
 
-            {/* СЕКЦИЯ 1: КЕШ (Част 2, finance only) */}
-            {(loading || (data && isFinanceVisible)) && (
-                <section data-testid="dashboard-cash-section">
-                    <h2 className="font-serif text-2xl text-slate-900 mb-4">
-                        Кеш днес
-                    </h2>
-                    <CashCards
-                        cash={data?.cash}
-                        soldCount={data?.sales?.sold_count}
-                        soldValueWithVat={data?.sales?.sold_value_with_vat}
-                        loading={loading}
-                    />
-                </section>
+            {loading && !data && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4" data-testid="dashboard-loading">
+                    {[0, 1, 2, 3].map((i) => (
+                        <div key={i} className="rounded-xl border border-stone-200 bg-white p-5 h-28 animate-pulse" />
+                    ))}
+                </div>
             )}
 
-            {/* СЕКЦИЯ 2: СТАТУС НА ПРОДАЖБИТЕ (Част 3) */}
-            <section data-testid="dashboard-sales-section">
-                <h2 className="font-serif text-2xl text-slate-900 mb-4">
-                    Статус на продажбите
-                </h2>
-                <SalesCards
-                    sales={data?.sales}
-                    isFinanceVisible={isFinanceVisible}
-                    loading={loading}
-                />
-            </section>
+            <Tabs value={tab} onValueChange={setTab} className="space-y-6">
+                <TabsList className="bg-stone-100 p-1" data-testid="dashboard-tabs">
+                    <TabsTrigger value="overview" data-testid="tab-overview">Обзор</TabsTrigger>
+                    <TabsTrigger value="sales" data-testid="tab-sales">Продажби</TabsTrigger>
+                    <TabsTrigger value="finance" data-testid="tab-finance">Финанси</TabsTrigger>
+                    <TabsTrigger value="calendar" data-testid="tab-calendar">Календар</TabsTrigger>
+                    <TabsTrigger value="clients" data-testid="tab-clients">Клиенти</TabsTrigger>
+                    <TabsTrigger value="unsold" data-testid="tab-unsold">Непродадени</TabsTrigger>
+                </TabsList>
 
-            {/* СЕКЦИЯ 3: ПО ТИП ИМОТ (Част 3) */}
-            <section data-testid="dashboard-by-type-section">
-                <h2 className="font-serif text-2xl text-slate-900 mb-4">
-                    По тип имот
-                </h2>
-                <SalesByTypeTable
-                    byType={data?.sales?.by_type}
-                    isFinanceVisible={isFinanceVisible}
-                    loading={loading}
-                />
-            </section>
-
-            {/* СЕКЦИЯ 4: ПОСЛЕДНИ ПРОДАЖБИ (Част 3) */}
-            <section data-testid="dashboard-recent-sales-section">
-                <h2 className="font-serif text-2xl text-slate-900 mb-4">
-                    Последни продажби
-                </h2>
-                <RecentSalesTable
-                    sales={data?.recent_sales}
-                    isFinanceVisible={isFinanceVisible}
-                    loading={loading}
-                />
-            </section>
-
-            {/* СЕКЦИЯ 5: КАЛЕНДАР НА ВНОСКИ (Част 4, finance only) */}
-            {(loading || (data && isFinanceVisible)) && (
-                <section data-testid="dashboard-calendar-section">
-                    <h2 className="font-serif text-2xl text-slate-900 mb-4">
-                        Календар на вноски
-                    </h2>
-                    <CalendarSection
-                        calendar={data?.calendar}
-                        loading={loading}
-                    />
-                </section>
-            )}
-
-            {/* СЕКЦИЯ 6: ТОП КЛИЕНТИ (Част 4, finance only) */}
-            {(loading || (data && isFinanceVisible)) && (
-                <section data-testid="dashboard-top-clients-section">
-                    <h2 className="font-serif text-2xl text-slate-900 mb-4">
-                        Топ клиенти
-                    </h2>
-                    <TopClientsTable
-                        clients={data?.top_clients}
-                        loading={loading}
-                    />
-                </section>
-            )}
-
-            {/* СЕКЦИЯ 7: АЛЕРТИ (Част 4, всички роли) */}
-            <section data-testid="dashboard-alerts-section">
-                <h2 className="font-serif text-2xl text-slate-900 mb-4">
-                    Алерти
-                </h2>
-                <AlertsList
-                    alerts={data?.alerts}
-                    isFinanceVisible={isFinanceVisible}
-                    loading={loading}
-                />
-            </section>
+                <TabsContent value="overview">
+                    {data && <OverviewTab data={data} isFinanceVisible={isFinanceVisible} />}
+                </TabsContent>
+                <TabsContent value="sales">
+                    {data && <SalesTab data={data} isFinanceVisible={isFinanceVisible} onTypeClick={handleTypeClick} />}
+                </TabsContent>
+                <TabsContent value="finance">
+                    {data && <FinanceTab data={data} />}
+                </TabsContent>
+                <TabsContent value="calendar">
+                    {data && <CalendarTab data={data} isFinanceVisible={isFinanceVisible} />}
+                </TabsContent>
+                <TabsContent value="clients">
+                    {data && <ClientsTab data={data} isFinanceVisible={isFinanceVisible} />}
+                </TabsContent>
+                <TabsContent value="unsold">
+                    {data && <UnsoldTab data={data} isFinanceVisible={isFinanceVisible} />}
+                </TabsContent>
+            </Tabs>
         </div>
     );
 }
