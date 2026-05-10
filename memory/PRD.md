@@ -22,11 +22,12 @@
 - **v1.0 (2026-05-06)** — Clients Unification Pack C: unified `db.users(role=client)` as single clients directory, full CRUD endpoints, AdminClients UI rewrite, Brand fix "Building Express Group"
 # BEG Estates / EstateFlow — Product Requirements Document
 
-**Last updated:** 2026-05-09 (iteration 24)
-**Status:** Iteration 24 — R.5 ЧАСТ 3 (Sales секция + Recent Sales таблица) (v1.5.10)
+**Last updated:** 2026-05-09 (iteration 25)
+**Status:** Iteration 25 — R.5 ЧАСТ 4 ФИНАЛНА (Calendar + TopClients + Alerts) (v1.6.0)
 
 ## Iterations
-- **v1.5.10 (2026-05-09)** — **R.5 ЧАСТ 3 — Sales section + Recent Sales table**: 3 нови frontend компонента: `SalesCards.jsx` (3 карти Продадено/Остава/Общо с прогрес бар + compensation бележка), `SalesByTypeTable.jsx` (таблица с 6 колони + footer ОБЩО, BG plural labels, "всички продадени" зелен текст), `RecentSalesTable.jsx` (таблица 5 колони, последни 10 продажби, BG singular labels). AdminDashboard.jsx интегрира 4 секции (Cash + Sales + ByType + RecentSales). Sales role: вижда броеве БЕЗ € (5 колони ByType, 4 колони RecentSales). Тествано 100% pass от testing_agent_v3_fork (iteration_12.json: 19/19 cases).
+- **v1.6.0 (2026-05-09)** — **R.5 ЧАСТ 4 ФИНАЛНА — Calendar + TopClients + Alerts**: 3 нови frontend компонента: `CalendarSection.jsx` (3 PeriodCard за тази седмица/месец/година + 12-месечен bar chart + upcoming installments таблица с empty state), `TopClientsTable.jsx` (топ 5 клиенти по value с # rank, name+email, properties кодове, value с ДДС), `AlertsList.jsx` (списък сортиран по severity high→medium→low с color-coded кутийки + icons по type, empty state '✓ Всичко наред'). AdminDashboard.jsx завършен с всички 7 секции — Cash/Sales/ByType/RecentSales/Calendar/TopClients/Alerts. Sales role: вижда само 4 секции (Sales/ByType/RecentSales/Alerts без € суми); admin/super_admin вижда всичките 7. Тествано 100% pass от testing_agent_v3_fork (iteration_13.json: 22/22 cases). **R.5 пакетът завършен — пълноценен финансов дашборд работи.**
+- **v1.5.10 (2026-05-09)** — R.5 ЧАСТ 3 — Sales section + Recent Sales table
 - **v1.5.9 (2026-05-09)** — R.5 ЧАСТ 2 — Frontend Cash + Project filter
 - **v1.5.8 (2026-05-09)** — R.5 ЧАСТ 1 — Backend financial dashboard endpoint
 - **v1.5.7 (2026-05-09)** — Refactoring R.4 — Public VAT display
