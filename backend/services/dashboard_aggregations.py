@@ -180,11 +180,16 @@ async def build_dashboard(
     reserved_dep = [p for p in all_props if p.get("status") == "reserved_paid_deposit"]
     compensation = [p for p in all_props if p.get("status") == "compensation"]
     hidden = [p for p in all_props if p.get("status") == "hidden"]
+    unavailable = [p for p in all_props if p.get("status") == "unavailable"]
 
     sellable = [
         p for p in all_props
         if p.get("status") not in ("compensation", "hidden", "unavailable")
     ]
+    # Properties that count as not_sold (everything except sold)
+    not_sold = [p for p in all_props if p.get("status") != "sold"]
+    # Properties on the active market (avail + reserved)
+    market_available = available + reserved_zero + reserved_dep
 
     # ----- DEAL ITEM AGGREGATION -----
     # Build a map property_id -> agreed_price (for sold from deals)
@@ -208,6 +213,12 @@ async def build_dashboard(
 
     # Available sellable potential — from list_price (no deal yet)
     available_value_net = sum(safe_num(p.get("list_price")) for p in available)
+    # Reserved value (still part of sellable potential — not yet sold)
+    reserved_value_net = sum(safe_num(p.get("list_price")) for p in (reserved_zero + reserved_dep))
+    # Sellable potential total (available + reserved) — excludes compensation/hidden/unavailable
+    sellable_potential_net = available_value_net + reserved_value_net
+    # Compensation value — visual only, NEVER part of sellable potential
+    compensation_value_net = sum(safe_num(p.get("list_price")) for p in compensation)
 
     # ----- FINANCE: from deal stages -----
     contracted_net = 0.0  # sum(deal_total_agreed) for sellable deals
@@ -722,21 +733,49 @@ async def build_dashboard(
             out[k] = None
         return out
 
+    # Reconciliation check: sum of all status buckets must equal total
+    accounted = (
+        len(sold) + len(available) + len(reserved_zero) + len(reserved_dep)
+        + len(compensation) + len(hidden) + len(unavailable)
+    )
+    other_count = total_count - accounted
+
     overview = {
-        "total_count": total_count,
+        # Total inventory
+        "total_properties": total_count,
+        "total_count": total_count,  # legacy alias
+        # Hard split: sold vs not_sold
         "sold_count": len(sold),
+        "not_sold_count": len(not_sold),
+        # Active market split (not_sold breakdown)
         "available_count": len(available),
         "reserved_count": len(reserved_zero) + len(reserved_dep),
+        "reserved_zero_count": len(reserved_zero),
+        "reserved_deposit_count": len(reserved_dep),
+        "market_available_count": len(market_available),
+        # Non-sale inventory (visual only)
         "compensation_count": len(compensation),
         "hidden_count": len(hidden),
+        "unavailable_count": len(unavailable),
+        "non_sale_count": len(compensation) + len(hidden) + len(unavailable),
+        "other_count": other_count,
+        # Sellable potential (excludes compensation/hidden/unavailable)
         "sellable_count": len(sellable),
         "sold_percent": round((len(sold) / len(sellable) * 100), 1) if sellable else 0,
+        # Reconciliation flag for UI
+        "count_reconciliation_ok": (other_count == 0),
     }
     if is_finance_visible:
         overview["sold_value_net"] = round(sold_value_net, 2)
         overview["sold_value_with_vat"] = with_vat(sold_value_net)
         overview["available_value_net"] = round(available_value_net, 2)
         overview["available_value_with_vat"] = with_vat(available_value_net)
+        overview["reserved_value_net"] = round(reserved_value_net, 2)
+        overview["reserved_value_with_vat"] = with_vat(reserved_value_net)
+        overview["sellable_potential_net"] = round(sellable_potential_net, 2)
+        overview["sellable_potential_with_vat"] = with_vat(sellable_potential_net)
+        overview["compensation_value_visual_only_net"] = round(compensation_value_net, 2)
+        overview["compensation_value_visual_only_with_vat"] = with_vat(compensation_value_net)
         overview["paid_total"] = round(paid_total, 2)
         overview["overdue_total"] = round(overdue_total, 2)
 

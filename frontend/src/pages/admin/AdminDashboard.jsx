@@ -118,13 +118,13 @@ export default function AdminDashboard() {
             )}
 
             <Tabs value={tab} onValueChange={setTab} className="space-y-6">
-                <TabsList className="bg-stone-100 p-1" data-testid="dashboard-tabs">
-                    <TabsTrigger value="overview" data-testid="tab-overview">Обзор</TabsTrigger>
-                    <TabsTrigger value="sales" data-testid="tab-sales">Продажби</TabsTrigger>
-                    <TabsTrigger value="finance" data-testid="tab-finance">Финанси</TabsTrigger>
-                    <TabsTrigger value="calendar" data-testid="tab-calendar">Календар</TabsTrigger>
-                    <TabsTrigger value="clients" data-testid="tab-clients">Клиенти</TabsTrigger>
-                    <TabsTrigger value="unsold" data-testid="tab-unsold">Непродадени</TabsTrigger>
+                <TabsList className="bg-stone-100 p-1.5 h-auto" data-testid="dashboard-tabs">
+                    <TabsTrigger value="overview" data-testid="tab-overview" className="text-sm px-4 py-2">Обзор</TabsTrigger>
+                    <TabsTrigger value="sales" data-testid="tab-sales" className="text-sm px-4 py-2">Продажби</TabsTrigger>
+                    <TabsTrigger value="finance" data-testid="tab-finance" className="text-sm px-4 py-2">Финанси</TabsTrigger>
+                    <TabsTrigger value="calendar" data-testid="tab-calendar" className="text-sm px-4 py-2">Календар</TabsTrigger>
+                    <TabsTrigger value="clients" data-testid="tab-clients" className="text-sm px-4 py-2">Клиенти</TabsTrigger>
+                    <TabsTrigger value="unsold" data-testid="tab-unsold" className="text-sm px-4 py-2">Непродадени</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="overview">

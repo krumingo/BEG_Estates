@@ -23,29 +23,43 @@ const TYPE_SINGULAR = {
     garage: "Гараж", storage: "Склад", shop: "Магазин", house: "Къща",
     compensation: "Обезщетителен", unknown: "Друг",
 };
-const PIE_COLORS = ["#0f172a", "#475569", "#64748b", "#94a3b8", "#cbd5e1", "#e2e8f0"];
+const PIE_COLORS = ["#0f172a", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#ec4899"];
 
-export function StatCard({ label, value, sub, accent = "neutral", testId }) {
+export function StatCard({ label, value, sub, accent = "neutral", testId, big = false }) {
     const accents = {
-        neutral: "border-slate-200",
-        green: "border-emerald-200 bg-emerald-50/40",
-        amber: "border-amber-200 bg-amber-50/40",
-        red: "border-red-200 bg-red-50/40",
-        slate: "border-slate-300 bg-slate-50/60",
+        neutral: "border-slate-200 bg-white",
+        green: "border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-white",
+        amber: "border-amber-200 bg-gradient-to-br from-amber-50 via-white to-white",
+        red: "border-red-200 bg-gradient-to-br from-red-50 via-white to-white",
+        slate: "border-slate-300 bg-gradient-to-br from-slate-50 via-white to-white",
+        blue: "border-blue-200 bg-gradient-to-br from-blue-50 via-white to-white",
+        violet: "border-violet-200 bg-gradient-to-br from-violet-50 via-white to-white",
+        dark: "border-slate-900 bg-gradient-to-br from-slate-900 to-slate-800 text-white",
     };
+    const labelColor = accent === "dark" ? "text-white/70" : "text-slate-500";
+    const valueColor = accent === "dark" ? "text-white" : "text-slate-900";
+    const subColor = accent === "dark" ? "text-white/60" : "text-slate-600";
     return (
-        <div className={`rounded-xl border ${accents[accent] || accents.neutral} bg-white p-5 shadow-sm`} data-testid={testId}>
-            <div className="text-xs uppercase tracking-wider font-medium text-slate-500 mb-2">{label}</div>
-            <div className="text-2xl font-medium text-slate-900">{value}</div>
-            {sub && <div className="text-xs text-slate-600 mt-1">{sub}</div>}
+        <div
+            className={`rounded-2xl border ${accents[accent] || accents.neutral} p-6 shadow-sm hover:shadow-md transition-shadow backdrop-blur-sm`}
+            data-testid={testId}
+        >
+            <div className={`text-xs uppercase tracking-wider font-semibold ${labelColor} mb-3`}>{label}</div>
+            <div className={`${big ? "text-5xl" : "text-4xl"} font-medium ${valueColor} tabular-nums leading-tight`}>{value}</div>
+            {sub && <div className={`text-sm ${subColor} mt-2`}>{sub}</div>}
         </div>
     );
 }
 
-export function SectionCard({ title, children, testId }) {
+export function SectionCard({ title, children, testId, hint }) {
     return (
-        <section className="space-y-3" data-testid={testId}>
-            {title && <h3 className="text-sm font-medium text-slate-700">{title}</h3>}
+        <section className="space-y-4" data-testid={testId}>
+            {title && (
+                <div className="flex items-baseline justify-between gap-2">
+                    <h3 className="font-serif text-xl text-slate-900">{title}</h3>
+                    {hint && <span className="text-xs text-slate-500">{hint}</span>}
+                </div>
+            )}
             {children}
         </section>
     );
@@ -53,8 +67,31 @@ export function SectionCard({ title, children, testId }) {
 
 function EmptyBox({ children, testId }) {
     return (
-        <div className="rounded-xl border border-stone-200 bg-white p-6 text-sm text-slate-500" data-testid={testId}>
+        <div className="rounded-2xl border border-stone-200 bg-white p-8 text-sm text-slate-500 text-center" data-testid={testId}>
             {children}
+        </div>
+    );
+}
+
+/** Малка цветна клетка за status breakdown в Обзор */
+function StatusCell({ label, count, color, sub, testId }) {
+    const colors = {
+        emerald: { bg: "bg-emerald-50", border: "border-emerald-200", dot: "bg-emerald-500", text: "text-emerald-900" },
+        amber: { bg: "bg-amber-50", border: "border-amber-200", dot: "bg-amber-500", text: "text-amber-900" },
+        orange: { bg: "bg-orange-50", border: "border-orange-200", dot: "bg-orange-500", text: "text-orange-900" },
+        slate: { bg: "bg-slate-50", border: "border-slate-300", dot: "bg-slate-700", text: "text-slate-900" },
+        violet: { bg: "bg-violet-50", border: "border-violet-200", dot: "bg-violet-500", text: "text-violet-900" },
+        stone: { bg: "bg-stone-50", border: "border-stone-300", dot: "bg-stone-500", text: "text-stone-700" },
+    };
+    const c = colors[color] || colors.slate;
+    return (
+        <div className={`rounded-xl border ${c.border} ${c.bg} p-4 transition-shadow hover:shadow-sm`} data-testid={testId}>
+            <div className="flex items-center gap-2 mb-2">
+                <span className={`h-2 w-2 rounded-full ${c.dot}`} />
+                <div className="text-xs uppercase tracking-wider font-medium text-slate-600">{label}</div>
+            </div>
+            <div className={`text-3xl font-medium ${c.text} tabular-nums`}>{count}</div>
+            {sub && <div className="text-xs text-slate-500 mt-1 truncate">{sub}</div>}
         </div>
     );
 }
@@ -66,36 +103,110 @@ function EmptyBox({ children, testId }) {
 export function OverviewTab({ data, isFinanceVisible }) {
     const overview = data?.overview || {};
     const sp = data?.sales_pipeline || {};
-    const totalCount = overview.total_count ?? 0;
+    const total = overview.total_properties ?? overview.total_count ?? 0;
     const soldPct = overview.sold_percent ?? 0;
+    const reconciliation = overview.count_reconciliation_ok !== false;
+    const otherCount = overview.other_count ?? 0;
 
     return (
-        <div className="space-y-6">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="space-y-8">
+            {/* HERO LINE: Sold vs Not Sold split */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <StatCard
-                    label="Продадени имоти"
-                    value={`${overview.sold_count ?? 0} / ${totalCount}`}
-                    sub={`${soldPct}% от продаваемите`}
-                    accent="slate"
+                    label="Общо имоти"
+                    value={total}
+                    sub={`${overview.sellable_count ?? 0} продаваеми · ${overview.non_sale_count ?? 0} извън продажба`}
+                    accent="dark"
+                    testId="overview-card-total"
+                    big
+                />
+                <StatCard
+                    label="Продадени"
+                    value={overview.sold_count ?? 0}
+                    sub={`${soldPct}% от продаваемите` + (isFinanceVisible ? ` · ${currency(overview.sold_value_with_vat || 0)} с ДДС` : "")}
+                    accent="green"
                     testId="overview-card-sold"
+                    big
                 />
                 <StatCard
-                    label="Свободни"
-                    value={overview.available_count ?? 0}
-                    sub={isFinanceVisible ? `${currency(overview.available_value_with_vat || 0)} с ДДС` : null}
+                    label="Непродадени"
+                    value={overview.not_sold_count ?? 0}
+                    sub={`${overview.market_available_count ?? 0} на пазара · ${overview.non_sale_count ?? 0} извън продажба`}
                     accent="amber"
-                    testId="overview-card-available"
+                    testId="overview-card-not-sold"
+                    big
                 />
-                {isFinanceVisible && (
+            </div>
+
+            {/* SECOND ROW: Status breakdown — proper counting */}
+            <SectionCard
+                title="Статус на инвентара"
+                hint={reconciliation ? "сметката е балансирана" : `⚠ ${otherCount} имота с непознат статус`}
+                testId="overview-inventory-breakdown"
+            >
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                    <StatusCell
+                        label="Свободни"
+                        count={overview.available_count ?? 0}
+                        color="emerald"
+                        testId="status-cell-available"
+                        sub={isFinanceVisible ? currency(overview.available_value_with_vat || 0) : null}
+                    />
+                    <StatusCell
+                        label="Резерв. без капаро"
+                        count={overview.reserved_zero_count ?? 0}
+                        color="amber"
+                        testId="status-cell-reserved-zero"
+                    />
+                    <StatusCell
+                        label="С капаро"
+                        count={overview.reserved_deposit_count ?? 0}
+                        color="orange"
+                        testId="status-cell-reserved-deposit"
+                        sub={isFinanceVisible && (overview.reserved_value_with_vat || 0) > 0
+                            ? currency(overview.reserved_value_with_vat) : null}
+                    />
+                    <StatusCell
+                        label="Продадени"
+                        count={overview.sold_count ?? 0}
+                        color="slate"
+                        testId="status-cell-sold"
+                    />
+                    <StatusCell
+                        label="Обезщетение"
+                        count={overview.compensation_count ?? 0}
+                        color="violet"
+                        testId="status-cell-compensation"
+                        sub={isFinanceVisible && (overview.compensation_value_visual_only_with_vat || 0) > 0
+                            ? `${currency(overview.compensation_value_visual_only_with_vat)} (визуално)` : "не за продажба"}
+                    />
+                    <StatusCell
+                        label="Скрити / недост."
+                        count={(overview.hidden_count ?? 0) + (overview.unavailable_count ?? 0)}
+                        color="stone"
+                        testId="status-cell-hidden"
+                        sub={(overview.hidden_count ?? 0) + (overview.unavailable_count ?? 0) > 0 ? "не за продажба" : null}
+                    />
+                </div>
+            </SectionCard>
+
+            {/* FINANCE CARDS — only for finance roles */}
+            {isFinanceVisible && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <StatCard
+                        label="Продаваем потенциал"
+                        value={currency(overview.sellable_potential_with_vat || 0)}
+                        sub="свободни + резервирани · с ДДС"
+                        accent="blue"
+                        testId="overview-card-sellable-potential"
+                    />
                     <StatCard
                         label="Инкасирано общо"
                         value={currency(overview.paid_total || 0)}
-                        sub="от платени вноски"
+                        sub="платени вноски от deals"
                         accent="green"
                         testId="overview-card-paid"
                     />
-                )}
-                {isFinanceVisible && (
                     <StatCard
                         label="Просрочено"
                         value={currency(overview.overdue_total || 0)}
@@ -103,11 +214,11 @@ export function OverviewTab({ data, isFinanceVisible }) {
                         accent={(overview.overdue_total || 0) > 0 ? "red" : "green"}
                         testId="overview-card-overdue"
                     />
-                )}
-            </div>
+                </div>
+            )}
 
             <SectionCard title="Продажбена фуния" testId="overview-pipeline">
-                <PipelineFunnel pipeline={sp} totalSellable={overview.sellable_count ?? totalCount} />
+                <PipelineFunnel pipeline={sp} totalSellable={overview.sellable_count ?? total} />
             </SectionCard>
 
             <SectionCard title="Изисква внимание" testId="overview-action-items">
@@ -136,15 +247,15 @@ function PipelineFunnel({ pipeline, totalSellable }) {
     ];
     const max = Math.max(totalSellable || 1, ...steps.map((s) => s.value));
     return (
-        <div className="rounded-xl border border-stone-200 bg-white p-5 space-y-2">
+        <div className="rounded-2xl border border-stone-200 bg-white p-6 space-y-3 shadow-sm">
             {steps.map((s) => (
-                <div key={s.key} className="flex items-center gap-3" data-testid={`pipeline-step-${s.key}`}>
-                    <div className="w-40 text-xs text-slate-600 shrink-0">{s.label}</div>
-                    <div className="flex-1 h-5 bg-stone-100 rounded overflow-hidden">
-                        <div className="h-full bg-slate-700 rounded transition-all"
+                <div key={s.key} className="flex items-center gap-4" data-testid={`pipeline-step-${s.key}`}>
+                    <div className="w-44 text-sm text-slate-700 font-medium shrink-0">{s.label}</div>
+                    <div className="flex-1 h-7 bg-stone-100 rounded-lg overflow-hidden">
+                        <div className="h-full bg-gradient-to-r from-slate-700 to-slate-900 rounded-lg transition-all"
                             style={{ width: `${Math.max(2, (s.value / max) * 100)}%` }} />
                     </div>
-                    <div className="w-12 text-right text-sm font-medium text-slate-900 shrink-0">{s.value}</div>
+                    <div className="w-16 text-right text-lg font-medium text-slate-900 shrink-0 tabular-nums">{s.value}</div>
                 </div>
             ))}
         </div>
@@ -154,34 +265,34 @@ function PipelineFunnel({ pipeline, totalSellable }) {
 function ActionItems({ items, isFinanceVisible }) {
     if (!items.length) {
         return (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 flex items-center gap-3" data-testid="action-items-empty">
-                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                <div className="text-sm font-medium text-emerald-900">✓ Всичко наред — няма проблеми за внимание</div>
+            <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-5 flex items-center gap-3 shadow-sm" data-testid="action-items-empty">
+                <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+                <div className="text-base font-medium text-emerald-900">✓ Всичко наред — няма проблеми за внимание</div>
             </div>
         );
     }
     const order = { high: 0, medium: 1, low: 2 };
     const sorted = [...items].sort((a, b) => (order[a.severity] ?? 99) - (order[b.severity] ?? 99));
     const styles = {
-        high: { border: "border-red-200", bg: "bg-red-50", title: "text-red-900", msg: "text-red-700", icon: "text-red-600" },
-        medium: { border: "border-amber-200", bg: "bg-amber-50", title: "text-amber-900", msg: "text-amber-700", icon: "text-amber-600" },
-        low: { border: "border-stone-200", bg: "bg-stone-50", title: "text-slate-900", msg: "text-slate-600", icon: "text-slate-500" },
+        high: { border: "border-red-200", bg: "bg-gradient-to-br from-red-50 to-white", title: "text-red-900", msg: "text-red-700", icon: "text-red-600" },
+        medium: { border: "border-amber-200", bg: "bg-gradient-to-br from-amber-50 to-white", title: "text-amber-900", msg: "text-amber-700", icon: "text-amber-600" },
+        low: { border: "border-stone-200", bg: "bg-gradient-to-br from-stone-50 to-white", title: "text-slate-900", msg: "text-slate-600", icon: "text-slate-500" },
     };
     const icons = { overdue: AlertTriangle, expiring_reservations: Hourglass, long_standing: Clock, new_inquiries: MailOpen };
     return (
-        <div className="space-y-2">
+        <div className="space-y-3">
             {sorted.map((it, idx) => {
                 const s = styles[it.severity] || styles.low;
                 const Icon = icons[it.type] || AlertCircle;
                 const showAmt = it.type === "overdue" && isFinanceVisible && (it.amount || 0) > 0;
                 return (
-                    <div key={`${it.type}-${idx}`} className={`rounded-xl border ${s.border} ${s.bg} p-4 flex items-start gap-3`} data-testid={`action-item-${it.type}`}>
-                        <Icon className={`h-5 w-5 ${s.icon} shrink-0 mt-0.5`} />
+                    <div key={`${it.type}-${idx}`} className={`rounded-2xl border ${s.border} ${s.bg} p-5 flex items-start gap-4 shadow-sm`} data-testid={`action-item-${it.type}`}>
+                        <Icon className={`h-6 w-6 ${s.icon} shrink-0 mt-0.5`} />
                         <div className="flex-1 min-w-0">
-                            <div className={`text-sm font-medium ${s.title}`}>{it.title}</div>
-                            {it.message && <div className={`text-xs mt-1 ${s.msg}`}>{it.message}</div>}
+                            <div className={`text-base font-medium ${s.title}`}>{it.title}</div>
+                            {it.message && <div className={`text-sm mt-1 ${s.msg}`}>{it.message}</div>}
                         </div>
-                        {showAmt && <div className={`text-sm font-medium ${s.title} shrink-0`}>{currency(it.amount)}</div>}
+                        {showAmt && <div className={`text-lg font-medium ${s.title} shrink-0 tabular-nums`}>{currency(it.amount)}</div>}
                     </div>
                 );
             })}
@@ -193,23 +304,23 @@ function RecentSalesMini({ sales, isFinanceVisible }) {
     if (!sales.length) return <EmptyBox testId="recent-sales-empty">Няма продажби.</EmptyBox>;
     return (
         <div className="rounded-xl border border-stone-200 bg-white overflow-hidden" data-testid="recent-sales-mini">
-            <table className="w-full text-sm">
-                <thead className="bg-stone-50 text-slate-600">
+            <table className="w-full text-base">
+                <thead className="bg-stone-50 text-slate-600 text-sm">
                     <tr>
-                        <th className="text-left p-2 font-medium">Дата</th>
-                        <th className="text-left p-2 font-medium">Имот</th>
-                        <th className="text-left p-2 font-medium">Купувач</th>
-                        {isFinanceVisible && <th className="text-right p-2 font-medium">Цена</th>}
+                        <th className="text-left p-3 font-medium">Дата</th>
+                        <th className="text-left p-3 font-medium">Имот</th>
+                        <th className="text-left p-3 font-medium">Купувач</th>
+                        {isFinanceVisible && <th className="text-right p-3 font-medium">Цена</th>}
                     </tr>
                 </thead>
                 <tbody>
                     {sales.slice(0, 7).map((s) => (
                         <tr key={s.property_id} className="border-t border-stone-100">
-                            <td className="p-2 text-slate-600">{formatDate(s.sold_at)}</td>
-                            <td className="p-2 font-medium">{s.code}</td>
-                            <td className="p-2 text-slate-700">{s.buyer_name || "—"}</td>
+                            <td className="p-3 text-slate-600">{formatDate(s.sold_at)}</td>
+                            <td className="p-3 font-medium">{s.code}</td>
+                            <td className="p-3 text-slate-700">{s.buyer_name || "—"}</td>
                             {isFinanceVisible && (
-                                <td className="p-2 text-right font-medium">
+                                <td className="p-3 text-right font-medium tabular-nums">
                                     {s.list_price_with_vat != null ? currency(s.list_price_with_vat) : "—"}
                                 </td>
                             )}
@@ -225,20 +336,20 @@ function RecentInquiries({ inquiries }) {
     if (!inquiries.length) return <EmptyBox testId="recent-inquiries-empty">Няма запитвания.</EmptyBox>;
     return (
         <div className="rounded-xl border border-stone-200 bg-white overflow-hidden" data-testid="recent-inquiries-mini">
-            <table className="w-full text-sm">
-                <thead className="bg-stone-50 text-slate-600">
+            <table className="w-full text-base">
+                <thead className="bg-stone-50 text-slate-600 text-sm">
                     <tr>
-                        <th className="text-left p-2 font-medium">Дата</th>
-                        <th className="text-left p-2 font-medium">Име</th>
-                        <th className="text-left p-2 font-medium">Имейл</th>
+                        <th className="text-left p-3 font-medium">Дата</th>
+                        <th className="text-left p-3 font-medium">Име</th>
+                        <th className="text-left p-3 font-medium">Имейл</th>
                     </tr>
                 </thead>
                 <tbody>
                     {inquiries.slice(0, 7).map((i) => (
                         <tr key={i.id} className="border-t border-stone-100">
-                            <td className="p-2 text-slate-600">{formatDate(i.created_at)}</td>
-                            <td className="p-2 font-medium">{i.name || "—"}</td>
-                            <td className="p-2 text-slate-600 text-xs">{i.email || "—"}</td>
+                            <td className="p-3 text-slate-600">{formatDate(i.created_at)}</td>
+                            <td className="p-3 font-medium">{i.name || "—"}</td>
+                            <td className="p-3 text-slate-600 text-sm">{i.email || "—"}</td>
                         </tr>
                     ))}
                 </tbody>
@@ -278,18 +389,18 @@ export function SalesTab({ data, isFinanceVisible, onTypeClick }) {
                     {typeChartData.length === 0 ? (
                         <EmptyBox>Няма данни.</EmptyBox>
                     ) : (
-                        <div className="rounded-xl border border-stone-200 bg-white p-4 h-64">
+                        <div className="rounded-2xl border border-stone-200 bg-white p-5 h-80 shadow-sm">
                             <ResponsiveContainer>
                                 <BarChart data={typeChartData}
                                     onClick={(e) => onTypeClick && e?.activePayload?.[0]?.payload?.type
                                         && onTypeClick(e.activePayload[0].payload.type)}>
-                                    <XAxis dataKey="name" fontSize={11} />
-                                    <YAxis fontSize={11} />
+                                    <XAxis dataKey="name" fontSize={12} />
+                                    <YAxis fontSize={12} />
                                     <Tooltip />
-                                    <Legend />
+                                    <Legend wrapperStyle={{ fontSize: 13 }} />
                                     <Bar dataKey="Продадени" stackId="a" fill="#0f172a" />
-                                    <Bar dataKey="Резервирани" stackId="a" fill="#94a3b8" />
-                                    <Bar dataKey="Свободни" stackId="a" fill="#cbd5e1" />
+                                    <Bar dataKey="Резервирани" stackId="a" fill="#f59e0b" />
+                                    <Bar dataKey="Свободни" stackId="a" fill="#10b981" />
                                 </BarChart>
                             </ResponsiveContainer>
                         </div>
@@ -300,16 +411,16 @@ export function SalesTab({ data, isFinanceVisible, onTypeClick }) {
                     {floorChartData.length === 0 ? (
                         <EmptyBox>Няма данни.</EmptyBox>
                     ) : (
-                        <div className="rounded-xl border border-stone-200 bg-white p-4 h-64">
+                        <div className="rounded-2xl border border-stone-200 bg-white p-5 h-80 shadow-sm">
                             <ResponsiveContainer>
                                 <BarChart data={floorChartData}>
-                                    <XAxis dataKey="name" fontSize={11} />
-                                    <YAxis fontSize={11} />
+                                    <XAxis dataKey="name" fontSize={12} />
+                                    <YAxis fontSize={12} />
                                     <Tooltip />
-                                    <Legend />
+                                    <Legend wrapperStyle={{ fontSize: 13 }} />
                                     <Bar dataKey="Продадени" stackId="a" fill="#0f172a" />
-                                    <Bar dataKey="Резервирани" stackId="a" fill="#94a3b8" />
-                                    <Bar dataKey="Свободни" stackId="a" fill="#cbd5e1" />
+                                    <Bar dataKey="Резервирани" stackId="a" fill="#f59e0b" />
+                                    <Bar dataKey="Свободни" stackId="a" fill="#10b981" />
                                 </BarChart>
                             </ResponsiveContainer>
                         </div>
@@ -341,9 +452,9 @@ export function SalesTab({ data, isFinanceVisible, onTypeClick }) {
 function BreakdownTable({ rows, keyField, labelMap, formatLabel, isFinanceVisible, onClick }) {
     if (!rows || rows.length === 0) return <EmptyBox>Няма данни.</EmptyBox>;
     return (
-        <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
-            <table className="w-full text-sm">
-                <thead className="bg-stone-50 text-slate-600">
+        <div className="rounded-2xl border border-stone-200 bg-white overflow-hidden shadow-sm">
+            <table className="w-full text-base">
+                <thead className="bg-stone-50 text-slate-600 text-sm">
                     <tr>
                         <th className="text-left p-3 font-medium">{keyField === "type" ? "Тип" : keyField === "floor" ? "Етаж" : "Сграда"}</th>
                         <th className="text-right p-3 font-medium">Общо</th>
@@ -363,12 +474,12 @@ function BreakdownTable({ rows, keyField, labelMap, formatLabel, isFinanceVisibl
                                 onClick={() => clickable && onClick(r[keyField])}
                                 data-testid={`breakdown-row-${keyField}-${k}`}>
                                 <td className="p-3 font-medium text-slate-900">{label}</td>
-                                <td className="p-3 text-right">{r.total || 0}</td>
-                                <td className="p-3 text-right">{r.sold || 0}</td>
-                                <td className="p-3 text-right">{r.available || 0}</td>
-                                <td className="p-3 text-right">{r.reserved || 0}</td>
+                                <td className="p-3 text-right tabular-nums">{r.total || 0}</td>
+                                <td className="p-3 text-right tabular-nums">{r.sold || 0}</td>
+                                <td className="p-3 text-right tabular-nums">{r.available || 0}</td>
+                                <td className="p-3 text-right tabular-nums">{r.reserved || 0}</td>
                                 {isFinanceVisible && (
-                                    <td className="p-3 text-right font-medium">
+                                    <td className="p-3 text-right font-medium tabular-nums">
                                         {(r.available_value_with_vat || 0) > 0 ? currency(r.available_value_with_vat) : "—"}
                                     </td>
                                 )}
@@ -447,13 +558,13 @@ export function FinanceTab({ data }) {
                 {modeData.length === 0 ? (
                     <EmptyBox>Няма payment данни.</EmptyBox>
                 ) : (
-                    <div className="rounded-xl border border-stone-200 bg-white p-4 h-72">
+                    <div className="rounded-2xl border border-stone-200 bg-white p-5 h-80 shadow-sm">
                         <ResponsiveContainer>
                             <PieChart>
-                                <Pie data={modeData} dataKey="value" nameKey="name" outerRadius={90} label>
+                                <Pie data={modeData} dataKey="value" nameKey="name" outerRadius={100} label>
                                     {modeData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                                 </Pie>
-                                <Legend />
+                                <Legend wrapperStyle={{ fontSize: 13 }} />
                                 <Tooltip formatter={(v) => currency(v)} />
                             </PieChart>
                         </ResponsiveContainer>
@@ -469,13 +580,13 @@ function MonthChart({ data, color }) {
     const hasData = data.some((d) => (d.amount || 0) > 0);
     if (!hasData) return <EmptyBox>Няма данни за следващите 12 месеца.</EmptyBox>;
     return (
-        <div className="rounded-xl border border-stone-200 bg-white p-4 h-64">
+        <div className="rounded-2xl border border-stone-200 bg-white p-5 h-72 shadow-sm">
             <ResponsiveContainer>
                 <BarChart data={data}>
-                    <XAxis dataKey="label" fontSize={10} />
-                    <YAxis fontSize={10} />
+                    <XAxis dataKey="label" fontSize={11} />
+                    <YAxis fontSize={11} />
                     <Tooltip formatter={(v) => currency(v)} />
-                    <Bar dataKey="amount" fill={color} radius={[4, 4, 0, 0]} maxBarSize={40} />
+                    <Bar dataKey="amount" fill={color} radius={[6, 6, 0, 0]} maxBarSize={42} />
                 </BarChart>
             </ResponsiveContainer>
             <div className="text-xs text-slate-400 mt-1">max {currency(max)}</div>
@@ -518,9 +629,9 @@ export function CalendarTab({ data, isFinanceVisible }) {
 function InstallmentsTable({ rows, emptyText, overdue }) {
     if (!rows || rows.length === 0) return <EmptyBox>{emptyText}</EmptyBox>;
     return (
-        <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
-            <table className="w-full text-sm">
-                <thead className="bg-stone-50 text-slate-600">
+        <div className="rounded-2xl border border-stone-200 bg-white overflow-hidden shadow-sm">
+            <table className="w-full text-base">
+                <thead className="bg-stone-50 text-slate-600 text-sm">
                     <tr>
                         <th className="text-left p-3 font-medium">Дата</th>
                         <th className="text-left p-3 font-medium">Клиент</th>
@@ -570,9 +681,9 @@ export function ClientsTab({ data, isFinanceVisible }) {
 
     return (
         <SectionCard title={`Клиенти със сделки (${clients.length})`} testId="clients-table">
-            <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
-                <table className="w-full text-sm">
-                    <thead className="bg-stone-50 text-slate-600">
+            <div className="rounded-2xl border border-stone-200 bg-white overflow-hidden shadow-sm">
+                <table className="w-full text-base">
+                    <thead className="bg-stone-50 text-slate-600 text-sm">
                         <tr>
                             <th className="text-left p-3 font-medium">Клиент</th>
                             <th className="text-left p-3 font-medium">Имоти</th>
@@ -651,9 +762,9 @@ export function UnsoldTab({ data, isFinanceVisible }) {
                 {!u.rows || u.rows.length === 0 ? (
                     <EmptyBox>Няма непродадени имоти.</EmptyBox>
                 ) : (
-                    <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
-                        <table className="w-full text-sm">
-                            <thead className="bg-stone-50 text-slate-600">
+                    <div className="rounded-2xl border border-stone-200 bg-white overflow-hidden shadow-sm">
+                        <table className="w-full text-base">
+                            <thead className="bg-stone-50 text-slate-600 text-sm">
                                 <tr>
                                     <th className="text-left p-3 font-medium">Код</th>
                                     <th className="text-left p-3 font-medium">Тип</th>

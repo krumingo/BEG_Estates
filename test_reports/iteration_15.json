@@ -1,0 +1,66 @@
+{
+  "summary": "R.6.1 Dashboard Visual + Counting Fix - Complete Testing. 9/9 backend tests PASSED, all frontend UI tests PASSED. New counting fields (total_properties, sold_count, not_sold_count, available_count, reserved_count, compensation_count, etc.) working correctly. Visual upgrades (text-5xl values, rounded-2xl cards, gradient backgrounds, h-80 charts) verified. Sales role correctly restricted from finance cards.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Admin Dashboard",
+        "issues": ["2FA notification toast overlaps with filters in top-right corner - minor visual overlap, filters still functional (carried over from R.6)"]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_dashboard_r61.py",
+    "/app/test_reports/pytest/pytest_r61.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "dashboard_aggregations.py: Correctly implements all 13 new counting fields + 5 new finance fields. count_reconciliation_ok flag properly calculates if all status buckets sum to total.",
+    "DashboardTabs.jsx: StatCard component upgraded with 'big' prop for text-5xl values. StatusCell helper for 6 colored inventory breakdown cells. Gradient backgrounds (from-emerald-50, from-amber-50, from-slate-900) and shadow-sm hover:shadow-md transitions.",
+    "AdminDashboard.jsx: Tab triggers with text-sm px-4 py-2 styling. Proper filter state management."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_dashboard_r61.py"
+  ],
+  "success_rate": {
+    "backend": "100% (9/9 tests passed)",
+    "frontend": "100% (all UI tests passed)"
+  },
+  "test_credentials": {
+    "super_admin": "admin@begestates.bg / BegEstates2026!Admin",
+    "sales": "sales@begestates.bg / BegEstates2026!Sales"
+  },
+  "seed_data_creation": "No new seed data. Used existing: 52 total properties, 18 apartments (5 sold, 6 available, 7 compensation)",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "R.6.1 fully tested. Key test points: (1) HERO row with 3 big cards (Общо имоти dark, Продадени green, Непродадени amber) with text-5xl values, (2) Inventory breakdown section with 6 status cells (available emerald, reserved-zero amber, reserved-deposit orange, sold slate, compensation violet, hidden stone), (3) 'сметката е балансирана' hint when count_reconciliation_ok=true, (4) Finance cards (sellable-potential blue, paid green, overdue red/green) only for finance roles, (5) Apartment filter: total=18, sold=5, not_sold=13, available=6, compensation=7, (6) Sales role: finance cards hidden, € amounts hidden in status cells and HERO cards, (7) All 6 tabs working with visual upgrades (h-80 charts, text-base tables, rounded-2xl cards)",
+  "verified_features": [
+    {"feature": "Backend: GET /api/dashboard/admin/full?property_type=apartment returns overview with 13 new counting fields", "status": "PASS"},
+    {"feature": "Backend: total_properties=18, sold_count=5, not_sold_count=13 for apartments", "status": "PASS"},
+    {"feature": "Backend: available_count=6, compensation_count=7, count_reconciliation_ok=true", "status": "PASS"},
+    {"feature": "Backend: sellable_potential_with_vat, reserved_value_with_vat, compensation_value_visual_only_with_vat present for admin", "status": "PASS"},
+    {"feature": "Backend: Finance fields hidden for sales role (is_finance_visible=false)", "status": "PASS"},
+    {"feature": "Backend: Legacy keys (cash, sales, calendar, top_clients, recent_sales, recent_inquiries, alerts) present", "status": "PASS"},
+    {"feature": "Frontend: HERO row with 3 big cards [overview-card-total, overview-card-sold, overview-card-not-sold]", "status": "PASS"},
+    {"feature": "Frontend: Total card has dark accent (from-slate-900), Sold green (from-emerald-50), Not sold amber (from-amber-50)", "status": "PASS"},
+    {"feature": "Frontend: Values are text-5xl (big prop) for HERO cards", "status": "PASS"},
+    {"feature": "Frontend: Inventory breakdown section [overview-inventory-breakdown] with 6 status cells", "status": "PASS"},
+    {"feature": "Frontend: Status cells: status-cell-available (emerald), status-cell-reserved-zero (amber), status-cell-reserved-deposit (orange), status-cell-sold (slate), status-cell-compensation (violet), status-cell-hidden (stone)", "status": "PASS"},
+    {"feature": "Frontend: Hint text 'сметката е балансирана' when count_reconciliation_ok=true", "status": "PASS"},
+    {"feature": "Frontend: Finance cards [overview-card-sellable-potential, overview-card-paid, overview-card-overdue] for finance roles", "status": "PASS"},
+    {"feature": "Frontend: Apartment filter updates all status cells with correct numbers", "status": "PASS"},
+    {"feature": "Frontend: Sales role - finance cards NOT rendered", "status": "PASS"},
+    {"feature": "Frontend: Sales role - status cells visible but € amounts hidden", "status": "PASS"},
+    {"feature": "Frontend: Visual upgrade - cards have rounded-2xl, shadow-sm hover:shadow-md, gradient backgrounds", "status": "PASS"},
+    {"feature": "Frontend: Visual upgrade - charts have h-80 height", "status": "PASS"},
+    {"feature": "Frontend: Visual upgrade - tables have text-base fonts", "status": "PASS"},
+    {"feature": "Frontend: Tab triggers have text-sm px-4 py-2 styling", "status": "PASS"},
+    {"feature": "Regression: All 6 tabs (Обзор, Продажби, Финанси, Календар, Клиенти, Непродадени) working", "status": "PASS"},
+    {"feature": "Regression: Pipeline funnel, Action items, Recent sales, Recent inquiries working", "status": "PASS"}
+  ]
+}
