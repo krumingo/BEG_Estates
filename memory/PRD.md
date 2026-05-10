@@ -22,11 +22,12 @@
 - **v1.0 (2026-05-06)** — Clients Unification Pack C: unified `db.users(role=client)` as single clients directory, full CRUD endpoints, AdminClients UI rewrite, Brand fix "Building Express Group"
 # BEG Estates / EstateFlow — Product Requirements Document
 
-**Last updated:** 2026-05-09 (iteration 21)
-**Status:** Iteration 21 — Refactoring R.4 (Public сайт показва цени С ДДС) (v1.5.7)
+**Last updated:** 2026-05-09 (iteration 22)
+**Status:** Iteration 22 — R.5 ЧАСТ 1 (Backend dashboard endpoint) (v1.5.8)
 
 ## Iterations
-- **v1.5.7 (2026-05-09)** — **Refactoring R.4 — Public VAT display**: публичните страници (ProjectDetail PropertyCell + PropertyDetail) сега показват цените С ДДС 20% (× 1.20). Нов `PublicPriceCell` в PropertyDetail (голяма С ДДС цена + малка БЕЗ ДДС референция). Премахната е "Цена / м²" клетка от PropertyDetail (купувачът не я вижда). Добавен disclaimer "Всички показани цени са с включен ДДС 20%" под имотите в ProjectDetail. Backend НЕ е променян — list_price в DB остава БЕЗ ДДС. Тествано 100% pass от testing_agent_v3_fork (iteration_10.json) — пример апартамент 601: 280,696€ без ДДС → 336,835€ с ДДС.
+- **v1.5.8 (2026-05-09)** — **R.5 ЧАСТ 1 — Backend financial dashboard**: нов endpoint `GET /api/dashboard/admin/full` с пълна финансова статистика (cash paid/expected/overdue, sales by type/total, calendar 12M, top 5 clients, recent_sales, alerts: overdue/expiring/long_standing/new_inquiries). Поддържа `?project_id=` филтър. Role-gated `is_finance_visible` (super_admin/admin виждат финансите; sales — само counts). Премахнат мъртвия `/dashboard/client` endpoint (от R.1). Запазен legacy `/dashboard/admin` за обратна съвместимост (frontend ще го подменим в Част 2-4). Тествано curl: admin=$1,235,516.83 sold С ДДС за 15 продадени имота, sales role коректно skipped.
+- **v1.5.7 (2026-05-09)** — Refactoring R.4 — Public VAT display
 - **v1.5.6 (2026-05-09)** — Refactoring R.3 — Pricing UI move
 - **v1.5.5 (2026-05-09)** — Refactoring R.2 ЧАСТ 3 — PropertiesSummary footer
 - **v1.5.4 (2026-05-09)** — Refactoring R.2 ЧАСТ 2 — Inline price edit + Bulk apply
