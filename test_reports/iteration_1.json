@@ -36,8 +36,8 @@
     "frontend": "N/A - backend only testing requested"
   },
   "test_credentials": {
-    "admin": "admin@begestates.bg / Admin123!",
-    "sales": "sales@begestates.bg / Sales123!",
+    "admin": "[REDACTED]",
+    "sales": "[REDACTED]",
     "client": "ivan.petrov@example.com (OTP via /api/auth/client/request-otp)"
   },
   "seed_data_creation": "Seed data verified: Project 'Жилищна сграда Яна' with 38 properties (20 apartments, 8 garages, 10 parking), A1-1 sold, A3-2 reserved with zero-deposit",

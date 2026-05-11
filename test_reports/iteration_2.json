@@ -32,8 +32,8 @@
     "frontend": "N/A - backend only testing requested"
   },
   "test_credentials": {
-    "admin": "admin@begestates.bg / Admin123!",
-    "sales": "sales@begestates.bg / Sales123!",
+    "admin": "[REDACTED]",
+    "sales": "[REDACTED]",
     "client": "ivan.petrov@example.com (OTP via /api/auth/client/request-otp)"
   },
   "seed_data_creation": "HD project 'BEG Estates / Хаджи Димитър' seeded with slug=hadzhi-dimitar, is_primary=true, 29 total units (18 apts, 1 shop, 6 parking, 1 garage, 3 storage). Яна exists with status=planned, is_primary=false. 3 buyers seeded. Apt 202 has active zero-deposit by Ivan. Apt 102 reserved_paid_deposit (Николай Костов). Apt 301 sold. Apt 401 compensation. Apt 501 hidden.",
