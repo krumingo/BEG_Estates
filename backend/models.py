@@ -92,6 +92,7 @@ class ProjectUpdate(BaseModel):
     expense_estimate: Optional[ProjectExpenseEstimate] = None
     total_rzp_area: Optional[float] = None
     pricing_settings: Optional[dict] = None  # G.2.2A pricing engine settings
+    construction_cashflow_settings: Optional[dict] = None  # R.7 forecast settings
 
     @field_validator("slug")
     @classmethod

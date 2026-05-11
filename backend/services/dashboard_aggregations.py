@@ -860,6 +860,30 @@ async def build_dashboard(
     # Legacy alerts mirror action_items but with same shape
     alerts = action_items
 
+    # ----- R.7: CONSTRUCTION CASHFLOW (only for finance roles + when project selected) -----
+    construction_cashflow = {
+        "available": False,
+        "reason": "Избери проект, за да видиш строителния cashflow",
+        "settings": {}, "totals": {}, "monthly": [], "alerts": [],
+    }
+    if is_finance_visible and project_id:
+        from services.construction_cashflow import build_construction_cashflow
+        project = await db.projects.find_one({"id": project_id}, {"_id": 0})
+        if project:
+            ccs = project.get("construction_cashflow_settings") or {}
+            # Fallback: copy total_rzp_area from project root if settings doesn't have it
+            if not ccs.get("total_rzp_area") and project.get("total_rzp_area"):
+                ccs = {**ccs, "total_rzp_area": project.get("total_rzp_area")}
+            construction_cashflow = await build_construction_cashflow(
+                db,
+                project_id=project_id,
+                property_ids=list(prop_ids_set),
+                deals=sellable_deals,
+                settings=ccs,
+                now=datetime.now(timezone.utc),
+                overdue_total=overdue_total,
+            )
+
     return {
         "is_finance_visible": is_finance_visible,
         "filters": {
@@ -883,6 +907,7 @@ async def build_dashboard(
         "money_calendar": money_calendar,
         "unsold_inventory": unsold_inventory,
         "action_items": action_items,
+        "construction_cashflow": construction_cashflow,
         # Legacy / backward-compat
         "cash": cash,
         "sales": sales_summary,
