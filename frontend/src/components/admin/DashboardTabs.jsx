@@ -124,8 +124,8 @@ export function OverviewTab({ data, isFinanceVisible }) {
     const soldAreaPct = overview.sold_area_percent ?? 0;
     const compArea = overview.compensation_area ?? 0;
     const compAreaPct = overview.compensation_area_percent ?? 0;
-    const notSoldArea = overview.not_sold_area ?? 0;
-    const notSoldAreaPct = overview.not_sold_area_percent ?? 0;
+    const marketArea = overview.market_available_area ?? 0;
+    const marketAreaPct = totalArea > 0 ? Math.round((marketArea / totalArea) * 1000) / 10 : 0;
 
     // Hero card sub helpers — multi-line node
     const totalSub = (
@@ -159,11 +159,15 @@ export function OverviewTab({ data, isFinanceVisible }) {
 
     const notSoldSub = (
         <>
-            <div>{fmtArea(notSoldArea)} · {notSoldAreaPct}% от РЗП</div>
+            <div>{fmtArea(marketArea)} · {marketAreaPct}% от РЗП</div>
             {isFinanceVisible && (
-                <div className="text-slate-500">{currency(overview.not_sold_value_with_vat || 0)} очаквано с ДДС</div>
+                <div className="text-slate-500">
+                    {currency(overview.market_available_value_with_vat || overview.sellable_potential_with_vat || 0)} продаваем потенциал с ДДС
+                </div>
             )}
-            <div className="text-slate-400 mt-1">{overview.market_available_count ?? 0} на пазара · {overview.non_sale_count ?? 0} извън продажба</div>
+            <div className="text-slate-400 mt-1">
+                {overview.available_count ?? 0} свободни · {overview.reserved_count ?? 0} резервирани
+            </div>
         </>
     );
 
@@ -196,14 +200,54 @@ export function OverviewTab({ data, isFinanceVisible }) {
                     big
                 />
                 <StatCard
-                    label="Непродадени"
-                    value={overview.not_sold_count ?? 0}
+                    label="На пазара"
+                    value={overview.market_available_count ?? 0}
                     sub={notSoldSub}
                     accent="amber"
-                    testId="overview-card-not-sold"
+                    testId="overview-card-on-market"
                     big
                 />
             </div>
+
+            {/* R.9: Продаваем потенциал — only for finance roles */}
+            {isFinanceVisible && (
+                <SectionCard title="Продаваем потенциал" hint="свободни + резервирани (с ДДС)" testId="overview-sellable-potential">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                        <StatusCell
+                            label="Свободни"
+                            count={overview.available_count ?? 0}
+                            color="emerald"
+                            value={currency(overview.available_value_with_vat || 0)}
+                            area={fmtArea(overview.available_area)}
+                            testId="potential-available"
+                        />
+                        <StatusCell
+                            label="Резерв. без капаро"
+                            count={overview.reserved_zero_count ?? 0}
+                            color="amber"
+                            value={currency(overview.reserved_zero_value_with_vat || 0)}
+                            area={fmtArea(overview.reserved_zero_area)}
+                            testId="potential-reserved-zero"
+                        />
+                        <StatusCell
+                            label="С капаро"
+                            count={overview.reserved_deposit_count ?? 0}
+                            color="orange"
+                            value={currency(overview.reserved_deposit_value_with_vat || 0)}
+                            area={fmtArea(overview.reserved_deposit_area)}
+                            testId="potential-reserved-deposit"
+                        />
+                        <StatusCell
+                            label="Общо потенциал"
+                            count={overview.market_available_count ?? 0}
+                            color="slate"
+                            value={currency(overview.market_available_value_with_vat || overview.sellable_potential_with_vat || 0)}
+                            area={fmtArea(overview.market_available_area)}
+                            testId="potential-total"
+                        />
+                    </div>
+                </SectionCard>
+            )}
 
             {/* SECOND ROW: Status breakdown — count + value + area */}
             <SectionCard

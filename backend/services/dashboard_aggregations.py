@@ -245,7 +245,8 @@ async def build_dashboard(
         p for p in all_props
         if p.get("status") not in ("compensation", "hidden", "unavailable")
     ]
-    # Properties that count as not_sold (everything except sold)
+    # LEGACY: not_sold = everything except sold (includes compensation/hidden/unavailable).
+    # Use market_available + non_sale split below for new UI logic.
     not_sold = [p for p in all_props if p.get("status") != "sold"]
     # Properties on the active market (avail + reserved)
     market_available = available + reserved_zero + reserved_dep
@@ -888,6 +889,13 @@ async def build_dashboard(
         overview["not_sold_value_with_vat"] = with_vat(not_sold_value_net)
         overview["total_market_value_net"] = round(total_market_value_net, 2)
         overview["total_market_value_with_vat"] = with_vat(total_market_value_net)
+        # R.9: market_available_* (= active market = sellable potential) — explicit alias
+        overview["market_available_value_net"] = round(sellable_potential_net, 2)
+        overview["market_available_value_with_vat"] = with_vat(sellable_potential_net)
+        # R.9: non_sale_* (compensation + hidden + unavailable, visual-only)
+        _non_sale_value_net = compensation_value_net + hidden_unavailable_value_net
+        overview["non_sale_value_visual_only_net"] = round(_non_sale_value_net, 2)
+        overview["non_sale_value_visual_only_with_vat"] = with_vat(_non_sale_value_net)
         overview["paid_total"] = round(paid_total, 2)
         overview["overdue_total"] = round(overdue_total, 2)
 
@@ -906,6 +914,17 @@ async def build_dashboard(
     overview["hidden_unavailable_area"] = round(hidden_unavailable_area, 2)
     overview["not_sold_area"] = round(not_sold_area, 2)
     overview["not_sold_area_percent"] = pct(not_sold_area, total_area)
+
+    # R.9: market_available_area + non_sale_area (proper inventory split)
+    _market_available_area = available_area + reserved_zero_area + reserved_deposit_area
+    _non_sale_area = compensation_area + hidden_unavailable_area
+    overview["market_available_area"] = round(_market_available_area, 2)
+    overview["non_sale_area"] = round(_non_sale_area, 2)
+
+    # Invariants (documented; not asserted to avoid breaking production on bad seed data):
+    # total_count == sold_count + market_available_count + non_sale_count + other_count
+    # total_area  == sold_area  + market_available_area  + non_sale_area  (± rounding)
+    # not_sold_count == market_available_count + non_sale_count (legacy alias)
 
     finance = None
     if is_finance_visible:
