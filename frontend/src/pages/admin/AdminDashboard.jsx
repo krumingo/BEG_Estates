@@ -12,6 +12,7 @@ import {
     ClientsTab,
     UnsoldTab,
 } from "../../components/admin/DashboardTabs";
+import ConstructionCashflowTab from "../../components/admin/ConstructionCashflowTab";
 
 export function AdminLayout() {
     return (
@@ -50,6 +51,7 @@ export default function AdminDashboard() {
     const [error, setError] = useState(null);
     const [filters, setFilters] = useState(INITIAL_FILTERS);
     const [tab, setTab] = useState("overview");
+    const [reloadKey, setReloadKey] = useState(0);
 
     useEffect(() => {
         let cancelled = false;
@@ -69,9 +71,10 @@ export default function AdminDashboard() {
             })
             .finally(() => { if (!cancelled) setLoading(false); });
         return () => { cancelled = true; };
-    }, [filters]);
+    }, [filters, reloadKey]);
 
     const isFinanceVisible = data?.is_finance_visible ?? false;
+    const reloadDashboard = () => setReloadKey((k) => k + 1);
 
     const handleTypeClick = (type) => {
         setFilters((f) => ({ ...f, property_type: type }));
@@ -125,6 +128,9 @@ export default function AdminDashboard() {
                     <TabsTrigger value="calendar" data-testid="tab-calendar" className="text-sm px-4 py-2">Календар</TabsTrigger>
                     <TabsTrigger value="clients" data-testid="tab-clients" className="text-sm px-4 py-2">Клиенти</TabsTrigger>
                     <TabsTrigger value="unsold" data-testid="tab-unsold" className="text-sm px-4 py-2">Непродадени</TabsTrigger>
+                    {isFinanceVisible && (
+                        <TabsTrigger value="construction" data-testid="tab-construction" className="text-sm px-4 py-2">Строителство</TabsTrigger>
+                    )}
                 </TabsList>
 
                 <TabsContent value="overview">
@@ -145,6 +151,17 @@ export default function AdminDashboard() {
                 <TabsContent value="unsold">
                     {data && <UnsoldTab data={data} isFinanceVisible={isFinanceVisible} />}
                 </TabsContent>
+                {isFinanceVisible && (
+                    <TabsContent value="construction">
+                        {data && (
+                            <ConstructionCashflowTab
+                                data={data}
+                                projectId={filters.project_id}
+                                onSaved={reloadDashboard}
+                            />
+                        )}
+                    </TabsContent>
+                )}
             </Tabs>
         </div>
     );
