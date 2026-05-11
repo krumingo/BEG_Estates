@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { currency, formatApiError, api } from "../../lib/api";
+import { useIsSuperAdmin } from "../../lib/auth";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Button } from "../ui/button";
@@ -8,7 +9,7 @@ import { toast } from "sonner";
 import {
     BarChart, Bar, Line, ComposedChart, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid,
 } from "recharts";
-import { AlertTriangle, Info, Wallet, TrendingUp, Building2, Calculator, Save } from "lucide-react";
+import { AlertTriangle, Info, Wallet, TrendingUp, Building2, Calculator, Save, Lock } from "lucide-react";
 import { StatCard, SectionCard } from "./DashboardTabs";
 
 const FIELD_LABELS = {
@@ -53,6 +54,8 @@ function statusBadge(status) {
 
 export default function ConstructionCashflowTab({ data, projectId, onSaved }) {
     const cc = data?.construction_cashflow;
+    const isSuperAdmin = useIsSuperAdmin();
+    const canEdit = !!isSuperAdmin;
     const [form, setForm] = useState(DEFAULTS);
     const [saving, setSaving] = useState(false);
 
@@ -83,6 +86,7 @@ export default function ConstructionCashflowTab({ data, projectId, onSaved }) {
     const update = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
     const handleSave = async () => {
+        if (!canEdit) return;
         try {
             setSaving(true);
             const payload = { construction_cashflow_settings: {} };
@@ -127,8 +131,20 @@ export default function ConstructionCashflowTab({ data, projectId, onSaved }) {
             )}
 
             {/* SETTINGS FORM */}
-            <SectionCard title="Настройки на прогнозата" testId="construction-form" hint="всички полета по избор">
+            <SectionCard title="Настройки на прогнозата" testId="construction-form" hint={canEdit ? "всички полета по избор" : "само за преглед"}>
                 <div className="rounded-2xl border border-stone-200 bg-gradient-to-br from-slate-50 to-white p-6 shadow-sm">
+                    {!canEdit && (
+                        <div
+                            className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3"
+                            data-testid="construction-readonly-notice"
+                        >
+                            <Lock className="h-4 w-4 text-amber-700 shrink-0" />
+                            <span className="text-sm text-amber-900">
+                                Само super_admin може да редактира строителната прогноза.
+                            </span>
+                        </div>
+                    )}
+                    <fieldset disabled={!canEdit} className={!canEdit ? "opacity-70" : ""}>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         <NumField k="total_rzp_area" form={form} update={update} />
                         <NumField k="rough_cost_per_sqm" form={form} update={update} />
@@ -162,17 +178,20 @@ export default function ConstructionCashflowTab({ data, projectId, onSaved }) {
                             />
                         </div>
                     </div>
-                    <div className="flex justify-end mt-5">
-                        <Button
-                            onClick={handleSave}
-                            disabled={saving}
-                            className="bg-slate-900 hover:bg-slate-800 text-white"
-                            data-testid="construction-save-btn"
-                        >
-                            <Save className="h-4 w-4 mr-2" />
-                            {saving ? "Запис..." : "Запази прогнозата"}
-                        </Button>
-                    </div>
+                    </fieldset>
+                    {canEdit && (
+                        <div className="flex justify-end mt-5">
+                            <Button
+                                onClick={handleSave}
+                                disabled={saving}
+                                className="bg-slate-900 hover:bg-slate-800 text-white"
+                                data-testid="construction-save-btn"
+                            >
+                                <Save className="h-4 w-4 mr-2" />
+                                {saving ? "Запис..." : "Запази прогнозата"}
+                            </Button>
+                        </div>
+                    )}
                 </div>
             </SectionCard>
 

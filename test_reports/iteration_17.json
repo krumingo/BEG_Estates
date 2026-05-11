@@ -1,0 +1,78 @@
+{
+  "summary": "R.7 Construction Cashflow Tab Cleanup - All frontend tests PASSED. Verified role-based read-only logic: super_admin can edit (form enabled, save button visible, no readonly notice), admin/accounting can view only (form disabled, no save button, readonly notice present), sales cannot see tab at all. .gitignore cleanup verified (90 lines, no duplicates, no -e lines).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/admin/staff-users",
+        "issue": "Endpoint documented in test_credentials.md but does not exist in backend. Had to create test users directly in database for testing.",
+        "priority": "LOW"
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Admin Dashboard - Construction Tab",
+        "issues": ["Console warnings about chart dimensions (-1x-1) when switching tabs - minor visual issue, charts still render correctly"]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_17.json"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "ConstructionCashflowTab.jsx: Correctly implements useIsSuperAdmin() hook to determine canEdit. fieldset disabled={!canEdit} properly disables all form inputs. Save button conditionally rendered only when canEdit=true. Readonly notice with data-testid='construction-readonly-notice' correctly shown when !canEdit.",
+    "auth.jsx: useIsSuperAdmin() correctly returns true only when user.role === 'super_admin'.",
+    "AdminDashboard.jsx: tab-construction visibility controlled by isFinanceVisible (from backend is_finance_visible), not by role directly - this is correct as backend handles role-based visibility.",
+    ".gitignore: Clean file with 90 lines, no duplicate entries, no -e lines, uses general patterns (*.pack) instead of specific file names."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (frontend-only testing)",
+    "frontend": "100% (all role-based tests passed)"
+  },
+  "test_credentials": {
+    "super_admin": "admin@begestates.bg / BegEstates2026!Admin",
+    "sales": "sales@begestates.bg / BegEstates2026!Sales",
+    "admin": "test_admin@begestates.bg / BegEstates2026!Admin (created for testing)",
+    "accounting": "test_accounting@begestates.bg / BegEstates2026!Accounting (created for testing)"
+  },
+  "seed_data_creation": "Created test_admin@begestates.bg (role=admin) and test_accounting@begestates.bg (role=accounting) directly in MongoDB for testing read-only behavior",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "R.7 Construction Cashflow Tab read-only logic fully tested. Key test points: (1) super_admin: tab visible, form editable, save button exists, no readonly notice, (2) admin: tab visible, form disabled (fieldset disabled), no save button, readonly notice with text 'Само super_admin може да редактира строителната прогноза.' and data-testid='construction-readonly-notice', (3) accounting: same as admin (read-only), (4) sales: tab-construction NOT in DOM. .gitignore cleanup verified: 90 lines, no duplicates, no -e lines, no specific *.pack filenames.",
+  "verified_features": [
+    {"feature": "super_admin: tab-construction visible", "status": "PASS"},
+    {"feature": "super_admin: construction-form visible and editable", "status": "PASS"},
+    {"feature": "super_admin: construction-save-btn EXISTS", "status": "PASS"},
+    {"feature": "super_admin: construction-readonly-notice does NOT exist", "status": "PASS"},
+    {"feature": "super_admin: form inputs ENABLED", "status": "PASS"},
+    {"feature": "super_admin: all 7 tabs visible (overview, sales, finance, calendar, clients, unsold, construction)", "status": "PASS"},
+    {"feature": "admin: tab-construction visible", "status": "PASS"},
+    {"feature": "admin: construction-form visible but DISABLED (fieldset disabled)", "status": "PASS"},
+    {"feature": "admin: construction-save-btn does NOT exist", "status": "PASS"},
+    {"feature": "admin: construction-readonly-notice EXISTS with correct text", "status": "PASS"},
+    {"feature": "admin: form inputs DISABLED", "status": "PASS"},
+    {"feature": "accounting: tab-construction visible", "status": "PASS"},
+    {"feature": "accounting: construction-form visible but DISABLED", "status": "PASS"},
+    {"feature": "accounting: construction-save-btn does NOT exist", "status": "PASS"},
+    {"feature": "accounting: construction-readonly-notice EXISTS with correct text", "status": "PASS"},
+    {"feature": "accounting: form inputs DISABLED", "status": "PASS"},
+    {"feature": "sales: tab-construction does NOT exist in DOM", "status": "PASS"},
+    {"feature": "sales: only 6 tabs visible (no construction)", "status": "PASS"},
+    {"feature": "Regression: all 7 tabs clickable and load for super_admin", "status": "PASS"},
+    {"feature": "Construction tab: KPI cards (8 cards) render correctly", "status": "PASS"},
+    {"feature": "Construction tab: chart renders correctly", "status": "PASS"},
+    {"feature": "Construction tab: monthly table renders correctly", "status": "PASS"},
+    {"feature": ".gitignore cleanup: file has 90 lines (under 100)", "status": "PASS"},
+    {"feature": ".gitignore cleanup: no duplicate lines", "status": "PASS"},
+    {"feature": ".gitignore cleanup: no -e lines", "status": "PASS"},
+    {"feature": ".gitignore cleanup: uses general *.pack pattern instead of specific filenames", "status": "PASS"},
+    {"feature": "No __pycache__ directories in /app/backend", "status": "PASS"},
+    {"feature": "No *.pyc files in /app/backend", "status": "PASS"}
+  ]
+}
