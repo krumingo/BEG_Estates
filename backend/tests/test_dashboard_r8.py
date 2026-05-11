@@ -22,10 +22,10 @@ import os
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 
 # Test credentials from test_credentials.md
-SUPER_ADMIN_EMAIL = "admin@begestates.bg"
-SUPER_ADMIN_PASSWORD = "BegEstates2026!Admin"
-SALES_EMAIL = "sales@begestates.bg"
-SALES_PASSWORD = "BegEstates2026!Sales"
+SUPER_ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@begestates.bg")
+SUPER_ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "BegEstates2026!Admin")
+SALES_EMAIL = os.environ.get("SALES_EMAIL", "sales@begestates.bg")
+SALES_PASSWORD = os.environ.get("SALES_PASSWORD", "BegEstates2026!Sales")
 
 
 class TestDashboardR8SuperAdmin:
