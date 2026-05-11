@@ -1,0 +1,76 @@
+{
+  "summary": "R.8 Dashboard Overview Area/Value Enrichment - All tests PASSED. Backend: 17/17 pytest tests passed. Frontend: All UI tests passed for super_admin and sales roles. Verified 4 hero cards (Общо имоти, Продадени, Обезщетение, Непродадени) with area (м²) and value (€) display. Status cells show count+value+area with correct data-testid attributes. Sales role correctly sees area but NOT financial values. Regression: All 7 tabs work, Construction tab visible for super_admin, funnel renders without exception.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Admin Dashboard - Charts",
+        "issues": ["Console warnings about chart dimensions (-1x-1) when switching tabs - minor visual issue, charts still render correctly. Known issue from iteration_17."]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_dashboard_r8.py",
+    "/app/test_reports/pytest/pytest_r8.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "dashboard_aggregations.py: Correctly implements prop_area() with fallback chain (area_total → total_area → saleable_area → built_up_area → area → raw_area → area_pure). prop_value() uses list_price → base_price → price_per_sqm*area. pct() helper handles divide-by-zero safely.",
+    "dashboard_aggregations.py: Area fields (total_area, sold_area, etc.) are always included in overview regardless of is_finance_visible. Value fields (_with_vat suffix) are only included when is_finance_visible=True.",
+    "dashboard_aggregations.py: _new_breakdown_rec(), _add_to_breakdown(), _finalize_breakdown() helpers correctly compute per-status count/area/value for by_type, by_floor, by_building breakdowns.",
+    "DashboardTabs.jsx: OverviewTab correctly renders 4 hero cards with data-testid attributes. StatusCell component accepts area and value props with separate data-testid suffixes (-area, -value). fmtArea() helper formats м² with Bulgarian locale.",
+    "DashboardTabs.jsx: Financial values correctly hidden for non-finance roles via isFinanceVisible prop. Status cell label is 'Скрити / неактивни' (correct, not 'Скрити / недост.')."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_dashboard_r8.py"
+  ],
+  "success_rate": {
+    "backend": "100% (17/17 tests passed)",
+    "frontend": "100% (all UI tests passed)"
+  },
+  "test_credentials": {
+    "super_admin": "admin@begestates.bg / BegEstates2026!Admin",
+    "sales": "sales@begestates.bg / BegEstates2026!Sales"
+  },
+  "seed_data_creation": "No new seed data created. Used existing 52 properties (5 sold, 26 available, 4 reserved_zero, 0 reserved_deposit, 17 compensation, 0 hidden/unavailable).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "R.8 Dashboard Area/Value Enrichment fully tested. Key verified features: (1) Backend returns all area fields (total_area, sold_area, etc.) for all roles, (2) Backend returns value fields (_with_vat suffix) only for finance roles (super_admin, admin, accounting), (3) Area reconciliation: sold_area + not_sold_area == total_area, (4) Frontend shows 4 hero cards with area+value for finance roles, area-only for sales, (5) Status cells have data-testid suffixes -value and -area, (6) Label is 'Скрити / неактивни' not 'Скрити / недост.', (7) Funnel renders without exception, (8) Construction tab visible for super_admin, hidden for sales.",
+  "verified_features": [
+    {"feature": "Backend: GET /api/dashboard/admin/full returns 200 for super_admin", "status": "PASS"},
+    {"feature": "Backend: overview has all area fields (total_area, sold_area, etc.)", "status": "PASS"},
+    {"feature": "Backend: overview has all value fields for finance role", "status": "PASS"},
+    {"feature": "Backend: sold_area + not_sold_area == total_area (reconciliation)", "status": "PASS"},
+    {"feature": "Backend: sold_area_percent + not_sold_area_percent ~= 100%", "status": "PASS"},
+    {"feature": "Backend: bucket area sum == total_area", "status": "PASS"},
+    {"feature": "Backend: by_type rows have area/value fields", "status": "PASS"},
+    {"feature": "Backend: by_floor rows have area/value fields", "status": "PASS"},
+    {"feature": "Backend: by_building rows have area/value fields", "status": "PASS"},
+    {"feature": "Backend: sales role has is_finance_visible=False", "status": "PASS"},
+    {"feature": "Backend: sales role sees area fields", "status": "PASS"},
+    {"feature": "Backend: sales role does NOT see value fields", "status": "PASS"},
+    {"feature": "Backend: no NaN values in overview", "status": "PASS"},
+    {"feature": "Backend: no NaN values in by_type", "status": "PASS"},
+    {"feature": "Backend: area values are reasonable (<1M m²)", "status": "PASS"},
+    {"feature": "Backend: percent values in 0-100 range", "status": "PASS"},
+    {"feature": "Frontend: 4 hero cards visible (total, sold, compensation, not_sold)", "status": "PASS"},
+    {"feature": "Frontend: 'Общо имоти' card shows area (м² РЗП)", "status": "PASS"},
+    {"feature": "Frontend: 'Продадени' card shows area + percent", "status": "PASS"},
+    {"feature": "Frontend: 'Обезщетение' card shows 'не влиза в продаваем потенциал'", "status": "PASS"},
+    {"feature": "Frontend: 'Непродадени' card shows area + percent", "status": "PASS"},
+    {"feature": "Frontend: 6 status cells visible with count+value+area", "status": "PASS"},
+    {"feature": "Frontend: status cells have -value and -area data-testid suffixes", "status": "PASS"},
+    {"feature": "Frontend: hidden cell label is 'Скрити / неактивни'", "status": "PASS"},
+    {"feature": "Frontend: sales role sees area but NOT € values", "status": "PASS"},
+    {"feature": "Frontend: finance cards hidden for sales", "status": "PASS"},
+    {"feature": "Frontend: Construction tab hidden for sales", "status": "PASS"},
+    {"feature": "Regression: all 7 tabs work for super_admin", "status": "PASS"},
+    {"feature": "Regression: funnel renders without exception", "status": "PASS"},
+    {"feature": "Regression: Construction tab visible for super_admin", "status": "PASS"}
+  ]
+}

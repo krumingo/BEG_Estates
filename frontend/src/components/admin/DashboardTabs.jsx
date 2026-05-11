@@ -74,7 +74,7 @@ function EmptyBox({ children, testId }) {
 }
 
 /** Малка цветна клетка за status breakdown в Обзор */
-function StatusCell({ label, count, color, sub, testId }) {
+function StatusCell({ label, count, color, sub, area, value, testId }) {
     const colors = {
         emerald: { bg: "bg-emerald-50", border: "border-emerald-200", dot: "bg-emerald-500", text: "text-emerald-900" },
         amber: { bg: "bg-amber-50", border: "border-amber-200", dot: "bg-amber-500", text: "text-amber-900" },
@@ -91,9 +91,21 @@ function StatusCell({ label, count, color, sub, testId }) {
                 <div className="text-xs uppercase tracking-wider font-medium text-slate-600">{label}</div>
             </div>
             <div className={`text-3xl font-medium ${c.text} tabular-nums`}>{count}</div>
+            {value && (
+                <div className="text-sm text-slate-700 mt-1 tabular-nums truncate" data-testid={testId ? `${testId}-value` : undefined}>{value}</div>
+            )}
+            {area && (
+                <div className="text-xs text-slate-500 mt-0.5 tabular-nums truncate" data-testid={testId ? `${testId}-area` : undefined}>{area}</div>
+            )}
             {sub && <div className="text-xs text-slate-500 mt-1 truncate">{sub}</div>}
         </div>
     );
+}
+
+/** Форматирай м² с локал-форматиране, толерира липсваща стойност */
+function fmtArea(v) {
+    const n = Math.round(v || 0);
+    return `${n.toLocaleString("bg-BG")} м²`;
 }
 
 /* ============================================================
@@ -104,18 +116,65 @@ export function OverviewTab({ data, isFinanceVisible }) {
     const overview = data?.overview || {};
     const sp = data?.sales_pipeline || {};
     const total = overview.total_properties ?? overview.total_count ?? 0;
-    const soldPct = overview.sold_percent ?? 0;
     const reconciliation = overview.count_reconciliation_ok !== false;
     const otherCount = overview.other_count ?? 0;
 
+    const totalArea = overview.total_area ?? 0;
+    const soldArea = overview.sold_area ?? 0;
+    const soldAreaPct = overview.sold_area_percent ?? 0;
+    const compArea = overview.compensation_area ?? 0;
+    const compAreaPct = overview.compensation_area_percent ?? 0;
+    const notSoldArea = overview.not_sold_area ?? 0;
+    const notSoldAreaPct = overview.not_sold_area_percent ?? 0;
+
+    // Hero card sub helpers — multi-line node
+    const totalSub = (
+        <>
+            <div>{fmtArea(totalArea)} РЗП</div>
+            {isFinanceVisible && (overview.total_market_value_with_vat || 0) > 0 && (
+                <div className="text-slate-500">{currency(overview.total_market_value_with_vat)} визуално с ДДС</div>
+            )}
+            <div className="text-slate-400 mt-1">{overview.sellable_count ?? 0} продаваеми · {overview.non_sale_count ?? 0} извън продажба</div>
+        </>
+    );
+
+    const soldSub = (
+        <>
+            <div>{fmtArea(soldArea)} · {soldAreaPct}% от РЗП</div>
+            {isFinanceVisible && (
+                <div className="text-slate-500">{currency(overview.sold_value_with_vat || 0)} с ДДС</div>
+            )}
+        </>
+    );
+
+    const compSub = (
+        <>
+            <div>{fmtArea(compArea)} · {compAreaPct}% от РЗП</div>
+            {isFinanceVisible && (
+                <div className="text-slate-500">{currency(overview.compensation_value_visual_only_with_vat || 0)} визуално с ДДС</div>
+            )}
+            <div className="text-slate-400 mt-1">не влиза в продаваем потенциал</div>
+        </>
+    );
+
+    const notSoldSub = (
+        <>
+            <div>{fmtArea(notSoldArea)} · {notSoldAreaPct}% от РЗП</div>
+            {isFinanceVisible && (
+                <div className="text-slate-500">{currency(overview.not_sold_value_with_vat || 0)} очаквано с ДДС</div>
+            )}
+            <div className="text-slate-400 mt-1">{overview.market_available_count ?? 0} на пазара · {overview.non_sale_count ?? 0} извън продажба</div>
+        </>
+    );
+
     return (
         <div className="space-y-8">
-            {/* HERO LINE: Sold vs Not Sold split */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* HERO LINE: 4 cards — Общо · Продадени · Обезщетение · Непродадени */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                 <StatCard
                     label="Общо имоти"
                     value={total}
-                    sub={`${overview.sellable_count ?? 0} продаваеми · ${overview.non_sale_count ?? 0} извън продажба`}
+                    sub={totalSub}
                     accent="dark"
                     testId="overview-card-total"
                     big
@@ -123,22 +182,30 @@ export function OverviewTab({ data, isFinanceVisible }) {
                 <StatCard
                     label="Продадени"
                     value={overview.sold_count ?? 0}
-                    sub={`${soldPct}% от продаваемите` + (isFinanceVisible ? ` · ${currency(overview.sold_value_with_vat || 0)} с ДДС` : "")}
+                    sub={soldSub}
                     accent="green"
                     testId="overview-card-sold"
                     big
                 />
                 <StatCard
+                    label="Обезщетение"
+                    value={overview.compensation_count ?? 0}
+                    sub={compSub}
+                    accent="violet"
+                    testId="overview-card-compensation"
+                    big
+                />
+                <StatCard
                     label="Непродадени"
                     value={overview.not_sold_count ?? 0}
-                    sub={`${overview.market_available_count ?? 0} на пазара · ${overview.non_sale_count ?? 0} извън продажба`}
+                    sub={notSoldSub}
                     accent="amber"
                     testId="overview-card-not-sold"
                     big
                 />
             </div>
 
-            {/* SECOND ROW: Status breakdown — proper counting */}
+            {/* SECOND ROW: Status breakdown — count + value + area */}
             <SectionCard
                 title="Статус на инвентара"
                 hint={reconciliation ? "сметката е балансирана" : `⚠ ${otherCount} имота с непознат статус`}
@@ -150,41 +217,49 @@ export function OverviewTab({ data, isFinanceVisible }) {
                         count={overview.available_count ?? 0}
                         color="emerald"
                         testId="status-cell-available"
-                        sub={isFinanceVisible ? currency(overview.available_value_with_vat || 0) : null}
+                        value={isFinanceVisible ? currency(overview.available_value_with_vat || 0) : null}
+                        area={fmtArea(overview.available_area)}
                     />
                     <StatusCell
                         label="Резерв. без капаро"
                         count={overview.reserved_zero_count ?? 0}
                         color="amber"
                         testId="status-cell-reserved-zero"
+                        value={isFinanceVisible ? currency(overview.reserved_zero_value_with_vat || 0) : null}
+                        area={fmtArea(overview.reserved_zero_area)}
                     />
                     <StatusCell
                         label="С капаро"
                         count={overview.reserved_deposit_count ?? 0}
                         color="orange"
                         testId="status-cell-reserved-deposit"
-                        sub={isFinanceVisible && (overview.reserved_value_with_vat || 0) > 0
-                            ? currency(overview.reserved_value_with_vat) : null}
+                        value={isFinanceVisible ? currency(overview.reserved_deposit_value_with_vat || 0) : null}
+                        area={fmtArea(overview.reserved_deposit_area)}
                     />
                     <StatusCell
                         label="Продадени"
                         count={overview.sold_count ?? 0}
                         color="slate"
                         testId="status-cell-sold"
+                        value={isFinanceVisible ? currency(overview.sold_value_with_vat || 0) : null}
+                        area={fmtArea(overview.sold_area)}
                     />
                     <StatusCell
                         label="Обезщетение"
                         count={overview.compensation_count ?? 0}
                         color="violet"
                         testId="status-cell-compensation"
-                        sub={isFinanceVisible && (overview.compensation_value_visual_only_with_vat || 0) > 0
-                            ? `${currency(overview.compensation_value_visual_only_with_vat)} (визуално)` : "не за продажба"}
+                        value={isFinanceVisible ? currency(overview.compensation_value_visual_only_with_vat || 0) : null}
+                        area={fmtArea(overview.compensation_area)}
+                        sub="не за продажба"
                     />
                     <StatusCell
-                        label="Скрити / недост."
+                        label="Скрити / неактивни"
                         count={(overview.hidden_count ?? 0) + (overview.unavailable_count ?? 0)}
                         color="stone"
                         testId="status-cell-hidden"
+                        value={isFinanceVisible ? currency(overview.hidden_unavailable_value_visual_only_with_vat || 0) : null}
+                        area={fmtArea(overview.hidden_unavailable_area)}
                         sub={(overview.hidden_count ?? 0) + (overview.unavailable_count ?? 0) > 0 ? "не за продажба" : null}
                     />
                 </div>

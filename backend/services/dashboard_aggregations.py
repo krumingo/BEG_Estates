@@ -34,6 +34,65 @@ def safe_num(x):
         return 0.0
 
 
+# ----- R.8: canonical area & value helpers -----
+
+AREA_FIELDS = (
+    "area_total",
+    "total_area",
+    "saleable_area",
+    "built_up_area",
+    "area",
+    "raw_area",
+    "area_pure",
+)
+
+
+def prop_area(p):
+    """Canonical area for a property. Uses area_total as primary, with documented fallbacks.
+
+    Never returns NaN. Missing/invalid → 0.0.
+    """
+    for f in AREA_FIELDS:
+        v = p.get(f)
+        if v is None:
+            continue
+        n = safe_num(v)
+        if n > 0:
+            return n
+    return 0.0
+
+
+def prop_value(p):
+    """Canonical *visual* value for a property based on properties source.
+
+    Priority: list_price → base_price → price_per_sqm * area.
+    Used for available/reserved/compensation/hidden value. Sold value comes
+    from deals.agreed_price (handled separately).
+    """
+    for f in ("list_price", "base_price"):
+        v = p.get(f)
+        if v is None:
+            continue
+        n = safe_num(v)
+        if n > 0:
+            return n
+    pps = safe_num(p.get("price_per_sqm"))
+    area = prop_area(p)
+    if pps > 0 and area > 0:
+        return pps * area
+    return 0.0
+
+
+def pct(part, whole):
+    """Percentage with safe divide-by-zero. Returns float with 1 decimal."""
+    if not whole:
+        return 0.0
+    try:
+        return round((part / whole) * 100, 1)
+    except (TypeError, ZeroDivisionError):
+        return 0.0
+
+
 def today_iso():
     return datetime.now(timezone.utc).date().isoformat()
 
@@ -202,23 +261,42 @@ async def build_dashboard(
                 agreed_by_pid[pid] = safe_num(it.get("agreed_price"))
                 deal_by_pid[pid] = d
 
-    # Sold value = sum of agreed_price for SOLD properties (from deals if available, fallback to list_price)
+    # Sold value = sum of agreed_price for SOLD properties (from deals if available, fallback to prop_value)
     sold_value_net = 0.0
     for p in sold:
         ap = agreed_by_pid.get(p["id"])
         if ap is not None and ap > 0:
             sold_value_net += ap
         else:
-            sold_value_net += safe_num(p.get("list_price"))
+            sold_value_net += prop_value(p)
 
-    # Available sellable potential — from list_price (no deal yet)
-    available_value_net = sum(safe_num(p.get("list_price")) for p in available)
-    # Reserved value (still part of sellable potential — not yet sold)
-    reserved_value_net = sum(safe_num(p.get("list_price")) for p in (reserved_zero + reserved_dep))
-    # Sellable potential total (available + reserved) — excludes compensation/hidden/unavailable
+    # Available sellable potential — from list_price/base_price/pps (no deal yet)
+    available_value_net = sum(prop_value(p) for p in available)
+    reserved_zero_value_net = sum(prop_value(p) for p in reserved_zero)
+    reserved_deposit_value_net = sum(prop_value(p) for p in reserved_dep)
+    reserved_value_net = reserved_zero_value_net + reserved_deposit_value_net
     sellable_potential_net = available_value_net + reserved_value_net
-    # Compensation value — visual only, NEVER part of sellable potential
-    compensation_value_net = sum(safe_num(p.get("list_price")) for p in compensation)
+    compensation_value_net = sum(prop_value(p) for p in compensation)
+    hidden_value_net = sum(prop_value(p) for p in hidden)
+    unavailable_value_net = sum(prop_value(p) for p in unavailable)
+    hidden_unavailable_value_net = hidden_value_net + unavailable_value_net
+
+    # ----- R.8: AREA TOTALS PER STATUS BUCKET -----
+    total_area = sum(prop_area(p) for p in all_props)
+    sold_area = sum(prop_area(p) for p in sold)
+    available_area = sum(prop_area(p) for p in available)
+    reserved_zero_area = sum(prop_area(p) for p in reserved_zero)
+    reserved_deposit_area = sum(prop_area(p) for p in reserved_dep)
+    compensation_area = sum(prop_area(p) for p in compensation)
+    hidden_area = sum(prop_area(p) for p in hidden)
+    unavailable_area = sum(prop_area(p) for p in unavailable)
+    hidden_unavailable_area = hidden_area + unavailable_area
+    not_sold_area = sum(prop_area(p) for p in not_sold)
+
+    not_sold_value_net = (
+        available_value_net + reserved_value_net + compensation_value_net + hidden_unavailable_value_net
+    )
+    total_market_value_net = sold_value_net + not_sold_value_net
 
     # ----- FINANCE: from deal stages -----
     contracted_net = 0.0  # sum(deal_total_agreed) for sellable deals
@@ -406,70 +484,103 @@ async def build_dashboard(
     contracted_with_vat = with_vat(contracted_net)
     remaining_net = max(0.0, contracted_net - paid_total)
 
-    # ----- BY TYPE -----
-    by_type = defaultdict(lambda: {
-        "type": "", "total": 0, "sold": 0, "available": 0,
-        "reserved": 0, "compensation": 0,
-        "sold_value_net": 0.0, "available_value_net": 0.0,
-    })
-    for p in all_props:
-        ptype = p.get("property_type") or "unknown"
+    # ----- R.8: shared per-status accumulator -----
+    def _new_breakdown_rec():
+        return {
+            "total": 0,
+            "total_area": 0.0,
+            "sold": 0, "sold_area": 0.0, "sold_value_net": 0.0,
+            "not_sold": 0, "not_sold_area": 0.0, "not_sold_value_net": 0.0,
+            "available": 0, "available_area": 0.0, "available_value_net": 0.0,
+            "reserved": 0,
+            "reserved_zero": 0, "reserved_zero_area": 0.0, "reserved_zero_value_net": 0.0,
+            "reserved_deposit": 0, "reserved_deposit_area": 0.0, "reserved_deposit_value_net": 0.0,
+            "compensation": 0, "compensation_area": 0.0, "compensation_value_net": 0.0,
+            "hidden": 0, "hidden_area": 0.0, "hidden_value_net": 0.0,
+            "unavailable": 0, "unavailable_area": 0.0, "unavailable_value_net": 0.0,
+        }
+
+    def _add_to_breakdown(rec, p):
+        a = prop_area(p)
+        v = prop_value(p)
         s = p.get("status") or ""
-        rec = by_type[ptype]
-        rec["type"] = ptype
         rec["total"] += 1
+        rec["total_area"] += a
         if s == "sold":
             rec["sold"] += 1
-            rec["sold_value_net"] += agreed_by_pid.get(p["id"]) or safe_num(p.get("list_price"))
-        elif s == "available":
-            rec["available"] += 1
-            rec["available_value_net"] += safe_num(p.get("list_price"))
-        elif s in ("reserved_zero_deposit", "reserved_paid_deposit"):
-            rec["reserved"] += 1
-        elif s == "compensation":
-            rec["compensation"] += 1
+            rec["sold_area"] += a
+            rec["sold_value_net"] += agreed_by_pid.get(p["id"]) or v
+        else:
+            rec["not_sold"] += 1
+            rec["not_sold_area"] += a
+            rec["not_sold_value_net"] += v
+            if s == "available":
+                rec["available"] += 1
+                rec["available_area"] += a
+                rec["available_value_net"] += v
+            elif s == "reserved_zero_deposit":
+                rec["reserved"] += 1
+                rec["reserved_zero"] += 1
+                rec["reserved_zero_area"] += a
+                rec["reserved_zero_value_net"] += v
+            elif s == "reserved_paid_deposit":
+                rec["reserved"] += 1
+                rec["reserved_deposit"] += 1
+                rec["reserved_deposit_area"] += a
+                rec["reserved_deposit_value_net"] += v
+            elif s == "compensation":
+                rec["compensation"] += 1
+                rec["compensation_area"] += a
+                rec["compensation_value_net"] += v
+            elif s == "hidden":
+                rec["hidden"] += 1
+                rec["hidden_area"] += a
+                rec["hidden_value_net"] += v
+            elif s == "unavailable":
+                rec["unavailable"] += 1
+                rec["unavailable_area"] += a
+                rec["unavailable_value_net"] += v
+
+    def _finalize_breakdown(rec):
+        rec["total_area"] = round(rec["total_area"], 2)
+        for k in ("sold", "not_sold", "available", "reserved_zero", "reserved_deposit",
+                  "compensation", "hidden", "unavailable"):
+            rec[f"{k}_area"] = round(rec[f"{k}_area"], 2)
+            rec[f"{k}_value_net"] = round(rec[f"{k}_value_net"], 2)
+            rec[f"{k}_value_with_vat"] = with_vat(rec[f"{k}_value_net"])
+
+    # ----- BY TYPE -----
+    by_type = defaultdict(_new_breakdown_rec)
+    for p in all_props:
+        ptype = p.get("property_type") or "unknown"
+        rec = by_type[ptype]
+        rec["type"] = ptype
+        _add_to_breakdown(rec, p)
 
     by_type_list = []
     for ptype, rec in by_type.items():
-        rec["sold_value_with_vat"] = with_vat(rec["sold_value_net"])
-        rec["available_value_with_vat"] = with_vat(rec["available_value_net"])
+        _finalize_breakdown(rec)
         by_type_list.append(rec)
     by_type_list.sort(key=lambda x: -x["total"])
 
     # ----- BY FLOOR -----
-    by_floor_map = defaultdict(lambda: {
-        "floor": 0, "total": 0, "sold": 0, "available": 0, "reserved": 0,
-        "sold_value_net": 0.0, "available_value_net": 0.0,
-    })
+    by_floor_map = defaultdict(_new_breakdown_rec)
     for p in all_props:
         floor = p.get("floor")
         if floor is None:
             continue
-        s = p.get("status") or ""
         rec = by_floor_map[floor]
         rec["floor"] = floor
-        rec["total"] += 1
-        if s == "sold":
-            rec["sold"] += 1
-            rec["sold_value_net"] += agreed_by_pid.get(p["id"]) or safe_num(p.get("list_price"))
-        elif s == "available":
-            rec["available"] += 1
-            rec["available_value_net"] += safe_num(p.get("list_price"))
-        elif s in ("reserved_zero_deposit", "reserved_paid_deposit"):
-            rec["reserved"] += 1
+        _add_to_breakdown(rec, p)
 
-    by_floor_list = sorted([
-        {**v, "sold_value_with_vat": with_vat(v["sold_value_net"]),
-         "available_value_with_vat": with_vat(v["available_value_net"])}
-        for v in by_floor_map.values()
-    ], key=lambda x: x["floor"])
+    by_floor_list = []
+    for rec in by_floor_map.values():
+        _finalize_breakdown(rec)
+        by_floor_list.append(rec)
+    by_floor_list.sort(key=lambda x: x["floor"])
 
     # ----- BY BUILDING -----
-    by_building_map = defaultdict(lambda: {
-        "building_id": None, "name": None, "total": 0, "sold": 0,
-        "available": 0, "reserved": 0,
-        "sold_value_net": 0.0, "available_value_net": 0.0,
-    })
+    by_building_map = defaultdict(_new_breakdown_rec)
     building_ids = {p.get("building_id") for p in all_props if p.get("building_id")}
     buildings = await db.buildings.find(
         {"id": {"$in": list(building_ids)}}, {"_id": 0, "id": 1, "name": 1}
@@ -481,22 +592,13 @@ async def build_dashboard(
         rec = by_building_map[bid]
         rec["building_id"] = bid if bid != "_no_building" else None
         rec["name"] = bld_name_by_id.get(bid, "—" if bid == "_no_building" else bid[:8])
-        rec["total"] += 1
-        s = p.get("status") or ""
-        if s == "sold":
-            rec["sold"] += 1
-            rec["sold_value_net"] += agreed_by_pid.get(p["id"]) or safe_num(p.get("list_price"))
-        elif s == "available":
-            rec["available"] += 1
-            rec["available_value_net"] += safe_num(p.get("list_price"))
-        elif s in ("reserved_zero_deposit", "reserved_paid_deposit"):
-            rec["reserved"] += 1
+        _add_to_breakdown(rec, p)
 
-    by_building_list = sorted([
-        {**v, "sold_value_with_vat": with_vat(v["sold_value_net"]),
-         "available_value_with_vat": with_vat(v["available_value_net"])}
-        for v in by_building_map.values()
-    ], key=lambda x: -x["total"])
+    by_building_list = []
+    for rec in by_building_map.values():
+        _finalize_breakdown(rec)
+        by_building_list.append(rec)
+    by_building_list.sort(key=lambda x: -x["total"])
 
     # ----- CLIENTS SUMMARY -----
     # For each client with at least 1 deal: properties, contracted, paid, remaining, overdue, next_due
@@ -772,12 +874,38 @@ async def build_dashboard(
         overview["available_value_with_vat"] = with_vat(available_value_net)
         overview["reserved_value_net"] = round(reserved_value_net, 2)
         overview["reserved_value_with_vat"] = with_vat(reserved_value_net)
+        overview["reserved_zero_value_net"] = round(reserved_zero_value_net, 2)
+        overview["reserved_zero_value_with_vat"] = with_vat(reserved_zero_value_net)
+        overview["reserved_deposit_value_net"] = round(reserved_deposit_value_net, 2)
+        overview["reserved_deposit_value_with_vat"] = with_vat(reserved_deposit_value_net)
         overview["sellable_potential_net"] = round(sellable_potential_net, 2)
         overview["sellable_potential_with_vat"] = with_vat(sellable_potential_net)
         overview["compensation_value_visual_only_net"] = round(compensation_value_net, 2)
         overview["compensation_value_visual_only_with_vat"] = with_vat(compensation_value_net)
+        overview["hidden_unavailable_value_visual_only_net"] = round(hidden_unavailable_value_net, 2)
+        overview["hidden_unavailable_value_visual_only_with_vat"] = with_vat(hidden_unavailable_value_net)
+        overview["not_sold_value_net"] = round(not_sold_value_net, 2)
+        overview["not_sold_value_with_vat"] = with_vat(not_sold_value_net)
+        overview["total_market_value_net"] = round(total_market_value_net, 2)
+        overview["total_market_value_with_vat"] = with_vat(total_market_value_net)
         overview["paid_total"] = round(paid_total, 2)
         overview["overdue_total"] = round(overdue_total, 2)
+
+    # R.8: AREA fields (always visible — площта не е финансова информация)
+    overview["total_area"] = round(total_area, 2)
+    overview["total_rzp_area"] = round(total_area, 2)  # alias for legacy/RZP semantics
+    overview["sold_area"] = round(sold_area, 2)
+    overview["sold_area_percent"] = pct(sold_area, total_area)
+    overview["available_area"] = round(available_area, 2)
+    overview["reserved_zero_area"] = round(reserved_zero_area, 2)
+    overview["reserved_deposit_area"] = round(reserved_deposit_area, 2)
+    overview["compensation_area"] = round(compensation_area, 2)
+    overview["compensation_area_percent"] = pct(compensation_area, total_area)
+    overview["hidden_area"] = round(hidden_area, 2)
+    overview["unavailable_area"] = round(unavailable_area, 2)
+    overview["hidden_unavailable_area"] = round(hidden_unavailable_area, 2)
+    overview["not_sold_area"] = round(not_sold_area, 2)
+    overview["not_sold_area_percent"] = pct(not_sold_area, total_area)
 
     finance = None
     if is_finance_visible:
