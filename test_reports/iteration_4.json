@@ -46,8 +46,8 @@
     "frontend": "100% (all UI tests passed)"
   },
   "test_credentials": {
-    "super_admin": "admin@begestates.bg / BegEstates2026!Admin",
-    "sales": "sales@begestates.bg / BegEstates2026!Sales"
+    "super_admin": "[REDACTED]",
+    "sales": "[REDACTED]"
   },
   "seed_data_creation": "Used existing deals from G.1 testing. Created and cleaned up test deals during backend tests.",
   "retest_needed": false,

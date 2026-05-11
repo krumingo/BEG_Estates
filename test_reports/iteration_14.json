@@ -33,8 +33,8 @@
     "frontend": "100% (38/38 UI tests passed after fix)"
   },
   "test_credentials": {
-    "super_admin": "admin@begestates.bg / BegEstates2026!Admin",
-    "sales": "sales@begestates.bg / BegEstates2026!Sales"
+    "super_admin": "[REDACTED]",
+    "sales": "[REDACTED]"
   },
   "seed_data_creation": "No new seed data. Used existing: 52 properties, 15 sold, 20 available, 5 active deals, 2 clients with deals, 8 overdue installments (26,570€)",
   "retest_needed": false,

@@ -30,7 +30,7 @@
     "frontend": "100% (all R.4 features working)"
   },
   "test_credentials": {
-    "super_admin": "admin@begestates.bg / BegEstates2026!Admin"
+    "super_admin": "[REDACTED]"
   },
   "seed_data_creation": "No new seed data. Used existing Хаджи Димитър project with 52 properties.",
   "retest_needed": false,

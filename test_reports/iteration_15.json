@@ -32,8 +32,8 @@
     "frontend": "100% (all UI tests passed)"
   },
   "test_credentials": {
-    "super_admin": "admin@begestates.bg / BegEstates2026!Admin",
-    "sales": "sales@begestates.bg / BegEstates2026!Sales"
+    "super_admin": "[REDACTED]",
+    "sales": "[REDACTED]"
   },
   "seed_data_creation": "No new seed data. Used existing: 52 total properties, 18 apartments (5 sold, 6 available, 7 compensation)",
   "retest_needed": false,

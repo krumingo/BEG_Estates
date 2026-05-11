@@ -39,8 +39,8 @@
     "frontend": "100% (all UI tests passed)"
   },
   "test_credentials": {
-    "super_admin": "admin@begestates.bg / BegEstates2026!Admin",
-    "sales": "sales@begestates.bg / BegEstates2026!Sales"
+    "super_admin": "[REDACTED]",
+    "sales": "[REDACTED]"
   },
   "seed_data_creation": "No new seed data created. Used existing Хаджи Димитър project (ID: 530a81a9-0b56-4b9b-a447-47170ff29cc2) with 52 properties.",
   "retest_needed": false,

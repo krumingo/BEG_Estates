@@ -36,12 +36,12 @@
     "frontend": "100% (all role-based tests passed)"
   },
   "test_credentials": {
-    "super_admin": "admin@begestates.bg / BegEstates2026!Admin",
-    "sales": "sales@begestates.bg / BegEstates2026!Sales",
-    "admin": "test_admin@begestates.bg / BegEstates2026!Admin (created for testing)",
-    "accounting": "test_accounting@begestates.bg / BegEstates2026!Accounting (created for testing)"
+    "super_admin": "[REDACTED]",
+    "sales": "[REDACTED]",
+    "admin": "[REDACTED] (created for testing)",
+    "accounting": "[REDACTED] (created for testing)"
   },
-  "seed_data_creation": "Created test_admin@begestates.bg (role=admin) and test_accounting@begestates.bg (role=accounting) directly in MongoDB for testing read-only behavior",
+  "seed_data_creation": "Created two test users (role=admin and role=accounting) directly in MongoDB for testing read-only behavior. Credentials redacted from this report — see /app/memory/test_credentials.md.",
   "retest_needed": false,
   "should_main_agent_self_test": false,
   "context_for_next_testing_agent": "R.7 Construction Cashflow Tab read-only logic fully tested. Key test points: (1) super_admin: tab visible, form editable, save button exists, no readonly notice, (2) admin: tab visible, form disabled (fieldset disabled), no save button, readonly notice with text 'Само super_admin може да редактира строителната прогноза.' and data-testid='construction-readonly-notice', (3) accounting: same as admin (read-only), (4) sales: tab-construction NOT in DOM. .gitignore cleanup verified: 90 lines, no duplicates, no -e lines, no specific *.pack filenames.",

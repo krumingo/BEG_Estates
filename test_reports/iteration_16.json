@@ -33,8 +33,8 @@
     "frontend": "100% (all UI tests passed)"
   },
   "test_credentials": {
-    "super_admin": "admin@begestates.bg / BegEstates2026!Admin",
-    "sales": "sales@begestates.bg / BegEstates2026!Sales"
+    "super_admin": "[REDACTED]",
+    "sales": "[REDACTED]"
   },
   "seed_data_creation": "No new seed data. Used existing project with construction_cashflow_settings (total_rzp_area=5000, rough_cost_per_sqm=400, full_cost_per_sqm=700)",
   "retest_needed": false,

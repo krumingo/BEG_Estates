@@ -35,8 +35,8 @@
     "frontend": "100% (all UI tests passed)"
   },
   "test_credentials": {
-    "super_admin": "admin@begestates.bg / BegEstates2026!Admin",
-    "sales": "sales@begestates.bg / BegEstates2026!Sales"
+    "super_admin": "[REDACTED]",
+    "sales": "[REDACTED]"
   },
   "seed_data_creation": "G.1 cleanup migration ran successfully - dropped 12 sales, 2 quotes, 2 payment_plans, 6 installments, 2 payments; preserved 52 properties + 19 clients. Migration is idempotent via _migrations marker doc.",
   "retest_needed": false,

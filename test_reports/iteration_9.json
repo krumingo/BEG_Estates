@@ -31,8 +31,8 @@
     "frontend": "100% (all R.3 features working)"
   },
   "test_credentials": {
-    "super_admin": "admin@begestates.bg / BegEstates2026!Admin",
-    "sales": "sales@begestates.bg / BegEstates2026!Sales"
+    "super_admin": "[REDACTED]",
+    "sales": "[REDACTED]"
   },
   "seed_data_creation": "No new seed data. Used existing Хаджи Димитър project with 52 properties.",
   "retest_needed": false,
@@ -40,7 +40,7 @@
   "context_for_next_testing_agent": "R.3 fully tested. Pricing Settings UI moved from Projects → Properties. Key test points: (1) Projects edit dialog NO LONGER has 'Площообразуване' section, (2) Properties toolbar has new 'Площообразуване' button as FIRST button with Settings icon, (3) Button opens Dialog with full PricingSettingsTab (base_price_per_sqm, vat_rate, floor_corrections, type_overrides), (4) Role gating: button visible ONLY for super_admin, NOT for sales, (5) Button disabled when no project selected, (6) All R.2 features (inline €/м² edit, BulkApply, PropertiesSummary footer) continue working.",
   "verified_features": [
     {
-      "feature": "Login as super_admin (admin@begestates.bg / BegEstates2026!Admin)",
+      "feature": "Login as super_admin ([REDACTED])",
       "status": "PASS"
     },
     {
@@ -79,7 +79,7 @@
       "details": "Changed 2200 → 2250, save completed, dialog remains open (expected behavior)"
     },
     {
-      "feature": "Logout and Login as sales (sales@begestates.bg / BegEstates2026!Sales)",
+      "feature": "Logout and Login as sales ([REDACTED])",
       "status": "PASS"
     },
     {

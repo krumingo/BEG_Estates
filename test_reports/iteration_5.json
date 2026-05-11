@@ -36,8 +36,8 @@
     "frontend": "100% (all UI tests passed)"
   },
   "test_credentials": {
-    "super_admin": "admin@begestates.bg / BegEstates2026!Admin",
-    "sales": "sales@begestates.bg / BegEstates2026!Sales"
+    "super_admin": "[REDACTED]",
+    "sales": "[REDACTED]"
   },
   "seed_data_creation": "Created test deals during backend tests (cleaned up). Created D-2026-007 with bank_loan mode during UI testing.",
   "retest_needed": false,

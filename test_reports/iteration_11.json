@@ -31,8 +31,8 @@
     "frontend": "100% (15/15 test cases passed)"
   },
   "test_credentials": {
-    "super_admin": "admin@begestates.bg / BegEstates2026!Admin",
-    "sales": "sales@begestates.bg / BegEstates2026!Sales"
+    "super_admin": "[REDACTED]",
+    "sales": "[REDACTED]"
   },
   "seed_data_creation": "No new seed data. Used existing data: cash.paid=0, cash.expected=0, cash.overdue=0, sold_count=15, sold_value_with_vat=1235516.83",
   "retest_needed": false,
@@ -40,7 +40,7 @@
   "context_for_next_testing_agent": "R.5 ЧАСТ 2 fully tested. Key test points: (1) Super_admin sees dashboard-cash-section with 3 cards (cash-card-paid, cash-card-expected, cash-card-overdue-none), (2) Progress bar exists with data-testid='cash-card-paid-progress' (width=0% when paid=0), (3) Project filter dropdown works with data-testid='dashboard-project-filter', (4) Sales role sees dashboard-non-finance-summary instead of cash section, (5) Both roles see dashboard-coming-soon placeholder, (6) Loading state shows 3 skeleton cards with data-testid='cash-card-skeleton'",
   "verified_features": [
     {
-      "feature": "Login as super_admin (admin@begestates.bg / BegEstates2026!Admin) → /admin opens",
+      "feature": "Login as super_admin ([REDACTED]) → /admin opens",
       "status": "PASS"
     },
     {
@@ -89,7 +89,7 @@
       "details": "During loading: 3 skeleton cards visible. After loading: 0 skeleton cards, real cards visible"
     },
     {
-      "feature": "Login as sales (sales@begestates.bg / BegEstates2026!Sales)",
+      "feature": "Login as sales ([REDACTED])",
       "status": "PASS"
     },
     {

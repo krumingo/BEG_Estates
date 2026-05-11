@@ -31,8 +31,8 @@
     "frontend": "100% (22/22 test cases passed)"
   },
   "test_credentials": {
-    "super_admin": "admin@begestates.bg / BegEstates2026!Admin",
-    "sales": "sales@begestates.bg / BegEstates2026!Sales"
+    "super_admin": "[REDACTED]",
+    "sales": "[REDACTED]"
   },
   "seed_data_creation": "No new seed data. Used existing data: cash.overdue=0 (no overdue alert), top_clients=5, calendar data empty (no installments in seed)",
   "retest_needed": false,
@@ -40,7 +40,7 @@
   "context_for_next_testing_agent": "R.5 ЧАСТ 4 (ФИНАЛНА) fully tested. All 7 dashboard sections working: (1) Cash - 3 cards, (2) Sales - 3 cards with progress bar, (3) ByType - table with 6 types, (4) RecentSales - table with 10 rows, (5) Calendar - 3 period cards + bar chart + upcoming table, (6) TopClients - table with 5 rows, (7) Alerts - empty state with green checkmark. Sales role correctly sees only sections 2,3,4,7 without € amounts. Project filter triggers reload of all sections.",
   "verified_features": [
     {
-      "feature": "Login as super_admin (admin@begestates.bg / BegEstates2026!Admin) → /admin opens with all 7 sections",
+      "feature": "Login as super_admin ([REDACTED]) → /admin opens with all 7 sections",
       "status": "PASS"
     },
     {

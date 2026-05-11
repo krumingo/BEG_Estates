@@ -30,8 +30,8 @@
     "frontend": "100% (19/19 test cases passed)"
   },
   "test_credentials": {
-    "super_admin": "admin@begestates.bg / BegEstates2026!Admin",
-    "sales": "sales@begestates.bg / BegEstates2026!Sales"
+    "super_admin": "[REDACTED]",
+    "sales": "[REDACTED]"
   },
   "seed_data_creation": "No new seed data. Used existing data: 52 properties, 15 sold, 20 available, 17 compensation, 6 property types",
   "retest_needed": false,
@@ -39,7 +39,7 @@
   "context_for_next_testing_agent": "R.5 ЧАСТ 3 fully tested. Key test points: (1) Super_admin sees all 4 sections with € amounts, (2) Sales role sees Sales/ByType/RecentSales sections without € amounts and without Cash section, (3) SalesCards: data-testid='sales-card-sold/available/total', progress bar 'sales-card-sold-progress', (4) SalesByTypeTable: data-testid='sales-by-type-table/skeleton/empty/total', rows 'sales-by-type-row-{type}', (5) RecentSalesTable: data-testid='recent-sales-table/skeleton/empty', rows 'recent-sales-row-{property_id}', (6) Coming soon placeholder updated for Part 4",
   "verified_features": [
     {
-      "feature": "Login as super_admin (admin@begestates.bg / BegEstates2026!Admin) → /admin opens",
+      "feature": "Login as super_admin ([REDACTED]) → /admin opens",
       "status": "PASS"
     },
     {
